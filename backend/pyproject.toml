@@ -9,17 +9,19 @@ dependencies = [
     "neo4j>=5.24",
     "redis>=5.1",
     "pydantic-settings>=2.6",
+    "scikit-learn>=1.5",
+    "httpx>=0.27",
 ]
-# scikit-learn (Isolation Forest anomaly detection) and httpx (optional
-# Ollama adapter) are added in Phase 8 when they're actually used — see
-# ARGUS_PLAN.md Phase 10 for the local-first intelligence design. Every
-# other feature in the app has no AI dependency at all.
+# scikit-learn is used for Isolation Forest anomaly detection (Phase 8) —
+# unsupervised, trained fresh on ARGUS's own synthetic data every run, no
+# external model or dataset. httpx is used only by the optional Ollama
+# adapter (app/services/ollama.py); every other feature has no AI
+# dependency at all, and both remain fully local. See ARGUS_PLAN.md Phase 10.
 
 [project.optional-dependencies]
 dev = [
     "ruff>=0.7",
     "mypy>=1.13",
-    "httpx>=0.27",
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
 ]

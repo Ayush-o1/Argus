@@ -40,9 +40,3 @@ async def get_entity_graph(entity_id: str, depth: int = 1, driver: AsyncDriver =
 async def get_entity_timeline(entity_id: str, driver: AsyncDriver = Depends(get_db)) -> Envelope[list]:
     timeline = await entity_repo.get_entity_timeline(driver, entity_id)
     return Envelope(data=timeline)
-
-
-@router.get("/{entity_id}/ai-summary")
-async def get_entity_ai_summary(entity_id: str) -> Envelope[dict | None]:
-    """Implemented in Phase 8 (Local Intelligence Layer) as deterministic template NLG."""
-    return Envelope(data=None)

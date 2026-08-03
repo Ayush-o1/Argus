@@ -40,7 +40,7 @@ async def ensure_projection(driver: AsyncDriver) -> None:
         )
 
 
-async def _owner_lookup(driver: AsyncDriver, account_ids: list[str]) -> dict[str, dict]:
+async def owner_lookup(driver: AsyncDriver, account_ids: list[str]) -> dict[str, dict]:
     """Maps Account.id (uuid) -> {account_id, owner_id, owner_label, owner_name, risk_score}."""
     async with driver.session() as session:
         result = await session.run(
@@ -76,7 +76,7 @@ async def run_pagerank(driver: AsyncDriver, top_k: int = 50) -> list[dict]:
         )
         rows = [dict(record) async for record in result]
 
-    owners = await _owner_lookup(driver, [r["uuid"] for r in rows])
+    owners = await owner_lookup(driver, [r["uuid"] for r in rows])
     return _shape_rows(rows, owners, "score")
 
 
@@ -95,7 +95,7 @@ async def run_betweenness(driver: AsyncDriver, top_k: int = 50) -> list[dict]:
         )
         rows = [dict(record) async for record in result]
 
-    owners = await _owner_lookup(driver, [r["uuid"] for r in rows])
+    owners = await owner_lookup(driver, [r["uuid"] for r in rows])
     return _shape_rows(rows, owners, "score")
 
 
@@ -112,7 +112,7 @@ async def run_louvain(driver: AsyncDriver) -> dict:
         )
         rows = [dict(record) async for record in result]
 
-    owners = await _owner_lookup(driver, [r["uuid"] for r in rows])
+    owners = await owner_lookup(driver, [r["uuid"] for r in rows])
     communities: dict[int, list[dict]] = {}
     for row in rows:
         owner = owners.get(row["uuid"])
@@ -181,7 +181,7 @@ async def run_node2vec_similarity(driver: AsyncDriver, seed_human_id: str, top_k
     similarities.sort(key=lambda pair: pair[1], reverse=True)
     top = similarities[:top_k]
 
-    owners = await _owner_lookup(driver, [uuid for uuid, _ in top])
+    owners = await owner_lookup(driver, [uuid for uuid, _ in top])
     shaped = []
     for uuid, sim in top:
         owner = owners.get(uuid)
@@ -337,7 +337,7 @@ async def run_cycle_detection(
         rows = [dict(record) async for record in result]
 
     all_uuids = {uuid for row in rows for uuid in row["uuids"]}
-    owners = await _owner_lookup(driver, list(all_uuids))
+    owners = await owner_lookup(driver, list(all_uuids))
 
     cycles = []
     for row in rows:

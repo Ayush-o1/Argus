@@ -9,7 +9,7 @@ from app.api.dependencies import get_db, require_api_token
 from app.database.redis import get_redis
 from app.models.envelope import Envelope
 from app.repositories import analytics_repo
-from app.services import jobs
+from app.services import anomaly, jobs
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"], dependencies=[Depends(require_api_token)])
 
@@ -71,6 +71,14 @@ async def run_similar_entities(
         "node2vec-similarity",
         partial(analytics_repo.run_node2vec_similarity, driver, entity_id, top_k),
     )
+    return Envelope(data={"job_id": job_id, "status": "running"})
+
+
+@router.post("/anomalies")
+async def run_anomaly_detection(
+    driver: AsyncDriver = Depends(get_db), redis: Redis = Depends(get_redis)
+) -> Envelope[dict]:
+    job_id = await jobs.start_job(redis, "anomalies", partial(anomaly.detect_transaction_anomalies, driver))
     return Envelope(data={"job_id": job_id, "status": "running"})
 
 
