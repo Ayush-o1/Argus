@@ -1,0 +1,162 @@
+.layout {
+  display: grid;
+  grid-template-columns: 420px 1fr;
+  gap: var(--space-6);
+  align-items: flex-start;
+}
+
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.fieldLabel {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-tertiary);
+}
+
+.select,
+.input {
+  padding: var(--space-3);
+  border-radius: 8px;
+  border: 1px solid var(--surface-border);
+  background: var(--surface-inset);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+}
+
+.select:focus,
+.input:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+.complexityRow {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.complexityOption {
+  flex: 1;
+  padding: var(--space-2) var(--space-3);
+  border-radius: 8px;
+  border: 1px solid var(--surface-border);
+  background: var(--surface-inset);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  text-align: center;
+  transition: border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.complexityOptionActive {
+  border-color: var(--accent-primary);
+  color: var(--text-primary);
+  background: var(--surface-selected);
+}
+
+.seedRow {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.seedRow .input {
+  flex: 1;
+}
+
+.typeDescription {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  line-height: 1.5;
+}
+
+.resultPanel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.stageList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.stageRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.resultHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.resultTitle {
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+}
+
+.resultDescription {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.countsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: var(--space-3);
+}
+
+.countCard {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-3);
+  border-radius: 8px;
+  background: var(--surface-inset);
+}
+
+.countValue {
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  font-family: var(--font-mono);
+}
+
+.countLabel {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.resultActions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.centerState {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-8) 0;
+}

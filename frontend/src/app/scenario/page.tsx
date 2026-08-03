@@ -1,15 +1,190 @@
-import { FlaskConical } from "lucide-react";
-import { EmptyState } from "@/components/ui/EmptyState";
+"use client";
+
+import { Check, FlaskConical, Loader2, Shuffle } from "lucide-react";
+import Link from "next/link";
+import { useState } from "react";
 import { PageShell } from "@/components/layout/PageShell";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { useScenarioJob, useScenarioTypes } from "@/hooks/useScenario";
+import styles from "./page.module.css";
+
+const TYPE_LABELS: Record<string, string> = {
+  shell_company_ring: "Shell Company Ring",
+  money_routing_network: "Money Routing Network",
+  communication_cluster: "Communication Cluster",
+  supply_chain_divergence: "Supply Chain Fraud",
+  document_forgery_ring: "Document Forgery Ring",
+  identity_overlap: "Identity Overlap",
+};
+
+const TYPE_DESCRIPTIONS: Record<string, string> = {
+  shell_company_ring:
+    "New shell companies linked by shared controllers, with circular transaction routing between their accounts.",
+  money_routing_network: "Funds routed through a multi-account chain across banks, each hop retaining a small cut.",
+  communication_cluster: "A group of individuals with an unusually dense communication pattern over 48 hours.",
+  supply_chain_divergence: "Shipments whose logged route diverges from their manifested itinerary.",
+  document_forgery_ring: "Documents with issuer/subject inconsistencies suggesting coordinated forgery.",
+  identity_overlap: "Individuals sharing a device with its registered owner.",
+};
+
+const SEVERITY_TONE: Record<string, "critical" | "high" | "medium" | "low"> = {
+  Critical: "critical",
+  High: "high",
+  Medium: "medium",
+  Low: "low",
+};
 
 export default function ScenarioPage() {
+  const { data: typesData } = useScenarioTypes();
+  const [type, setType] = useState<string | null>(null);
+  const [complexity, setComplexity] = useState("Medium");
+  const [seed, setSeed] = useState<number | null>(null);
+  const { start, job, jobId, reset } = useScenarioJob();
+
+  const activeType = type ?? typesData?.types[0] ?? "";
+
+  function randomizeSeed() {
+    setSeed(Math.floor(Math.random() * 1_000_000));
+  }
+
+  function handleGenerate() {
+    reset();
+    start.mutate({ type: activeType, complexity, seed });
+  }
+
+  const status = job.data?.status;
+  const stages = job.data?.stages ?? [];
+  const result = job.data?.result;
+
   return (
-    <PageShell title="Scenario Generator" subtitle="Create synthetic investigation scenarios on demand">
-      <EmptyState
-        icon={FlaskConical}
-        title="Scenario generation isn't wired up yet"
-        description="Shell company rings, money routing networks, and the other storyline types become generatable from this page in Phase 9, running as an async background job."
-      />
+    <PageShell
+      title="Scenario Generator"
+      subtitle="Create a new synthetic investigation scenario on demand — runs the real generation engine against the live graph"
+    >
+      <div className={styles.layout}>
+        <Card className={styles.form}>
+          <div className={styles.field}>
+            <span className={styles.fieldLabel}>Storyline Type</span>
+            <select className={styles.select} value={activeType} onChange={(e) => setType(e.target.value)}>
+              {(typesData?.types ?? []).map((t) => (
+                <option key={t} value={t}>
+                  {TYPE_LABELS[t] ?? t}
+                </option>
+              ))}
+            </select>
+            <p className={styles.typeDescription}>{TYPE_DESCRIPTIONS[activeType]}</p>
+          </div>
+
+          <div className={styles.field}>
+            <span className={styles.fieldLabel}>Complexity</span>
+            <div className={styles.complexityRow}>
+              {(typesData?.complexities ?? ["Low", "Medium", "High"]).map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  className={[styles.complexityOption, c === complexity && styles.complexityOptionActive]
+                    .filter(Boolean)
+                    .join(" ")}
+                  onClick={() => setComplexity(c)}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className={styles.field}>
+            <span className={styles.fieldLabel}>Seed</span>
+            <div className={styles.seedRow}>
+              <input
+                className={styles.input}
+                type="number"
+                placeholder="Random"
+                value={seed ?? ""}
+                onChange={(e) => setSeed(e.target.value ? Number(e.target.value) : null)}
+              />
+              <Button variant="secondary" size="md" onClick={randomizeSeed} aria-label="Randomize seed">
+                <Shuffle size={16} />
+              </Button>
+            </div>
+          </div>
+
+          <Button onClick={handleGenerate} disabled={!activeType || status === "running"}>
+            {status === "running" ? "Generating…" : "Generate Scenario"}
+          </Button>
+        </Card>
+
+        <Card className={styles.resultPanel}>
+          {!jobId && (
+            <EmptyState
+              icon={FlaskConical}
+              title="No scenario generated yet"
+              description="Pick a storyline type and press Generate — this creates real new entities and writes them into the live graph."
+            />
+          )}
+
+          {status === "running" && (
+            <div className={styles.stageList}>
+              {stages.map((stage, i) => (
+                <div key={i} className={styles.stageRow}>
+                  <Check size={14} color="var(--risk-low)" />
+                  {stage}
+                </div>
+              ))}
+              <div className={styles.stageRow}>
+                <Loader2 size={14} style={{ animation: "argus-spin 0.9s linear infinite" }} />
+                Working…
+              </div>
+            </div>
+          )}
+
+          {status === "failed" && (
+            <EmptyState icon={FlaskConical} title="Generation failed" description={job.data?.error ?? "Unknown error"} />
+          )}
+
+          {status === "done" && result && (
+            <>
+              <div className={styles.resultHeader}>
+                <div className={styles.resultTitle}>{TYPE_LABELS[result.type] ?? result.type}</div>
+                <Badge tone={SEVERITY_TONE[result.severity]}>{result.severity}</Badge>
+              </div>
+              <p className={styles.resultDescription}>{result.description}</p>
+
+              <div className={styles.countsGrid}>
+                {Object.entries(result.node_counts)
+                  .filter(([, count]) => count > 0)
+                  .map(([label, count]) => (
+                    <div key={label} className={styles.countCard}>
+                      <span className={styles.countValue}>{count}</span>
+                      <span className={styles.countLabel}>{label}</span>
+                    </div>
+                  ))}
+              </div>
+
+              <div className={styles.resultActions}>
+                <Link href={`/graph?seed=${result.key_entity_id}`}>
+                  <Button variant="secondary" size="sm">
+                    Open in Graph
+                  </Button>
+                </Link>
+                {result.case_id && (
+                  <Link href={`/cases/${result.case_id}`}>
+                    <Button variant="secondary" size="sm">
+                      Open Case
+                    </Button>
+                  </Link>
+                )}
+                <Link href={`/entities/${result.key_entity_id}`}>
+                  <Button size="sm">Key Entity: {result.key_entity_name}</Button>
+                </Link>
+              </div>
+            </>
+          )}
+        </Card>
+      </div>
     </PageShell>
   );
 }
