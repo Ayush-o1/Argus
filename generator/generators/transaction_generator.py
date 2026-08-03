@@ -19,12 +19,14 @@ TX_TYPE_WEIGHTED = [("Wire", 40), ("Cash", 35), ("Crypto", 10), ("Escrow", 15)]
 TX_PER_ACCOUNT_WEIGHTED = [(3, 40), (8, 35), (20, 20), (45, 5)]
 
 
-def generate_baseline_transactions(rng: random.Random, accounts: list[dict], target_count: int) -> list[dict]:
+def generate_baseline_transactions(
+    rng: random.Random, accounts: list[dict], target_count: int, id_offset: int = 0
+) -> list[dict]:
     if len(accounts) < 2:
         return []
 
     transactions: list[dict] = []
-    counter = 0
+    counter = id_offset
     account_ids = [a["id"] for a in accounts]
     counts, count_weights = zip(*TX_PER_ACCOUNT_WEIGHTED)
     types, type_weights = zip(*TX_TYPE_WEIGHTED)

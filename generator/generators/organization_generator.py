@@ -34,12 +34,12 @@ ORG_TYPE_WEIGHTED = [
 ]
 
 
-def generate_organizations(rng: random.Random, count: int) -> list[dict]:
+def generate_organizations(rng: random.Random, count: int, id_offset: int = 0) -> list[dict]:
     orgs: list[dict] = []
     used_names: set[str] = set()
     types, weights = zip(*ORG_TYPE_WEIGHTED)
 
-    for i in range(1, count + 1):
+    for i in range(id_offset + 1, id_offset + count + 1):
         industry = rng.choice(ORG_INDUSTRIES)
         name = _unique_name(rng, industry, used_names)
         city = weighted_city(rng)

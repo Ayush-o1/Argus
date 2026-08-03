@@ -13,12 +13,14 @@ from config import DOCUMENT_TYPES
 from generators.common import new_id, new_uuid
 
 
-def generate_documents(rng: random.Random, persons: list[dict], orgs: list[dict], count: int) -> list[dict]:
+def generate_documents(
+    rng: random.Random, persons: list[dict], orgs: list[dict], count: int, id_offset: int = 0
+) -> list[dict]:
     if not persons:
         return []
 
     documents: list[dict] = []
-    for i in range(1, count + 1):
+    for i in range(id_offset + 1, id_offset + count + 1):
         doc_type = rng.choice(DOCUMENT_TYPES)
         subject = rng.choice(persons)
 

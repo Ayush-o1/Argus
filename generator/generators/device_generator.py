@@ -8,9 +8,9 @@ from generators.common import new_id, new_uuid
 DEVICE_TYPE_WEIGHTED = [("Phone", 55), ("SIM", 25), ("Laptop", 15), ("Router", 5)]
 
 
-def generate_devices(rng: random.Random, persons: list[dict], target_count: int) -> list[dict]:
+def generate_devices(rng: random.Random, persons: list[dict], target_count: int, id_offset: int = 0) -> list[dict]:
     devices: list[dict] = []
-    counter = 0
+    counter = id_offset
     types, weights = zip(*DEVICE_TYPE_WEIGHTED)
 
     persons_shuffled = persons[:]

@@ -23,7 +23,9 @@ STATUS_WEIGHTED = [("Open", 45), ("UnderReview", 30), ("Closed", 20), ("Draft", 
 PRIORITY_BY_SEVERITY = {"Critical": "Critical", "High": "High", "Medium": "Medium", "Low": "Low"}
 
 
-def generate_seed_cases(rng: random.Random, storylines: list[dict], target_count: int) -> list[dict]:
+def generate_seed_cases(
+    rng: random.Random, storylines: list[dict], target_count: int, id_offset: int = 0
+) -> list[dict]:
     if not storylines:
         return []
 
@@ -31,7 +33,7 @@ def generate_seed_cases(rng: random.Random, storylines: list[dict], target_count
     statuses, status_weights = zip(*STATUS_WEIGHTED)
     cases: list[dict] = []
 
-    for i, storyline in enumerate(chosen, start=1):
+    for i, storyline in enumerate(chosen, start=id_offset + 1):
         opened = random_datetime_between(rng, WORLD_START, WORLD_END)
         status = rng.choices(statuses, weights=status_weights, k=1)[0]
         closed = opened + timedelta(days=rng.randint(3, 40)) if status == "Closed" else None

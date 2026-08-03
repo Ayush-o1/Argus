@@ -17,9 +17,11 @@ ACCOUNT_TYPE_WEIGHTED_ORG = [("Corporate", 70), ("Shell", 15), ("Escrow", 15)]
 BALANCE_CLASS_WEIGHTED = [("Low", 40), ("Medium", 35), ("High", 20), ("Extreme", 5)]
 
 
-def generate_accounts(rng: random.Random, persons: list[dict], orgs: list[dict], target_count: int) -> list[dict]:
+def generate_accounts(
+    rng: random.Random, persons: list[dict], orgs: list[dict], target_count: int, id_offset: int = 0
+) -> list[dict]:
     accounts: list[dict] = []
-    counter = 0
+    counter = id_offset
 
     owners = [(p["id"], "Person") for p in persons] + [(o["id"], "Organization") for o in orgs]
     rng.shuffle(owners)

@@ -20,7 +20,7 @@ MANIFEST_GOODS = [
 ROUTE_ANOMALY_RATE = 0.03
 
 
-def generate_shipments(rng: random.Random, locations: list[dict], count: int) -> list[dict]:
+def generate_shipments(rng: random.Random, locations: list[dict], count: int, id_offset: int = 0) -> list[dict]:
     ports_and_warehouses = [loc for loc in locations if loc["type"] in ("Port", "Airport", "Warehouse")]
     if len(ports_and_warehouses) < 2:
         ports_and_warehouses = locations
@@ -28,7 +28,7 @@ def generate_shipments(rng: random.Random, locations: list[dict], count: int) ->
         return []
 
     shipments: list[dict] = []
-    for i in range(1, count + 1):
+    for i in range(id_offset + 1, id_offset + count + 1):
         origin, destination = rng.sample(ports_and_warehouses, k=2)
         departure = random_datetime_between(rng, WORLD_START, WORLD_END)
         transit_days = rng.randint(1, 14)

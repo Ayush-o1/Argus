@@ -14,7 +14,7 @@ CONTACTS_PER_PERSON = (5, 15)
 
 
 def generate_communications(
-    rng: random.Random, persons: list[dict], devices: list[dict], target_count: int
+    rng: random.Random, persons: list[dict], devices: list[dict], target_count: int, id_offset: int = 0
 ) -> list[dict]:
     devices_by_owner: dict[str, list[str]] = {}
     for device in devices:
@@ -38,7 +38,7 @@ def generate_communications(
     rng.shuffle(contact_edges)
 
     communications: list[dict] = []
-    counter = 0
+    counter = id_offset
     types, weights = zip(*COMM_TYPE_WEIGHTED)
 
     edge_index = 0

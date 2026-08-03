@@ -86,6 +86,35 @@ def write_world(driver: Driver, world: dict, wipe_existing: bool = True) -> None
         _create_search_and_range_indexes(session)
 
 
+def write_scenario(driver: Driver, world: dict) -> None:
+    """Additive write for a single on-demand scenario (ARGUS_PLAN.md Phase 9,
+    Scenario Generator): writes only the newly-created nodes/edges. Existing
+    Person nodes referenced by uuid are MATCHed, never re-created via
+    `_write_nodes`'s CREATE, so this can never collide with or duplicate
+    anything already in the live graph. Locations/Vehicles/Events are
+    likewise never populated by scenario generation and pass through as
+    no-op empty lists."""
+    with driver.session() as session:
+        for label, world_key, _id_field in NODE_SPECS:
+            if world_key == "persons":
+                continue  # pre-existing — reused by reference only, never re-created
+            _write_nodes(session, label, world.get(world_key, []))
+
+        _write_owned_by(session, "OWNS_ACCOUNT", world.get("accounts", []), "owner_id", "owner_type")
+        _write_simple_edges(session, "Person", "Device", "OWNS_DEVICE", world.get("devices", []), "owner_id", "id")
+        _write_relationship_rows(
+            session, "Person", "Organization", "CONTROLS", world.get("controls_edges", []), "person_id", "org_id"
+        )
+        _write_relationship_rows(
+            session, "Person", "Person", "SHARES_DEVICE", world.get("shares_device_edges", []), "person_a_id", "person_b_id"
+        )
+        _write_transacted_with(session, world.get("transactions", []))
+        _write_communicated_with(session, world.get("communications", []))
+        _write_document_edges(session, world.get("documents", []))
+        _write_entity_reference_edges(session, "Incident", "INVOLVES", world.get("incidents", []), "involved_entity_ids")
+        _write_entity_reference_edges(session, "Case", "LINKED_TO", world.get("cases", []), "linked_entity_human_ids")
+
+
 def _wipe(session) -> None:
     logger.info("Wiping existing graph...")
     session.run("MATCH (n) CALL { WITH n DETACH DELETE n } IN TRANSACTIONS OF 5000 ROWS")
