@@ -24,6 +24,10 @@ export function Topbar() {
         e.preventDefault();
         router.push("/search");
       }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        router.push("/graph");
+      }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);

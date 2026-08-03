@@ -58,6 +58,14 @@ npm run dev
 > subprocess using `generator/.venv` directly — keep that virtualenv in place (the
 > `python3 -m venv .venv` step above) even after the initial world generation is done.
 
+## Keyboard shortcuts
+
+| Shortcut | Action |
+|---|---|
+| `⌘K` / `Ctrl+K` | Jump to Search |
+| `⌘B` / `Ctrl+B` | Jump to Graph Explorer |
+| `⌘J` / `Ctrl+J` | Open Ask ARGUS (only appears if a local Ollama instance is detected) |
+
 ## Repository layout
 
 ```
