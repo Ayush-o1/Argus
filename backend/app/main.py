@@ -9,6 +9,7 @@ from app.api.routes import (
     alerts,
     analytics,
     cases,
+    dashboard,
     entities,
     graph,
     scenario,
@@ -48,6 +49,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(dashboard.router)
 app.include_router(entities.router)
 app.include_router(graph.router)
 app.include_router(analytics.router)
