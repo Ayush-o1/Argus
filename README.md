@@ -11,19 +11,29 @@ See [`ARGUS_PLAN.md`](./ARGUS_PLAN.md) for the full product architecture, data m
 - **Frontend** — Next.js 16 (App Router), TypeScript, vanilla CSS design system, Cytoscape.js, MapLibre GL + deck.gl, Recharts/VisX, TanStack Query, Zustand, Framer Motion
 - **Backend** — FastAPI (Python), async Neo4j driver, Redis
 - **Database** — Neo4j Community Edition + Graph Data Science (GDS) plugin, self-hosted via Docker
-- **AI** — Google Gemini API (server-side only)
+- **Data Generation** — Python + Faker (`en_IN` locale), deterministic and seeded
+- **Intelligence** — Neo4j GDS algorithms, scikit-learn (Isolation Forest), deterministic template NLG — all local; an optional local LLM (Ollama) is the only AI dependency, and it's off by default (see Phase 10)
 
 ## Running locally
 
 This project is **local-first** — everything runs via Docker Compose plus the Next.js dev server. There is no live hosted deployment yet (a deliberate choice; see Phase 11 of the plan).
 
 ```bash
-cp .env.example .env          # fill in GEMINI_API_KEY if you want AI features
+cp .env.example .env
 
 docker compose up -d neo4j redis   # graph database (with GDS) + cache
-docker compose up -d backend       # or: cd backend && uvicorn app.main:app --reload
 
-cd frontend
+cd generator
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+python3 generate_world.py --seed 42   # populates the graph (~10K nodes, ~86K edges, ~12s)
+
+cd ../backend
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+uvicorn app.main:app --reload   # or: docker compose up -d backend
+
+cd ../frontend
 npm install
 npm run dev
 ```
