@@ -14,7 +14,10 @@ class Settings(BaseSettings):
 
     redis_url: str = "redis://localhost:6379/0"
 
-    gemini_api_key: str = ""
+    # Optional local LLM assistant (see ARGUS_PLAN.md Phase 10). ARGUS Core
+    # never requires this — it's probed at runtime, and every other feature
+    # is unaffected if no Ollama instance is reachable at this URL.
+    ollama_base_url: str = "http://localhost:11434"
 
     argus_api_token: str = "argus_dev_token"
 

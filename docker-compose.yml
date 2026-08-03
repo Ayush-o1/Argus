@@ -48,7 +48,9 @@ services:
       NEO4J_USER: neo4j
       NEO4J_PASSWORD: ${NEO4J_PASSWORD:-argus_dev_password}
       REDIS_URL: redis://redis:6379/0
-      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      # Optional — see ARGUS_PLAN.md Phase 10. Defaults to the host's local
+      # Ollama if running; ARGUS works fully offline without it.
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       ARGUS_API_TOKEN: ${ARGUS_API_TOKEN:-argus_dev_token}
       CORS_ORIGINS: http://localhost:3000
     depends_on:

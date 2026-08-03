@@ -6,8 +6,11 @@ from app.models.envelope import Envelope
 
 router = APIRouter(prefix="/api/ai", tags=["ai"], dependencies=[Depends(require_api_token)])
 
-# Full implementation lands in Phase 8 (AI Features, Gemini integration).
-# Every call here is server-side only — the Gemini key never reaches the client.
+# Full implementation lands in Phase 8 (Local Intelligence Layer).
+# entity-summary/case-summary are deterministic template NLG — no network
+# call, no dependency. /ask is the one optional path: it probes for a local
+# Ollama instance and returns a clear "assistant not available" if absent,
+# rather than failing. See ARGUS_PLAN.md Phase 10.
 
 
 class AskRequest(BaseModel):

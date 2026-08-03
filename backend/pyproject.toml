@@ -1,7 +1,7 @@
 [project]
 name = "argus-backend"
 version = "0.1.0"
-description = "ARGUS FastAPI backend — graph API, analytics, AI, and case management services."
+description = "ARGUS FastAPI backend — graph API, analytics, local intelligence, and case management services."
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",
@@ -9,8 +9,11 @@ dependencies = [
     "neo4j>=5.24",
     "redis>=5.1",
     "pydantic-settings>=2.6",
-    "google-genai>=0.3",
 ]
+# scikit-learn (Isolation Forest anomaly detection) and httpx (optional
+# Ollama adapter) are added in Phase 8 when they're actually used — see
+# ARGUS_PLAN.md Phase 10 for the local-first intelligence design. Every
+# other feature in the app has no AI dependency at all.
 
 [project.optional-dependencies]
 dev = [

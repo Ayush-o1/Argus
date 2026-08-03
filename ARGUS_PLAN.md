@@ -74,7 +74,7 @@ Most portfolio projects show CRUD apps or dashboards with static charts. ARGUS d
 - **Temporal reasoning** — events across time, not just at a point in time
 - **Risk propagation** — how a flagged entity contaminates connected nodes
 - **Investigation workflow** — hypothesis → exploration → evidence → report
-- **AI-in-the-loop** — language model summaries, not LLM theater
+- **Local-first intelligence** — graph algorithms and ML doing the reasoning, not LLM theater
 
 This is not a demo. It's a simulation of a real analytical system.
 
@@ -190,7 +190,7 @@ Every page in ARGUS corresponds to a specific stage. No page exists without a cl
 | Search | Global entity + event search with facets | ★★★☆☆ |
 | Alerts | System-detected anomalies requiring review | ★★★☆☆ |
 | Scenario Generator | Create synthetic cases on demand | ★★★☆☆ |
-| AI Analyst | Language model summaries and explanations | ★★★☆☆ |
+| Local Intelligence Layer | Anomaly detection, template narratives, optional local assistant | ★★★☆☆ |
 | Settings | Theme, data config, system status | ★★☆☆☆ |
 | Help / Docs | In-app documentation | ★☆☆☆☆ |
 
@@ -667,7 +667,7 @@ ARGUS Navigation Tree
 2. **Activity** — mini timeline of all events for this entity
 3. **Graph** — embedded graph (subgraph of this entity's neighborhood)
 4. **Documents** — linked synthetic documents
-5. **AI Summary** — LLM-generated narrative about this entity
+5. **Summary** — template-generated narrative about this entity, built from the same facts as the Risk Score Widget
 
 **Risk Score Widget**:
 ```
@@ -731,7 +731,7 @@ Confidence: HIGH
 **Features**:
 - Entity pin board (drag and arrange evidence cards)
 - Markdown notes with auto-save
-- AI-generated case summary (on demand)
+- Template-generated case summary (on demand)
 - Linked timeline (events filtered to case entities)
 - Linked subgraph (graph filtered to case entities)
 - Export to PDF report
@@ -1309,82 +1309,118 @@ Risk(neighbor) += Risk(seed) × (1 / hop_distance) × edge_confidence
 
 ---
 
-## PHASE 10 — AI FEATURES
+#### 9. Node2Vec Similarity (Entity Resolution / "Find Similar")
+
+> **[v3 ADDITION]** Added as part of the local-first intelligence pivot (see Phase 10) — a concrete example of "intelligence from graph algorithms, not API calls."
+
+**What**: Neo4j GDS's built-in `gds.node2vec` produces a vector embedding for every node from its position in the graph (who it connects to, how densely). Cosine similarity between embeddings surfaces entities that occupy a *structurally similar role* in the network even if they share no direct edge — e.g. two people who each direct a shell company, transact with the same bank, and share a device with an associate, without ever appearing in the same query together.
+
+**Neo4j GDS Call**:
+```cypher
+CALL gds.node2vec.stream('entityGraph', { embeddingDimension: 64 })
+YIELD nodeId, embedding
+```
+Cosine similarity over the returned vectors (via `gds.similarity.cosine` or computed application-side) ranks the closest entities to a given seed.
+
+**Use**: Entity Profile → "Similar Entities" panel. Powers a lightweight, fully local analogue of entity-resolution / "who else looks like this" — the kind of feature portfolio reviewers otherwise expect to see backed by an external ML API.
+
+---
+
+## PHASE 10 — LOCAL INTELLIGENCE LAYER
+
+> **[v3 REVISION — supersedes v1/v2 "AI Features"]** v1/v2 of this plan made every intelligence feature a thin wrapper around the Gemini API — a required, internet-dependent, per-call-cost external service. The project owner made an explicit architectural call: **ARGUS must be fully functional offline, and its intelligence must come from graph algorithms, statistics, and local ML — not hosted LLM calls.** This phase is rewritten from scratch around that principle. Nothing below requires an API key, an internet connection, or a running cost. An LLM appears exactly once, at the very end, as a named-optional module that the rest of the system does not depend on.
 
 ### Philosophy
 
-> "The AI should feel like a thoughtful analyst, not a magic oracle."
+> "ARGUS should feel intelligent because of what it computes, not because it phoned an API."
 
-Every AI feature in ARGUS:
-1. Has a clear, bounded scope
-2. Can cite its inputs (graph data, not hallucinated facts)
-3. Can be wrong — and says so with a confidence indicator
-4. Does not replace the analyst — it assists
-
----
-
-### AI Feature 1: Entity Narrative
-
-**Where**: Entity Profile → "AI Summary" tab
-
-**Input**: All properties + all connected entities + risk factors + community membership
-
-**Output**: 2–3 paragraph narrative:
-> "Karan Malhotra is a 38-year-old import merchant based in New Delhi with a risk score of 72/100. He is associated with two organizations classified as shell companies: Malhotra Overseas Trading and Shakti Logistics Pvt Ltd. His transaction activity shows a significant anomaly in November, with 47 transactions totaling ₹1.2M within a 6-hour window — approximately 20× his historical baseline. He is a member of Community-12, which has the second-highest average risk score in the dataset. His device (Aether Telecom SIM-44) has been shared with 3 other individuals, two of whom are also members of Community-12. These patterns are consistent with a coordinated financial operation, though this assessment carries medium confidence."
-
-**Implementation**: Prompt construction in FastAPI → Gemini API → cached response.
+Every feature in this layer:
+1. Runs entirely on the local machine, using only the synthetic data ARGUS itself generated
+2. Is explainable — its output is a direct, traceable function of specific graph facts or model features, never an opaque "the model said so"
+3. Works with zero configuration and zero internet access
+4. States its confidence, and is honest about being a heuristic, not a guarantee
 
 ---
 
-### AI Feature 2: Case Summary
+### Where the "intelligence" actually comes from
 
-**Where**: Case Workspace → "AI Summary" section
+| Capability | Technique | Why this, not an LLM |
+|---|---|---|
+| Influence ranking | PageRank (Neo4j GDS) | Phase 9 — already algorithmic, already local |
+| Bridge / connector detection | Betweenness centrality (Neo4j GDS) | Phase 9 |
+| Cluster / ring discovery | Louvain community detection (Neo4j GDS) | Phase 9 |
+| "Find similar entities" | Node2Vec graph embeddings + cosine similarity (Neo4j GDS) | Phase 9 — a graph-native alternative to an embedding API |
+| Laundering-pattern detection | Custom cycle detection over the transaction graph | Phase 9 |
+| Risk scoring | Weighted rule-based scoring + custom label-propagation | Deterministic, auditable — an analyst can see exactly why a score is what it is |
+| **Anomaly detection (transaction bursts, communication spikes)** | **Isolation Forest** (scikit-learn) over per-account/per-device behavioral features, with a z-score baseline as the explainable fallback | This is the textbook right tool: unsupervised, trained fresh on ARGUS's own synthetic data every run, ships as a ~10MB pure-Python dependency, and its output ("this account's transaction velocity is a 4.2σ outlier vs. its own 90-day baseline") is more concretely explainable than an LLM's prose guess |
+| Entity / case narrative text | **Deterministic template-based NLG** — the same structured facts used for the Risk Score Widget (Phase 6), assembled into analyst-brief-style prose by a rule-based sentence composer | No hallucination risk, zero latency, zero dependency, and — because the "story" is built from the literal graph facts — it is by construction always accurate |
+| Conversational Q&A ("Ask ARGUS") | **Optional** local LLM via Ollama (see below) | The one place a genuinely open-ended natural-language interface adds real value over a fixed template — explicitly opt-in |
 
-**Input**: All linked entities, events, notes, risk scores
-
-**Output**: Case summary suitable for a briefing document.
-
----
-
-### AI Feature 3: Anomaly Explanation
-
-**Where**: Alert detail panel
-
-**Input**: Alert type, triggering entity, statistical baseline, deviation
-
-**Output**: Plain-language explanation of why this was flagged and what it might indicate.
+The Analytics Engine (Phase 9) was never the problem — it was already 100% local. This phase's job is to replace the *narrative and Q&A* layer, which v1/v2 wrongly assumed needed a hosted LLM.
 
 ---
 
-### AI Feature 4: "Ask ARGUS" (Contextual Q&A)
+### Local Feature 1: Statistical / ML Anomaly Detection
 
-**Where**: Floating panel accessible from any page (`⌘J`)
+**Where**: Runs as part of the generation pipeline (Phase 8, Stage 10) and is re-runnable on demand from `/analytics`.
 
-**Input**: User's natural language question + current page context (entity ID, case ID, etc.)
+**How it works — and why it's not just re-reading the generator's own injected labels**: Phase 8's storyline injector plants ground-truth anomalies (transaction bursts, circular routing, dense communication clusters) into an otherwise plausible baseline world. Detection is a **separate, independent pass** that does not consult those injection labels — it engineers behavioral features per entity (transaction count/amount in rolling windows, inter-transaction time variance, communication fan-out, degree relative to entity-type baseline) and scores outliers two ways:
+- **Isolation Forest** (`sklearn.ensemble.IsolationForest`) trained fresh on the current world's own feature matrix — unsupervised, no labels used, no external training data.
+- **Z-score baseline** as a simpler, fully explainable cross-check (`(value − mean) / stddev` against the entity's own historical window or its peer group).
 
-**Output**: Direct answer grounded in the graph data.
+An entity is flagged when both methods agree it's an outlier, which becomes the trigger for Incident/Alert generation (Phase 8, Stage 10) — a real (if small-scale) precision/recall story an interviewer can ask about, versus "the alerts are just the entities we marked as bad at generation time."
 
-**Examples**:
-- "What entities are connected to Karan Malhotra with a risk score above 60?"
-- "Summarize case CASE-007"
-- "Which community has the most flagged transactions?"
-- "Find entities that share devices with members of Community-12"
-
-**Implementation**: LLM generates a Cypher query from the natural language input → query runs against Neo4j → result returned to LLM for natural language summary → displayed to analyst.
+**Frontend**: Alert detail panel shows the actual feature values and the baseline they're compared against — e.g. *"47 transactions in 6 hours; this account's 90-day baseline is 2.3/day (μ) with σ=1.1 → z=19.8"* — not a paraphrased LLM sentence.
 
 ---
 
-### AI Feature 5: Report Generator
+### Local Feature 2: Template-Based Narrative Generation
 
-**Where**: Case Workspace → "Export" → "AI-Generated Report"
+**Where**: Entity Profile → "Summary" tab; Case Workspace → "Summary" section; Alert detail panel.
 
-**Output**: A formatted markdown/PDF investigation report including:
-- Executive Summary
-- Key Entities
-- Evidence Timeline
-- Risk Assessment
-- Recommended Actions
-- Data Confidence Levels
+**Input**: The same structured data the Risk Score Widget already computes — properties, connections, risk factors with their point contributions, community membership, anomaly detector output.
+
+**Output**: A rule-based sentence composer turns that structured data into analyst-brief prose, e.g.:
+> "Karan Malhotra is a 38-year-old import merchant based in New Delhi with a risk score of 72/100. He is associated with two organizations flagged as shell companies: Malhotra Overseas Trading and Shakti Logistics Pvt Ltd. The anomaly detector flagged a transaction burst on 12 Nov — 47 transactions totaling ₹1.2M in a 6-hour window, a 19.8σ deviation from his own baseline. He belongs to Community-12, the second-highest-risk community in the current graph. His device has been shared with 3 other individuals, two of whom are also in Community-12."
+
+Every clause in that sentence maps 1:1 to a queried fact — there is nothing here an LLM adds except phrasing, which a well-written template composer handles deterministically and instantly.
+
+**Implementation**: A small library of sentence templates keyed by fact type (risk factor, anomaly, community membership, shared-device overlap, ...), composed in priority order, with light variation (synonym rotation, clause reordering) so the same facts don't always read identically. Pure Python, no dependency beyond the standard library.
+
+---
+
+### Local Feature 3: Report Generator
+
+**Where**: Case Workspace → "Export" → "Generate Report"
+
+Same principle as Feature 2, extended to document length: Executive Summary, Key Entities, Evidence Timeline, Risk Assessment, and Recommended Actions sections are each assembled from the case's actual linked entities/events/risk data via templates, then rendered to Markdown/PDF. Deterministic, reproducible, no API call.
+
+---
+
+### Optional Module: ARGUS Assistant (Local LLM, Off by Default)
+
+> This is the **one** place in ARGUS where an LLM is allowed to exist — and it is entirely optional. ARGUS Core (every feature above, every page in the product) works completely without it.
+
+**Design**:
+```
+ARGUS Core
+    ↓
+Works 100% offline. No LLM anywhere in the request path.
+
+ARGUS Assistant (optional, off by default)
+    ↓
+If — and only if — Ollama is detected running locally (a lightweight
+runtime for small open models, e.g. llama3.2:3b or phi3, that runs
+comfortably on a laptop CPU/GPU with no cloud dependency and no API
+key), a "⌘J Ask ARGUS" panel becomes available for open-ended natural-
+language questions ("which community has the most flagged
+transactions?"). If Ollama isn't running, the panel simply doesn't
+appear — every other feature is completely unaffected.
+```
+
+**Why Ollama specifically, and why optional**: Ollama runs entirely on the user's machine, requires no account, no API key, and no internet access once the model is pulled — it is the one "LLM" option that doesn't violate the offline-first requirement. But even so, it's a genuinely heavy dependency (a multi-GB model download) that most people evaluating this project won't want to install just to see it work — hence strictly optional, detected at runtime, never required.
+
+**Implementation sketch**: The backend exposes `/api/ai/ask` (already scaffolded in Phase 0) as a thin adapter: it checks for a reachable Ollama instance at startup; if present, natural-language questions are answered by having the local model translate them into a bounded Cypher query template (never arbitrary generated Cypher against production data — the same safety principle v1/v2 intended, just running locally instead of against a hosted API) and then phrase the result. If absent, the endpoint returns a clear "Assistant not available — Ollama not detected" rather than failing silently.
 
 ---
 
@@ -1424,8 +1460,10 @@ Every technology was evaluated against 4 criteria:
 |---|---|---|
 | **API Framework** | **FastAPI** | Async Python, automatic OpenAPI docs, Pydantic validation, native async support for Neo4j driver. Best-in-class DX for Python APIs. |
 | **Graph Database** | **Neo4j Community Edition, self-hosted via Docker** *(v2 clarification)* | Native graph database, expressive Cypher. **v1 proposed Neo4j AuraDB Free for hosting — this is a bug: AuraDB Free does not support installing the GDS plugin, and the entire Analytics Engine (Phase 9) depends on GDS.** Self-hosting Community Edition + the GDS plugin via Docker is free, fully-featured, and is what the local-first `docker-compose` stack runs. |
-| **Graph Algorithms** | **Neo4j GDS (Graph Data Science)**, plugin on self-hosted Neo4j | Pre-built, parallelized, production-grade. PageRank, Louvain, Betweenness, Shortest Path — all built in. Only usable because we self-host (see above). |
-| **AI / LLM** | **Google Gemini API (gemini-2.5-flash)** | Cost-effective, fast, sufficient quality for bounded summarization tasks. Called only from the backend — key never reaches the client. |
+| **Graph Algorithms** | **Neo4j GDS (Graph Data Science)**, plugin on self-hosted Neo4j | Pre-built, parallelized, production-grade. PageRank, Louvain, Betweenness, Node2Vec, Shortest Path — all built in. Only usable because we self-host (see above). |
+| **Anomaly Detection** | **scikit-learn (Isolation Forest)** + statistical z-score baselines *(v3 addition)* | See Phase 10. Trained fresh on ARGUS's own synthetic data every run — no external dataset, no API, ~10MB pure-Python dependency. This is where "intelligence" actually lives, not in an LLM call. |
+| **Narrative / Report Generation** | **Deterministic template-based NLG** (pure Python, stdlib only) *(v3 change from Gemini)* | v1/v2 sent every entity/case summary through the Gemini API. v3 replaces this with a rule-based sentence composer over the same structured facts already computed for the Risk Score Widget — no hallucination risk, no latency, no dependency, no cost, and it's always accurate by construction since it's built from literal graph facts. See Phase 10 for the full rationale. |
+| **AI Assistant (optional)** | **Ollama**, running a small local model (e.g. `llama3.2:3b`) *(v3 change from required Gemini)* | The **only** LLM anywhere in ARGUS, and it's off by default and fully optional — see Phase 10. Chosen over any hosted API specifically because it runs on the user's machine with no account, no key, and no internet access, which is the one way an LLM feature can exist without breaking the offline-first requirement. Every other feature in the product works with zero knowledge of whether Ollama is even installed. |
 | **Background Jobs** | **In-process asyncio tasks + Redis-backed job status** *(v2 change from ARQ)* | v1 proposed a dedicated ARQ worker process. At the reduced default scale (Phase 4), every algorithm and scenario-generation job completes in low single-digit seconds — a separate always-running worker process is operational overhead without payoff. `asyncio.create_task` inside the FastAPI process + a job-id/status record in Redis preserves the exact same UX (kick off job → poll status → get result) with one fewer service to run and deploy. If a genuinely long job ever appears, ARQ remains a drop-in upgrade — the job-status contract is identical. |
 | **Cache** | **Redis** | Algorithm result caching, AI response caching, search result caching, and job status (see above). |
 | **Search** | **Neo4j Fulltext Index** | Built-in full-text search within Neo4j. No need for Elasticsearch at this scale. |
@@ -1462,6 +1500,7 @@ Every technology was evaluated against 4 criteria:
 | Background | ARQ / Celery (dedicated worker process) | At this project's scale, jobs complete in seconds; a separate always-on worker is overhead without payoff. In-process asyncio tasks preserve the same job/poll UX with less infra. Revisit if job durations grow. |
 | State | Redux | Massive boilerplate; TanStack Query + Zustand does the job with 1/10th the code |
 | Auth | Full OAuth | Single-user demo system; adds unnecessary complexity |
+| **AI** | **Any hosted LLM as a required dependency** (Gemini, OpenAI, Claude, Grok, Perplexity, or equivalent) *(v3 rejection)* | Explicit project requirement: ARGUS must work fully offline, with zero API keys and zero per-request cost, and its intelligence must demonstrably come from graph algorithms and ML rather than "an LLM guessed it." A required hosted-LLM dependency would also mean the product silently stops working the moment an API key expires or a quota is hit — unacceptable for something meant to sit untouched in a portfolio and still work the day someone clones it. See Phase 10. |
 
 ---
 
@@ -1651,7 +1690,7 @@ Minimalist, centered, actionable. Never just "No data."
 | Graph Canvas | Spinner + "Loading graph..." overlay |
 | Stat Cards | Pulsing placeholder rectangles |
 | Entity Profile | Staggered skeleton rows |
-| AI Summary | Typing indicator (three animated dots) |
+| Summary tab | Skeleton rows — generation is near-instant, but the placeholder keeps the layout stable |
 
 ---
 
@@ -1682,7 +1721,7 @@ Minimalist, centered, actionable. Never just "No data."
 │  │  ├── /api/analytics    (algorithm endpoints)              │  │
 │  │  ├── /api/cases        (case management)                  │  │
 │  │  ├── /api/alerts       (alert queue)                      │  │
-│  │  ├── /api/ai           (LLM endpoints)                    │  │
+│  │  ├── /api/ai           (local intelligence: narratives, ask)│ │
 │  │  ├── /api/map          (geospatial endpoints)             │  │
 │  │  ├── /api/timeline     (temporal queries)                 │  │
 │  │  └── /api/scenario     (generator trigger)                │  │
@@ -1690,7 +1729,7 @@ Minimalist, centered, actionable. Never just "No data."
 │  │  Services                                                 │  │
 │  │  ├── GraphService      (Cypher query builder)             │  │
 │  │  ├── AnalyticsService  (GDS algorithm runner)             │  │
-│  │  ├── AIService         (Gemini prompt builder)            │  │
+│  │  ├── IntelligenceService (anomaly detection, NLG templates)│ │
 │  │  ├── AlertService      (anomaly detection + queue)        │  │
 │  │  └── GeneratorService  (scenario trigger)                 │  │
 │  └──────────────────────────────────────────────────────────┘  │
@@ -1698,10 +1737,12 @@ Minimalist, centered, actionable. Never just "No data."
        │ Bolt Protocol        │ Redis Client        │ HTTP
        │                      │                     │
 ┌──────▼──────┐   ┌───────────▼──────┐   ┌─────────▼────────┐
-│    NEO4J    │   │      REDIS       │   │   GEMINI API     │
-│  Graph DB   │   │  Cache + Queue   │   │   (Google AI)    │
-│  + GDS      │   │  (job status)    │   │                  │
+│    NEO4J    │   │      REDIS       │   │  OLLAMA (local)  │
+│  Graph DB   │   │  Cache + job     │   │  optional, off   │
+│  + GDS      │   │  status          │   │  by default      │
 └─────────────┘   └──────────────────┘   └──────────────────┘
+(scikit-learn Isolation Forest + template NLG run in-process in the
+backend itself — no external service box needed for either.)
 ```
 
 ---
@@ -1712,7 +1753,7 @@ Minimalist, centered, actionable. Never just "No data."
 2. **Consistent response envelope**: `{ data, meta, error }`
 3. **Pagination**: cursor-based for large result sets
 4. **Compression**: gzip for graph payloads (node/edge lists can be large)
-5. **Rate limiting**: on AI endpoints (Gemini API has token limits)
+5. **Rate limiting**: on the optional `/api/ai/ask` endpoint, since it's the only path that may call out to a local Ollama instance
 
 ---
 
@@ -1925,7 +1966,7 @@ argus/
 │       ├── services/
 │       │   ├── graph_service.py     # Cypher query builder
 │       │   ├── analytics_service.py # GDS algorithm runner
-│       │   ├── ai_service.py        # Gemini prompt builder
+│       │   ├── ai_service.py        # Template NLG + optional Ollama adapter
 │       │   ├── alert_service.py     # Anomaly detection
 │       │   └── scenario_service.py  # Generator trigger
 │       │
@@ -1994,7 +2035,7 @@ argus/
 | **Algorithm Jobs** | Async in-process jobs (asyncio task + Redis job status). Frontend polls status endpoint every 2s. Algorithm results cached in Redis for 1 hour. |
 | **Pagination** | All list endpoints return max 50 results. Cursor-based pagination for graph traversals. |
 | **Connection Pool** | Neo4j driver uses connection pooling (50 max connections). |
-| **AI Calls** | Gemini responses cached in Redis keyed by entity ID + data hash. Prevents repeat LLM calls for unchanged data. |
+| **AI Calls** | Template-generated narratives are cheap enough to compute on demand; results are still cached in Redis keyed by entity ID + data hash to keep entity-profile loads instant. Optional Ollama responses are cached the same way. |
 
 ---
 
@@ -2131,16 +2172,14 @@ CREATE INDEX alert_status FOR (n:Alert) ON (n.status, n.priority)
 
 ---
 
-### Phase 8: AI Features (Week 8)
+### Phase 8: Local Intelligence Layer (Week 8)
 
-- [ ] Gemini API integration
-- [ ] Entity narrative (AI Summary tab)
-- [ ] Case summary
-- [ ] Alert explanation
-- [ ] "Ask ARGUS" panel (⌘J)
-- [ ] Report generator
+- [ ] Isolation Forest + z-score anomaly detection over generated behavioral features
+- [ ] Template-based NLG composer (entity narrative, case summary, alert explanation)
+- [ ] Report generator (Markdown/PDF)
+- [ ] Optional: Ollama detection + "Ask ARGUS" panel (⌘J), gracefully absent if not installed
 
-**Demo**: AI Analyst explains entities, summarizes cases, answers questions.
+**Demo**: Anomaly detector flags entities, template narratives explain them, case summaries generate on demand — all offline.
 
 ---
 
@@ -2178,12 +2217,13 @@ CREATE INDEX alert_status FOR (n:Alert) ON (n.status, n.priority)
 |---|---|---|---|
 | **Graph canvas performance with 5K+ nodes** | High | High | Cap initial render at 500 nodes. Lazy expansion. Web Worker layout. WebGL renderer. |
 | **Neo4j GDS algorithm timeout** | Medium | Medium | All GDS runs as async background jobs (asyncio task + Redis status). Frontend polls. No HTTP timeout risk. |
-| **Gemini API cost overrun** | Low | Medium | Cache AI responses in Redis. Only trigger AI on explicit user action (never auto-run). |
+| **Isolation Forest false positives/negatives on small synthetic scale** | Medium | Low | Cross-checked against an explainable z-score baseline; both must agree to raise an alert. Acceptable — the point is a realistic detection story, not perfect precision. |
+| **Optional Ollama dependency confusing users who don't have it installed** | Low | Low | Detected at runtime; the Assistant panel simply doesn't render if Ollama isn't reachable. Every other feature is unaffected. |
 | **Generator runs for too long** | High | Low | Make generator configurable. Default to 10K persons for development. 50K for demo. |
 | **Map coordinate ambiguity** | Low | Low | All coordinates are clearly synthetic (bounded box, no real-world overlap). |
 | **Self-hosted Neo4j resource limits** | Low | Medium | Default generator scale (~75K nodes) runs comfortably in the Docker container's default memory allocation. Generator remains configurable for stress-testing. |
 | **Complex Cypher query optimization** | Medium | Medium | All queries tested in Neo4j Browser first. Index verification step before release. |
-| **AI responses hallucinating about entities** | Medium | Medium | Prompt strictly includes entity data as context. LLM instructed to only use provided data. |
+| **Template narratives feeling repetitive/robotic** | Medium | Low | Sentence-variation library (synonym rotation, clause reordering) keyed by fact type keeps phrasing from feeling copy-pasted across entities. |
 
 ---
 
@@ -2195,7 +2235,7 @@ These are excluded from V1 but represent genuine engineering growth paths:
 |---|---|
 | **Real-time event streaming** | Requires Kafka or WebSocket event bus. Adds operational complexity. V2 candidate. |
 | **Multi-analyst collaboration** | Requires presence system, conflict resolution. V2 candidate. |
-| **Natural language → Cypher compiler** | LLM-to-Cypher is a V1 feature (Ask ARGUS), but a fully robust NL query system needs more testing. |
+| **Natural language → Cypher compiler** | The optional Ollama-backed Ask ARGUS (Phase 10) uses bounded query templates, not open Cypher generation; a fully general NL-to-Cypher compiler is a genuine V2 research project. |
 | **Graph Neural Network risk model** | Replacing heuristic risk scoring with a trained GNN. Requires ML pipeline infrastructure. |
 | **Mobile layout** | Investigation tools are inherently desktop-first. Mobile optimization is a V3 concern. |
 | **Export to Neo4j format** | Allow downloading the full synthetic world as a Neo4j dump for offline analysis. |
@@ -2216,7 +2256,7 @@ ARGUS is a **synthetic intelligence analysis simulator** — a full-stack engine
 - **Advanced graph visualization** (Cytoscape.js, WebGL rendering)
 - **Geospatial analytics** (MapLibre + deck.gl, real India geography)
 - **Temporal analysis** (custom VisX timeline)
-- **AI-in-the-loop workflows** (Gemini API, grounded summarization)
+- **Local-first intelligence** (Neo4j GDS algorithms, Isolation Forest anomaly detection, deterministic template NLG, optional local LLM via Ollama)
 - **Enterprise-grade UX** (dark design system, micro-animations, progressive disclosure)
 - **Async backend architecture** (FastAPI, asyncio background jobs, Redis, Neo4j GDS)
 - **Investigation workflow modeling** (entity-centric, hypothesis-driven)
@@ -2246,7 +2286,7 @@ A recruiter or hiring manager viewing ARGUS will see:
 | Backend | FastAPI (Python) |
 | Database | Neo4j + GDS |
 | Cache/Queue | Redis (cache + async job status) |
-| AI | Google Gemini API |
+| AI / Intelligence | Neo4j GDS + scikit-learn + template NLG (all local); Ollama optional |
 | Data Gen | Python Faker + custom engine |
 | Deploy | Local-first via Docker Compose; hosting deferred (see Phase 11) |
 
