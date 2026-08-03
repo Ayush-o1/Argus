@@ -965,6 +965,9 @@ risk_score: Float
 ```
 
 #### `(:Transaction)`
+
+> **[v3 IMPLEMENTATION REFINEMENT]** Built as a `TRANSACTED_WITH` relationship between two `Account` nodes carrying every property below, not as a separate intermediate node. At this project's scale that's ~40K fewer nodes for identical query power — every property survives on the edge, and this is exactly the shape cycle detection, PageRank, and betweenness (Phase 9) need: they traverse Account→Account directly. The schema below is unchanged; only its physical representation moved from node to edge.
+
 ```
 id: UUID
 tx_id: String
@@ -992,6 +995,9 @@ risk_score: Float
 ```
 
 #### `(:Communication)`
+
+> **[v3 IMPLEMENTATION REFINEMENT]** Same reasoning as `(:Transaction)` above — built as a `COMMUNICATED_WITH` relationship between two `Device` nodes, not a separate node.
+
 ```
 id: UUID
 from_device: Device.id
