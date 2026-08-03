@@ -41,3 +41,22 @@ export function useUpdateCase(caseId: string) {
     },
   });
 }
+
+export function useAddCaseEntity(caseId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: { entity_id: string; reason?: string }) =>
+      (await apiFetch<{ linked: boolean }>(`/api/cases/${caseId}/entities`, { method: "POST", body: JSON.stringify(payload) }))
+        .data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["case", caseId] }),
+  });
+}
+
+export function useRemoveCaseEntity(caseId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (entityId: string) =>
+      (await apiFetch<{ removed: boolean }>(`/api/cases/${caseId}/entities/${entityId}`, { method: "DELETE" })).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["case", caseId] }),
+  });
+}
