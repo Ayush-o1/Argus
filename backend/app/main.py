@@ -11,10 +11,12 @@ from app.api.routes import (
     cases,
     entities,
     graph,
-    map as map_routes,
     scenario,
     search,
     timeline,
+)
+from app.api.routes import (
+    map as map_routes,
 )
 from app.config import get_settings
 from app.database.neo4j import close_neo4j, connect_neo4j
