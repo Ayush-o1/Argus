@@ -10,6 +10,7 @@ export interface GraphCanvasHandle {
   fit: () => void;
   runLayout: (name: LayoutName) => void;
   highlightNeighborhood: (nodeId: string | null) => void;
+  highlightPath: (nodeIds: string[]) => void;
 }
 
 export type LayoutName = "cose" | "breadthfirst" | "concentric" | "grid";
@@ -50,6 +51,18 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
     const cyRef = useRef<Core | null>(null);
     const currentLayoutRef = useRef<Layouts | null>(null);
 
+    // The setup effect below only runs once (on mount) so Cytoscape's own
+    // event handlers stay attached across re-renders — but that means a
+    // handler closing directly over `onSelectNode`/`onExpandNode` would keep
+    // calling whatever those props were on that first render forever. Refs
+    // updated every render sidestep that stale-closure trap without needing
+    // to tear down and rebuild the whole graph instance on every parent
+    // re-render.
+    const onSelectNodeRef = useRef(onSelectNode);
+    const onExpandNodeRef = useRef(onExpandNode);
+    onSelectNodeRef.current = onSelectNode;
+    onExpandNodeRef.current = onExpandNode;
+
     function runLayoutInternal(cy: Core, options: cytoscape.LayoutOptions) {
       currentLayoutRef.current?.stop();
       const layout = cy.layout(options);
@@ -71,13 +84,13 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
       runLayoutInternal(cy, { name: "cose", animate: true, randomize: true, fit: true, padding: 40 });
 
       cy.on("tap", "node", (evt) => {
-        onSelectNode(evt.target.id());
+        onSelectNodeRef.current(evt.target.id());
       });
       cy.on("tap", (evt) => {
-        if (evt.target === cy) onSelectNode(null);
+        if (evt.target === cy) onSelectNodeRef.current(null);
       });
       cy.on("dbltap", "node", (evt) => {
-        onExpandNode(evt.target.id());
+        onExpandNodeRef.current(evt.target.id());
       });
 
       cyRef.current = cy;
@@ -122,6 +135,19 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
         const neighborhood = node.closedNeighborhood();
         cy.elements().difference(neighborhood).addClass("faded");
         neighborhood.addClass("highlighted");
+      },
+      highlightPath(nodeIds) {
+        const cy = cyRef.current;
+        if (!cy) return;
+        cy.elements().removeClass("faded highlighted");
+        if (nodeIds.length === 0) return;
+        const pathNodes = cy.collection();
+        for (const id of nodeIds) pathNodes.merge(cy.getElementById(id));
+        const pathEdges = pathNodes.edgesWith(pathNodes);
+        const path = pathNodes.union(pathEdges);
+        cy.elements().difference(path).addClass("faded");
+        path.addClass("highlighted");
+        cy.animate({ fit: { eles: path, padding: 60 } }, { duration: 400 });
       },
     }));
 

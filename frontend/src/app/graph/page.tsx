@@ -70,10 +70,43 @@ function GraphExplorerView({ data }: { data: Subgraph }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [layout, setLayout] = useState<LayoutName>("cose");
   const [counts, setCounts] = useState({ nodes: data.nodes.length, edges: data.edges.length });
+  const [pathMode, setPathMode] = useState(false);
+  const [pathFrom, setPathFrom] = useState<string | null>(null);
 
   function handleSelect(nodeId: string | null) {
+    if (pathMode) {
+      if (!nodeId) return;
+      if (!pathFrom) {
+        setPathFrom(nodeId);
+        return;
+      }
+      void findPath(pathFrom, nodeId);
+      return;
+    }
     setSelectedId(nodeId);
     canvasRef.current?.highlightNeighborhood(nodeId);
+  }
+
+  async function findPath(fromId: string, toId: string) {
+    const result = await apiFetch<Subgraph & { length: number }>(
+      `/api/graph/shortest-path?from_id=${fromId}&to_id=${toId}`,
+    );
+    if (result.data) {
+      canvasRef.current?.addElements(result.data.nodes, result.data.edges);
+      canvasRef.current?.highlightPath(result.data.nodes.map((n) => n.id));
+      setCounts((prev) => ({
+        nodes: Math.max(prev.nodes, prev.nodes + result.data.nodes.length),
+        edges: Math.max(prev.edges, prev.edges + result.data.edges.length),
+      }));
+    }
+    setPathMode(false);
+    setPathFrom(null);
+  }
+
+  function togglePathMode() {
+    setPathMode((prev) => !prev);
+    setPathFrom(null);
+    canvasRef.current?.highlightPath([]);
   }
 
   async function handleExpand(nodeId: string) {
@@ -98,6 +131,9 @@ function GraphExplorerView({ data }: { data: Subgraph }) {
         onFit={() => canvasRef.current?.fit()}
         nodeCount={counts.nodes}
         edgeCount={counts.edges}
+        pathMode={pathMode}
+        onTogglePathMode={togglePathMode}
+        pathModeHint={pathFrom ? `From ${pathFrom} — click an end entity` : "Click a start entity"}
       />
       <GraphCanvas
         ref={canvasRef}
@@ -107,7 +143,7 @@ function GraphExplorerView({ data }: { data: Subgraph }) {
         onExpandNode={handleExpand}
       />
       <GraphLegend />
-      {selectedId ? (
+      {selectedId && !pathMode ? (
         <NodeDetailPanel entityId={selectedId} onExpand={handleExpand} onClose={() => handleSelect(null)} />
       ) : null}
     </>

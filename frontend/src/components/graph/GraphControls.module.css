@@ -44,6 +44,16 @@
   color: var(--text-primary);
 }
 
+.iconButtonActive {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: var(--text-primary);
+}
+
+.iconButtonActive:hover {
+  background: var(--accent-primary-hover);
+}
+
 .spacer {
   flex: 1;
 }

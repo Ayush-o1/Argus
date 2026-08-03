@@ -1,4 +1,4 @@
-import { Maximize2 } from "lucide-react";
+import { Maximize2, Waypoints } from "lucide-react";
 import type { LayoutName } from "./GraphCanvas";
 import styles from "./GraphControls.module.css";
 
@@ -15,9 +15,21 @@ interface GraphControlsProps {
   onFit: () => void;
   nodeCount: number;
   edgeCount: number;
+  pathMode: boolean;
+  onTogglePathMode: () => void;
+  pathModeHint?: string;
 }
 
-export function GraphControls({ layout, onLayoutChange, onFit, nodeCount, edgeCount }: GraphControlsProps) {
+export function GraphControls({
+  layout,
+  onLayoutChange,
+  onFit,
+  nodeCount,
+  edgeCount,
+  pathMode,
+  onTogglePathMode,
+  pathModeHint,
+}: GraphControlsProps) {
   return (
     <div className={styles.bar}>
       <select className={styles.select} value={layout} onChange={(e) => onLayoutChange(e.target.value as LayoutName)}>
@@ -30,6 +42,15 @@ export function GraphControls({ layout, onLayoutChange, onFit, nodeCount, edgeCo
       <button type="button" className={styles.iconButton} onClick={onFit} title="Fit to screen">
         <Maximize2 size={15} />
       </button>
+      <button
+        type="button"
+        className={[styles.iconButton, pathMode && styles.iconButtonActive].filter(Boolean).join(" ")}
+        onClick={onTogglePathMode}
+        title="Find shortest path between two entities"
+      >
+        <Waypoints size={15} />
+      </button>
+      {pathMode && <span className={styles.countBadge}>{pathModeHint ?? "Click a start entity"}</span>}
       <div className={styles.spacer} />
       <span className={styles.countBadge}>
         {nodeCount} nodes · {edgeCount} edges
