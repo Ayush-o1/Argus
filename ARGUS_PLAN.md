@@ -1,6 +1,6 @@
 # ARGUS — Full Product Architecture & Research Proposal
 
-> **Status**: Planning Phase — Awaiting User Approval Before Any Code Is Written
+> **Status**: Historical design proposal. All phases described below have been built — see [`docs/`](docs/) for current, maintained technical documentation. Phase 16's checklists (near the end of this file) are kept up to date with actual build status. This document is retained for its original architecture rationale and phase-by-phase reasoning, not as a live spec.
 > **Scope**: 100% Synthetic Data — Educational Engineering Portfolio Project
 > **Tagline**: *"See everything. Understand the connections."*
 
@@ -2318,9 +2318,8 @@ Week 9–10 → Polish + Documentation
 ---
 
 > [!IMPORTANT]
-> This document represents the complete product vision, architecture, and implementation plan for ARGUS.
-> **No code has been written. No packages installed. No databases created.**
-> Approval is required before proceeding to Phase 0 (Foundation).
+> This document represents the original product vision, architecture, and implementation plan for ARGUS, as proposed before Phase 0 began.
+> **All phases have since been implemented.** For current, accurate technical documentation, see [`docs/`](docs/) and the top-level [`README.md`](README.md). This file remains for its design rationale.
 
 ---
 
