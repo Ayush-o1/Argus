@@ -1,0 +1,26 @@
+.popup {
+  position: absolute;
+  bottom: var(--space-4);
+  right: var(--space-4);
+  z-index: 10;
+  width: 260px;
+  padding: var(--space-4);
+  border-radius: 12px;
+  background: var(--surface-overlay);
+  border: 1px solid var(--surface-border);
+  backdrop-filter: blur(8px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.title {
+  font-size: var(--text-base);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+}
+
+.meta {
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+}
