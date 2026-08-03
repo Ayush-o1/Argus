@@ -14,11 +14,19 @@ import {
   type RankedEntity,
   type RiskPropagationResult,
   type SimilarEntity,
+  type TransactionAnomaly,
   useAnalyticsJob,
 } from "@/hooks/useAnalytics";
 import styles from "./page.module.css";
 
-type AlgorithmId = "pagerank" | "betweenness" | "louvain" | "similar" | "risk-propagation" | "cycle-detection";
+type AlgorithmId =
+  | "pagerank"
+  | "betweenness"
+  | "louvain"
+  | "similar"
+  | "risk-propagation"
+  | "cycle-detection"
+  | "anomalies";
 
 interface AlgorithmDef {
   id: AlgorithmId;
@@ -60,9 +68,20 @@ const ALGORITHMS: AlgorithmDef[] = [
     name: "Cycle Detection",
     description: "Circular money-movement paths (A → B → ... → A) — the classic laundering-ring signature.",
   },
+  {
+    id: "anomalies",
+    name: "Transaction Anomalies",
+    description: "Isolation Forest + z-score over per-account behavior — independent of any ground-truth flags.",
+  },
 ];
 
-type AnyResult = RankedEntity[] | { communities: Community[]; total_communities: number } | SimilarEntity[] | RiskPropagationResult | Cycle[];
+type AnyResult =
+  | RankedEntity[]
+  | { communities: Community[]; total_communities: number }
+  | SimilarEntity[]
+  | RiskPropagationResult
+  | Cycle[]
+  | TransactionAnomaly[];
 
 export default function AnalyticsPage() {
   const [active, setActive] = useState<AlgorithmId>("pagerank");
@@ -298,6 +317,51 @@ function renderResult(algorithm: AlgorithmId, result: AnyResult) {
           </tbody>
         </table>
       </div>
+    );
+  }
+
+  if (algorithm === "anomalies") {
+    const rows = result as TransactionAnomaly[];
+    if (rows.length === 0) {
+      return (
+        <EmptyState
+          icon={BarChart3}
+          title="No anomalies found"
+          description="No account's transaction burst pattern was flagged by both Isolation Forest and the z-score baseline."
+        />
+      );
+    }
+    return (
+      <table className={styles.table}>
+        <thead>
+          <tr>
+            <th>Entity</th>
+            <th>Type</th>
+            <th>Burst</th>
+            <th>Baseline</th>
+            <th>Z-score</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.account_id}>
+              <td>
+                <Link href={`/entities/${row.id}`} className={styles.entityLink}>
+                  {row.name}
+                </Link>
+              </td>
+              <td className={styles.labelTag}>{row.label}</td>
+              <td>
+                {row.max_burst_count} tx in {row.burst_window_hours}h
+              </td>
+              <td className={styles.labelTag}>
+                μ={row.burst_baseline_mean}, σ={row.burst_baseline_std}
+              </td>
+              <td>{row.z_score}σ</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     );
   }
 

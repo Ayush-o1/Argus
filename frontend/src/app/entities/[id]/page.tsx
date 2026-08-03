@@ -1,18 +1,20 @@
 "use client";
 
-import { ArrowLeftRight, Calendar, Phone, Waypoints } from "lucide-react";
+import { ArrowLeftRight, Calendar, Phone, Sparkles, Waypoints } from "lucide-react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Spinner } from "@/components/ui/Spinner";
 import { RiskScoreWidget } from "@/components/entity/RiskScoreWidget";
 import { EntityTypeIcon } from "@/components/entity/EntityTypeIcon";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Tabs } from "@/components/ui/Tabs";
 import { PageShell } from "@/components/layout/PageShell";
 import { useEntity, useEntityTimeline } from "@/hooks/useEntities";
+import { useEntitySummary } from "@/hooks/useAssistant";
 import { formatRelativeTime } from "@/lib/formatters";
 import type { TimelineItem } from "@/lib/types";
 import styles from "./page.module.css";
@@ -65,6 +67,7 @@ export default function EntityProfilePage() {
 
   const { data: entity, isLoading } = useEntity(entityId);
   const { data: timeline } = useEntityTimeline(entityId);
+  const summary = useEntitySummary();
 
   if (isLoading) {
     return (
@@ -125,7 +128,7 @@ export default function EntityProfilePage() {
         </aside>
 
         <div>
-          <Tabs tabs={["Properties", "Risk", "Activity"]} active={tab} onChange={setTab} />
+          <Tabs tabs={["Properties", "Risk", "Activity", "Summary"]} active={tab} onChange={setTab} />
 
           {tab === "Properties" && (
             <Card>
@@ -171,6 +174,25 @@ export default function EntityProfilePage() {
                     );
                   })}
                 </div>
+              )}
+            </Card>
+          )}
+
+          {tab === "Summary" && (
+            <Card>
+              {summary.data ? (
+                <p style={{ fontSize: 14, lineHeight: 1.6, color: "var(--text-secondary)" }}>{summary.data.summary}</p>
+              ) : (
+                <EmptyState
+                  icon={Sparkles}
+                  title="No summary generated yet"
+                  description="A deterministic template composer turns this entity's risk factors and connections into analyst-brief prose — no LLM involved."
+                  actions={
+                    <Button size="sm" onClick={() => summary.mutate(entity.id)} disabled={summary.isPending}>
+                      {summary.isPending ? <Spinner size={16} /> : "Generate Summary"}
+                    </Button>
+                  }
+                />
               )}
             </Card>
           )}

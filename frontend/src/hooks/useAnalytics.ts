@@ -67,12 +67,27 @@ export interface Cycle {
   members: CycleMember[];
 }
 
+export interface TransactionAnomaly {
+  id: string;
+  name: string;
+  label: string;
+  account_id: string;
+  tx_count: number;
+  total_amount: number;
+  max_burst_count: number;
+  burst_window_hours: number;
+  burst_baseline_mean: number;
+  burst_baseline_std: number;
+  z_score: number;
+}
+
 export type AnalyticsResult =
   | RankedEntity[]
   | LouvainResult
   | SimilarEntity[]
   | RiskPropagationResult
-  | Cycle[];
+  | Cycle[]
+  | TransactionAnomaly[];
 
 export interface JobStatus<T = AnalyticsResult> {
   job_type: string | null;

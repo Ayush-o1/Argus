@@ -1,6 +1,6 @@
 "use client";
 
-import { ShieldHalf, X } from "lucide-react";
+import { ShieldHalf, Sparkles, X } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
@@ -10,7 +10,9 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { Spinner } from "@/components/ui/Spinner";
 import { useAddCaseEntity, useCase, useRemoveCaseEntity, useUpdateCase } from "@/hooks/useCases";
+import { useCaseSummary } from "@/hooks/useAssistant";
 import { entityId, entityName } from "@/lib/entityDisplay";
 import { formatRelativeTime } from "@/lib/formatters";
 import type { CaseSummary } from "@/lib/types";
@@ -38,6 +40,7 @@ export default function CaseWorkspacePage() {
   const updateCase = useUpdateCase(caseId);
   const addEntity = useAddCaseEntity(caseId);
   const removeEntity = useRemoveCaseEntity(caseId);
+  const summary = useCaseSummary();
 
   const [newEntityId, setNewEntityId] = useState("");
 
@@ -107,6 +110,24 @@ export default function CaseWorkspacePage() {
             onSave={(notes) => updateCase.mutate({ notes })}
             saving={updateCase.isPending}
           />
+
+          <Card>
+            <div className={styles.panelTitle}>Summary</div>
+            {summary.data ? (
+              <p style={{ fontSize: 14, lineHeight: 1.6, color: "var(--text-secondary)" }}>{summary.data.summary}</p>
+            ) : (
+              <EmptyState
+                icon={Sparkles}
+                title="No summary generated yet"
+                description="A deterministic template composer turns this case's status, priority, evidence board, and notes into analyst-brief prose — no LLM involved."
+                actions={
+                  <Button size="sm" onClick={() => summary.mutate(caseDetail.case_id)} disabled={summary.isPending}>
+                    {summary.isPending ? <Spinner size={16} /> : "Generate Summary"}
+                  </Button>
+                }
+              />
+            )}
+          </Card>
         </div>
 
         <div className={styles.column}>
