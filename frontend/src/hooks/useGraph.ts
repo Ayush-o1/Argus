@@ -10,6 +10,13 @@ export function useSubgraph(entityId: string | undefined, depth = 1) {
   });
 }
 
+export function useGraphOverview() {
+  return useQuery({
+    queryKey: ["graph-overview"],
+    queryFn: async () => (await apiFetch<Subgraph>("/api/graph/overview")).data,
+  });
+}
+
 export function useShortestPath(fromId: string | undefined, toId: string | undefined) {
   return useQuery({
     queryKey: ["shortest-path", fromId, toId],

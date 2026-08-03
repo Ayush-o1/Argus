@@ -207,3 +207,48 @@ async def shortest_path(driver: AsyncDriver, from_id: str, to_id: str) -> dict |
             for i, rel in enumerate(path.relationships)
         ]
         return {"nodes": nodes, "edges": edges, "length": len(path.relationships)}
+
+
+async def get_overview_subgraph(driver: AsyncDriver, seed_limit: int = 25, edge_limit: int = 400) -> dict:
+    """Default Graph Explorer view when no seed entity is chosen: the
+    highest-risk persons and organizations plus their immediate neighbors —
+    a genuinely interesting starting point rather than an arbitrary slice."""
+    query = """
+    MATCH (seed) WHERE (seed:Person OR seed:Organization) AND seed.risk_score > 0
+    WITH seed ORDER BY seed.risk_score DESC LIMIT $seed_limit
+    MATCH (seed)-[r]-(m)
+    RETURN seed, r, m, labels(seed)[0] AS seed_label, labels(m)[0] AS other_label,
+           type(r) AS rel_type, startNode(r) = seed AS outgoing
+    LIMIT $edge_limit
+    """
+    nodes_by_id: dict[str, dict] = {}
+    edges: list[dict] = []
+    seen_edge_keys: set[tuple] = set()
+
+    async with driver.session() as session:
+        result = await session.run(query, seed_limit=seed_limit, edge_limit=edge_limit)
+        async for record in result:
+            seed_node = to_graph_node(dict(record["seed"]), record["seed_label"])
+            other_node = to_graph_node(dict(record["m"]), record["other_label"])
+            nodes_by_id.setdefault(seed_node["id"], seed_node)
+            nodes_by_id.setdefault(other_node["id"], other_node)
+
+            src, dst = (
+                (seed_node["id"], other_node["id"]) if record["outgoing"] else (other_node["id"], seed_node["id"])
+            )
+            rel_props = dict(record["r"])
+            edge_key = (src, dst, record["rel_type"], rel_props.get("tx_id") or rel_props.get("comm_id") or "")
+            if edge_key in seen_edge_keys:
+                continue
+            seen_edge_keys.add(edge_key)
+            edges.append(
+                {
+                    "id": f"{src}->{record['rel_type']}->{dst}:{len(edges)}",
+                    "source": src,
+                    "target": dst,
+                    "type": record["rel_type"],
+                    "properties": rel_props,
+                }
+            )
+
+    return {"nodes": list(nodes_by_id.values()), "edges": edges}

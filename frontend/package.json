@@ -10,6 +10,8 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.4",
+    "@types/cytoscape": "^3.21.9",
+    "cytoscape": "^3.34.0",
     "framer-motion": "^12.43.0",
     "lucide-react": "^1.28.0",
     "next": "16.2.12",
