@@ -22,6 +22,39 @@ async def get_connection_summary(driver: AsyncDriver, human_id: str) -> dict[str
         return {record["label"]: record["count"] async for record in result}
 
 
+async def get_related_cases(driver: AsyncDriver, human_id: str) -> list[dict]:
+    """Cases this entity is linked to, for the Entity Profile's cross-page
+    navigation (ARGUS_PLAN.md Phase 7) — reverses case_repo.add_entity_to_case's
+    Case-[:LINKED_TO]->Entity direction."""
+    info = resolve_label(human_id)
+    if info is None:
+        return []
+
+    query = f"""
+    MATCH (c:Case)-[:LINKED_TO]->(n:{info.label} {{{info.id_field}: $human_id}})
+    RETURN c ORDER BY c.opened_at DESC
+    """
+    async with driver.session() as session:
+        result = await session.run(query, human_id=human_id)
+        return [dict(record["c"]) async for record in result]
+
+
+async def get_related_alerts(driver: AsyncDriver, human_id: str, limit: int = 20) -> list[dict]:
+    """Alerts (high/critical Incidents) this entity is involved in — reverses
+    alert_repo.list_alerts's Incident-[:INVOLVES]->Entity direction."""
+    info = resolve_label(human_id)
+    if info is None:
+        return []
+
+    query = f"""
+    MATCH (i:Incident)-[:INVOLVES]->(n:{info.label} {{{info.id_field}: $human_id}})
+    RETURN i ORDER BY i.timestamp DESC LIMIT $limit
+    """
+    async with driver.session() as session:
+        result = await session.run(query, human_id=human_id, limit=limit)
+        return [dict(record["i"]) async for record in result]
+
+
 async def get_entity_timeline(driver: AsyncDriver, human_id: str, limit: int = 200) -> list[dict]:
     info = resolve_label(human_id)
     if info is None or info.label not in ("Person", "Organization"):

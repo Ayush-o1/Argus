@@ -1,6 +1,6 @@
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
-import type { GraphNode, Subgraph, TimelineItem } from "@/lib/types";
+import type { CaseSummary, GraphNode, Incident, Subgraph, TimelineItem } from "@/lib/types";
 
 interface ListEntitiesParams {
   type?: string;
@@ -71,5 +71,24 @@ export function useEntityTimeline(entityId: string | undefined) {
     queryKey: ["entity-timeline", entityId],
     enabled: !!entityId,
     queryFn: async () => (await apiFetch<TimelineItem[]>(`/api/entities/${entityId}/timeline`)).data,
+  });
+}
+
+/** Cross-page linking (ARGUS_PLAN.md Phase 7): which Cases/Alerts this
+ * entity is involved in, so its profile can jump straight into them instead
+ * of the analyst re-searching for the same entity from Cases/Alerts. */
+export function useEntityCases(entityId: string | undefined) {
+  return useQuery({
+    queryKey: ["entity-cases", entityId],
+    enabled: !!entityId,
+    queryFn: async () => (await apiFetch<CaseSummary[]>(`/api/entities/${entityId}/cases`)).data,
+  });
+}
+
+export function useEntityAlerts(entityId: string | undefined) {
+  return useQuery({
+    queryKey: ["entity-alerts", entityId],
+    enabled: !!entityId,
+    queryFn: async () => (await apiFetch<Incident[]>(`/api/entities/${entityId}/alerts`)).data,
   });
 }

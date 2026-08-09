@@ -1,9 +1,10 @@
 "use client";
 
-import { ArrowLeftRight, Calendar, Phone, Sparkles, Waypoints } from "lucide-react";
+import { ArrowLeftRight, Calendar, Map as MapIcon, Phone, ShieldHalf, Sparkles, Waypoints } from "lucide-react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useState } from "react";
+import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -13,10 +14,10 @@ import { EntityTypeIcon } from "@/components/entity/EntityTypeIcon";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Tabs } from "@/components/ui/Tabs";
 import { PageShell } from "@/components/layout/PageShell";
-import { useEntity, useEntityTimeline } from "@/hooks/useEntities";
+import { useEntity, useEntityAlerts, useEntityCases, useEntityTimeline } from "@/hooks/useEntities";
 import { useEntitySummary } from "@/hooks/useAssistant";
 import { formatRelativeTime } from "@/lib/formatters";
-import type { TimelineItem } from "@/lib/types";
+import type { CaseSummary, Incident, TimelineItem } from "@/lib/types";
 import styles from "./page.module.css";
 
 const DISPLAY_FIELDS: Record<string, { key: string; label: string }[]> = {
@@ -60,6 +61,20 @@ const TIMELINE_ICON: Record<TimelineItem["kind"], typeof Calendar> = {
   Communication: Phone,
 };
 
+const CASE_STATUS_TONE: Record<CaseSummary["status"], "neutral" | "accent" | "high" | "low"> = {
+  Draft: "neutral",
+  Open: "accent",
+  UnderReview: "high",
+  Closed: "low",
+};
+
+const ALERT_SEVERITY_TONE: Record<Incident["severity"], "critical" | "high" | "medium" | "low"> = {
+  Critical: "critical",
+  High: "high",
+  Medium: "medium",
+  Low: "low",
+};
+
 export default function EntityProfilePage() {
   const params = useParams<{ id: string }>();
   const entityId = params.id;
@@ -67,6 +82,8 @@ export default function EntityProfilePage() {
 
   const { data: entity, isLoading } = useEntity(entityId);
   const { data: timeline } = useEntityTimeline(entityId);
+  const { data: relatedCases } = useEntityCases(entityId);
+  const { data: relatedAlerts } = useEntityAlerts(entityId);
   const summary = useEntitySummary();
 
   if (isLoading) {
@@ -109,6 +126,13 @@ export default function EntityProfilePage() {
               View in Graph
             </Button>
           </Link>
+          {entity.properties.lat != null && entity.properties.lng != null ? (
+            <Link href={`/map?focus=${entity.id}`}>
+              <Button variant="secondary" size="sm">
+                <MapIcon size={14} /> View on Map
+              </Button>
+            </Link>
+          ) : null}
         </div>
       </div>
 
@@ -128,7 +152,7 @@ export default function EntityProfilePage() {
         </aside>
 
         <div>
-          <Tabs tabs={["Properties", "Risk", "Activity", "Summary"]} active={tab} onChange={setTab} />
+          <Tabs tabs={["Properties", "Risk", "Activity", "Cases & Alerts", "Summary"]} active={tab} onChange={setTab} />
 
           {tab === "Properties" && (
             <Card>
@@ -176,6 +200,49 @@ export default function EntityProfilePage() {
                 </div>
               )}
             </Card>
+          )}
+
+          {tab === "Cases & Alerts" && (
+            <div className={styles.timelineList}>
+              <Card>
+                <div className={styles.propertyLabel} style={{ marginBottom: "var(--space-3)" }}>
+                  CASES
+                </div>
+                {!relatedCases || relatedCases.length === 0 ? (
+                  <EmptyState icon={ShieldHalf} title="No related cases" description="This entity isn't linked to any case." />
+                ) : (
+                  relatedCases.map((c) => (
+                    <Link key={c.case_id} href={`/cases/${c.case_id}`} className={styles.timelineRow}>
+                      <div className={styles.timelineBody}>
+                        <div className={styles.timelineTop}>{c.title}</div>
+                        <span className={styles.timelineDetail}>
+                          {c.case_id} · Opened {formatRelativeTime(c.opened_at)}
+                        </span>
+                      </div>
+                      <Badge tone={CASE_STATUS_TONE[c.status]}>{c.status}</Badge>
+                    </Link>
+                  ))
+                )}
+              </Card>
+              <Card>
+                <div className={styles.propertyLabel} style={{ marginBottom: "var(--space-3)" }}>
+                  ALERTS
+                </div>
+                {!relatedAlerts || relatedAlerts.length === 0 ? (
+                  <EmptyState icon={Waypoints} title="No related alerts" description="This entity isn't involved in any alert." />
+                ) : (
+                  relatedAlerts.map((a) => (
+                    <Link key={a.incident_id} href="/alerts" className={styles.timelineRow}>
+                      <div className={styles.timelineBody}>
+                        <div className={styles.timelineTop}>{a.type.replace(/([A-Z])/g, " $1").trim()}</div>
+                        <span className={styles.timelineDetail}>{a.description}</span>
+                      </div>
+                      <Badge tone={ALERT_SEVERITY_TONE[a.severity]}>{a.severity}</Badge>
+                    </Link>
+                  ))
+                )}
+              </Card>
+            </div>
           )}
 
           {tab === "Summary" && (
