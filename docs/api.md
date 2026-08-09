@@ -26,6 +26,8 @@ Interactive docs (Swagger UI, generated from the same FastAPI app) are available
 | GET | `/api/entities/{entity_id}` | — | Full node by human ID (any type), plus a `connections` map (`{label: count}`). 404 if not found. |
 | GET | `/api/entities/{entity_id}/graph` | `depth` (default 1) | Subgraph = the entity plus its `depth`-hop neighborhood. |
 | GET | `/api/entities/{entity_id}/timeline` | — | Person/Organization activity feed (events, transactions, communications), newest first. |
+| GET | `/api/entities/{entity_id}/cases` | — | Cases this entity is linked to (reverses `Case-[:LINKED_TO]->Entity`), newest-opened first. |
+| GET | `/api/entities/{entity_id}/alerts` | `limit` (default 20) | Alerts (High/Critical Incidents) this entity is involved in (reverses `Incident-[:INVOLVES]->Entity`), newest first. |
 
 ## Graph — `app/api/routes/graph.py`
 

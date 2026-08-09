@@ -120,9 +120,9 @@ ARGUS is local-first by design, built for a single analyst on one machine. It in
 
 | Shortcut | Action |
 |---|---|
-| `⌘K` / `Ctrl+K` | Jump to Search |
-| `⌘B` / `Ctrl+B` | Jump to Graph Explorer |
+| `⌘K` / `Ctrl+K` | Open the command palette — filterable jump-to-any-page |
 | `⌘J` / `Ctrl+J` | Open Ask ARGUS (only appears if a local Ollama instance is detected) |
+| `Escape` | Close whichever overlay (command palette, modal) is open |
 
 ## Ethics note
 

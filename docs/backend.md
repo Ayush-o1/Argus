@@ -33,7 +33,7 @@ backend/app/
 ├── repositories/             # Cypher access, one module per read-domain
 │   ├── entity_labels.py      # human-ID prefix -> Neo4j label/id-field map
 │   ├── graph_repo.py         # generic node/subgraph/search/path traversal
-│   ├── entity_repo.py        # entity profile: connections, timeline
+│   ├── entity_repo.py        # entity profile: connections, timeline, related cases/alerts
 │   ├── dashboard_repo.py     # aggregate counts for the Dashboard
 │   ├── case_repo.py          # Case CRUD + evidence linking
 │   ├── alert_repo.py         # Incident-as-alert filtered view

@@ -18,16 +18,18 @@ frontend/src/
 │   │   entities/[id]/, cases/, cases/[id]/, alerts/,
 │   │   analytics/, scenario/, settings/
 ├── components/
-│   ├── layout/                # AppShell, Sidebar, Topbar, PageShell
+│   ├── layout/                # AppShell, Sidebar, Topbar, PageShell, CommandPalette
 │   ├── graph/                  # GraphCanvas, GraphControls, NodeDetailPanel
 │   ├── map/                    # ArgusMap, MapControls, SelectedEntityPopup
 │   ├── timeline/                # TimelineChart
 │   ├── dashboard/                # StatCard, RiskDonut, CaseList, IncidentFeed
 │   ├── entity/                    # EntityCard, EntityTypeIcon, RiskScoreWidget
 │   ├── assistant/                  # AskArgusPanel
-│   └── ui/                          # Badge, Button, Card, EmptyState, RiskBadge, Skeleton, Spinner, Tabs
+│   └── ui/                          # Badge, Button, Card, EmptyState, Input/Select/Textarea,
+│                                     Modal, RiskBadge, Skeleton, Spinner, Table, Tabs, Toast
 ├── hooks/                    # one file per resource, TanStack Query wrappers over lib/api.ts
-├── lib/                      # api.ts, types.ts, constants.ts, entityDisplay.ts, formatters.ts, queryClient.ts
+├── lib/                      # api.ts, types.ts, constants.ts, entityDisplay.ts, formatters.ts,
+│                               queryClient.ts, cn.ts, theme.ts
 └── stores/                   # uiStore.ts (Zustand)
 ```
 
@@ -40,7 +42,7 @@ frontend/src/
 | `/search` | Full-text search with type/risk facets | `useSearch` |
 | `/map` | MapLibre + deck.gl over India | `useMapEntities`, `useMapShipments` |
 | `/timeline` | @visx swimlane chart | `useGlobalTimeline` |
-| `/entities/[id]` | Entity profile — Properties/Risk/Activity/Summary tabs | `useEntity`, `useEntityTimeline`, `useEntitySummary` |
+| `/entities/[id]` | Entity profile — Properties/Risk/Activity/Cases & Alerts/Summary tabs | `useEntity`, `useEntityTimeline`, `useEntityCases`, `useEntityAlerts`, `useEntitySummary` |
 | `/cases`, `/cases/[id]` | Case list + workspace (evidence board, notes, summary) | `useCases`, `useCase`, `useCaseSummary` |
 | `/alerts` | Alert review queue | `useAlerts`, `useReviewAlert` |
 | `/analytics` | Algorithm picker + result renderer | `useAnalyticsJob` |
@@ -53,14 +55,16 @@ frontend/src/
 
 `PageShell` (`components/layout/PageShell.tsx`) is the per-page content wrapper: it renders a title/subtitle/actions header for normal pages, or — passed `full` — a zero-padding full-bleed container for the two canvas-style pages (Graph, Map) that need to own their own layout.
 
-Navigation is data-driven from `lib/constants.ts`'s `NAV_GROUPS` (four groups: primary nav, Investigation, Tools, Settings) — `Sidebar` renders this list and highlights the active route via `usePathname()`. It also holds its own collapse state in `uiStore` (Zustand).
+Navigation is data-driven from `lib/constants.ts`'s `NAV_GROUPS` (four groups: primary nav, Investigation, Tools, Settings) — `Sidebar` renders this list and highlights the active route via `usePathname()`. It also holds its own collapse state in `uiStore` (Zustand), reuses the Dashboard's `useDashboardSummary()` query (same cache, so no extra request) to show a live count badge on the Alerts nav item, and forces icon-only mode below 900px via CSS regardless of the manual toggle — there isn't enough width for the expanded rail at tablet size and below.
 
-Keyboard shortcuts (registered in `Topbar.tsx` and `AskArgusPanel.tsx` via `window.addEventListener("keydown", ...)`):
+`CommandPalette` (`components/layout/CommandPalette.tsx`) is a portal-based overlay — opened via the Topbar's search button, `⌘K`/`Ctrl+K` from anywhere, or the shared `uiStore.commandPaletteOpen` flag — that lists every page from `NAV_GROUPS`, filterable by typed text, with arrow-key navigation and Enter to jump.
+
+Keyboard shortcuts (registered in `CommandPalette.tsx` and `AskArgusPanel.tsx` via `window.addEventListener("keydown", ...)`):
 
 | Shortcut | Action |
 |---|---|
-| `⌘K` / `Ctrl+K` | Navigate to `/search` |
-| `⌘B` / `Ctrl+B` | Navigate to `/graph` |
+| `⌘K` / `Ctrl+K` | Toggle the command palette |
+| `Escape` | Close the command palette (or a `Modal`, if one's open) |
 | `⌘J` / `Ctrl+J` | Toggle Ask ARGUS (only registered when the assistant is available) |
 
 ## Data fetching
@@ -77,15 +81,26 @@ Keyboard shortcuts (registered in `Topbar.tsx` and `AskArgusPanel.tsx` via `wind
 
 `components/graph/GraphCanvas.tsx` wraps Cytoscape.js behind an imperative handle (`GraphCanvasHandle`): `addElements`, `fit`, `runLayout`, `highlightNeighborhood`, `highlightPath`. The Cytoscape instance itself is created **once**, in a mount-only `useEffect` (`[]` deps) — rebuilding it on every parent re-render would destroy the user's pan/zoom/layout state. This creates a classic stale-closure risk: `cy.on("tap", ...)` handlers registered in that effect would otherwise close over whatever `onSelectNode`/`onExpandNode` props existed on the *first* render, forever. The fix is a pair of refs (`onSelectNodeRef`, `onExpandNodeRef`) updated on every render, with the Cytoscape event handlers calling through the ref rather than the prop directly — see the comment block at the top of `GraphCanvas.tsx` for the full reasoning. This exact bug was what surfaced when the shortest-path feature needed the tap handler to read fresh `pathMode` state; `highlightNeighborhood` alone had never exposed it because it only touches a ref.
 
-`app/graph/page.tsx` owns the interaction state: selected node (drives `NodeDetailPanel`), current layout, and path-finding mode (`pathMode`/`pathFrom` — clicking two nodes while active calls `GET /api/graph/shortest-path` and highlights the result via `highlightPath`). `GraphControls.tsx` renders the layout picker, fit button, and the path-mode toggle; `GraphLegend` is a static color key.
+`app/graph/page.tsx` owns the interaction state: selected node (drives `NodeDetailPanel`), current layout, and path-finding mode (`pathMode`/`pathFrom` — clicking two nodes while active calls `GET /api/graph/shortest-path` and highlights the result via `highlightPath`). `GraphControls.tsx` renders the layout picker, fit button, and the path-mode toggle; when the view came from `?seed=<id>`, it also shows a "reset view" button back to the plain overview. `GraphLegend` doubles as a complexity filter — clicking an entity type calls `GraphCanvas`'s `setTypeVisibility` handle method, which hides every node of that type (and any edge touching one) via a Cytoscape `.hidden` class rather than removing elements, so re-showing a type is instant.
 
 ## Map
 
-`components/map/ArgusMap.tsx` layers deck.gl (`ScatterplotLayer` for entities, `ArcLayer` for shipment routes) on top of a MapLibre GL base map via `MapboxOverlay` — both the base map instance and the overlay are created once in a mount-only effect, mirroring the Graph Explorer's pattern. `maplibre-gl` is pinned to `^3.6.2` specifically — newer major versions break deck.gl's shared WebGL context in this stack, confirmed during development. Route anomalies render as thicker, differently-colored arcs; risk ≥60 entities render larger and red.
+`components/map/ArgusMap.tsx` layers deck.gl (`ScatterplotLayer` for entities, `ArcLayer` for shipment routes) on top of a MapLibre GL base map via `MapboxOverlay` — both the base map instance and the overlay are created once in a mount-only effect, mirroring the Graph Explorer's pattern. `maplibre-gl` is pinned to `^3.6.2` specifically — newer major versions break deck.gl's shared WebGL context in this stack, confirmed during development. Route anomalies render as thicker, differently-colored arcs; risk ≥60 entities render larger and red — `MapControls`'s "High Risk Only" toggle filters the scatterplot layer's data to that same threshold, and `MapLegend` documents what each color means.
+
+`app/map/page.tsx` reads a `?focus=<entityId>` query param (used by the entity profile's "View on Map" action — see below): the matching entity is derived via `useMemo` over the already-loaded entity list rather than stored in state, and a `useEffect` flies the camera to it. Manual selection is tracked separately (`undefined` = no override yet, so the focused entity still wins; `null` = the popup was explicitly closed) to avoid syncing derived data into state.
 
 ## Timeline
 
 `components/timeline/TimelineChart.tsx` — a hand-built @visx swimlane chart (four lanes: Incidents, Transactions, Communications, Events), not a Recharts chart, because the timeline needs heterogeneous point types on shared lanes with custom tooltips, which is easier to get right with @visx's low-level primitives (`scaleTime`, `scaleBand`, `Group`, `useTooltip`) than to force through a pre-built chart component.
+
+## Cross-page linking
+
+Entity, Case, Alert, Graph, and Map are meant to be jumped between, not treated as separate silos:
+
+- Entity profile → `/graph?seed={id}` ("View in Graph"), `/map?focus={id}` (when the entity has `lat`/`lng`), and a "Cases & Alerts" tab backed by `GET /api/entities/{id}/cases` / `/alerts` — both reverse the same `Case-[:LINKED_TO]->Entity` and `Incident-[:INVOLVES]->Entity` relationships the forward-direction case/alert queries already use.
+- Dashboard stat cards → `/cases` and `/alerts?status=Open` (the latter pre-selects the status tab via `useSearchParams`, which requires wrapping the page in `<Suspense>` per Next's static-export rules).
+- Timeline incident tooltips → `/alerts`. (Getting a tooltip's embedded link to actually be clickable took a debounced-hide fix — a bare `onMouseLeave` on the 3px SVG circle closed the tooltip before the cursor could reach it; see the comment in `TimelineChart.tsx`.)
+- Scenario Generator results → `/graph?seed=`, `/cases/{id}`, `/entities/{id}` for the storyline's key entity.
 
 ## Entity display for denormalized references
 
@@ -102,3 +117,7 @@ Three layers, each with a distinct job:
 ## Design system
 
 CSS Modules per component/page (`*.module.css` next to each `.tsx`), CSS custom properties for the shared palette (`--text-primary`, `--surface-border`, `--risk-critical`, etc. — see any component's module CSS for the variable names in use). Fixed dark theme by design (see `app/settings/page.tsx`'s Appearance tab) — no light mode planned. Icons are `lucide-react`; motion is Framer Motion, used selectively (panel transitions, not globally).
+
+`lib/cn.ts` is the one shared helper for conditional class names (`cn(styles.item, active && styles.itemActive)`), used everywhere instead of each component re-implementing `[a, b && c].filter(Boolean).join(" ")`. `lib/theme.ts` is the single source for colors that must be readable from plain JS/TS — Cytoscape stylesheets, recharts/deck.gl props — where a CSS custom property can't be used directly; its values are kept in sync with `styles/tokens.css` by convention, not by import (CSS can't be imported into JS here).
+
+`components/ui/` holds the shared primitives every page builds on: `Badge`, `Button`, `Card`, `EmptyState`, `Input`/`Select`/`Textarea`, `Modal` (portal-based, Escape/backdrop-close, returns focus on close), `RiskBadge`, `Skeleton`, `Spinner`, `Table` (generic `columns`/`rows`/`getRowKey`, used by Analytics' four algorithm-result tables instead of each hand-rolling its own `<table>`), `Tabs`, and `Toast` (`ToastProvider` mounted once in `app/providers.tsx`; call `useToast().showToast(message, tone)` from anywhere — Cases and Scenario both use it for create/generate feedback).
