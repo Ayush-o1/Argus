@@ -3,7 +3,7 @@
 import { Map as MapIcon } from "lucide-react";
 import { useState } from "react";
 import { ArgusMap } from "@/components/map/ArgusMap";
-import { MapControls } from "@/components/map/MapControls";
+import { MapControls, MapLegend } from "@/components/map/MapControls";
 import { SelectedEntityPopup } from "@/components/map/SelectedEntityPopup";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Spinner } from "@/components/ui/Spinner";
@@ -17,6 +17,7 @@ export default function MapPage() {
   const { data: shipments, isLoading: loadingShipments } = useMapShipments();
   const [showEntities, setShowEntities] = useState(true);
   const [showShipments, setShowShipments] = useState(true);
+  const [highRiskOnly, setHighRiskOnly] = useState(false);
   const [selected, setSelected] = useState<GraphNode | null>(null);
 
   const isLoading = loadingEntities || loadingShipments;
@@ -41,16 +42,20 @@ export default function MapPage() {
             <MapControls
               showEntities={showEntities}
               showShipments={showShipments}
+              highRiskOnly={highRiskOnly}
               onToggleEntities={() => setShowEntities((v) => !v)}
               onToggleShipments={() => setShowShipments((v) => !v)}
+              onToggleHighRiskOnly={() => setHighRiskOnly((v) => !v)}
             />
             <ArgusMap
               entities={entities}
               shipments={shipments ?? []}
               showEntities={showEntities}
               showShipments={showShipments}
+              highRiskOnly={highRiskOnly}
               onSelectEntity={setSelected}
             />
+            <MapLegend />
             {selected ? <SelectedEntityPopup node={selected} onClose={() => setSelected(null)} /> : null}
           </>
         )}

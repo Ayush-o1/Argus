@@ -27,11 +27,12 @@ interface ArgusMapProps {
   shipments: ShipmentRoute[];
   showEntities: boolean;
   showShipments: boolean;
+  highRiskOnly: boolean;
   onSelectEntity: (node: GraphNode) => void;
 }
 
 export const ArgusMap = forwardRef<ArgusMapHandle, ArgusMapProps>(
-  ({ entities, shipments, showEntities, showShipments, onSelectEntity }, ref) => {
+  ({ entities, shipments, showEntities, showShipments, highRiskOnly, onSelectEntity }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const mapRef = useRef<MapLibreMap | null>(null);
     const overlayRef = useRef<MapboxOverlay | null>(null);
@@ -84,10 +85,11 @@ export const ArgusMap = forwardRef<ArgusMapHandle, ArgusMapProps>(
       }
 
       if (showEntities) {
+        const entityData = highRiskOnly ? entities.filter((e) => e.risk_score >= 60) : entities;
         layers.push(
           new ScatterplotLayer<GraphNode>({
             id: "entities",
-            data: entities,
+            data: entityData,
             getPosition: (d) => [d.properties.lng, d.properties.lat],
             getRadius: (d) => (d.risk_score >= 60 ? 9000 : 4500),
             getFillColor: (d) => {
@@ -104,7 +106,7 @@ export const ArgusMap = forwardRef<ArgusMapHandle, ArgusMapProps>(
       }
 
       overlay.setProps({ layers });
-    }, [entities, shipments, showEntities, showShipments, onSelectEntity]);
+    }, [entities, shipments, showEntities, showShipments, highRiskOnly, onSelectEntity]);
 
     useImperativeHandle(ref, () => ({
       flyTo(lng, lat) {

@@ -5,7 +5,8 @@ import { Group } from "@visx/group";
 import { ParentSize } from "@visx/responsive";
 import { scaleBand, scaleTime } from "@visx/scale";
 import { defaultStyles, useTooltip, TooltipWithBounds } from "@visx/tooltip";
-import { useMemo } from "react";
+import Link from "next/link";
+import { useMemo, useRef } from "react";
 import type { GlobalTimeline } from "@/hooks/useTimeline";
 import { ENTITY_COLORS, RISK_COLOR_UNKNOWN, RISK_COLORS } from "@/lib/theme";
 
@@ -86,6 +87,18 @@ export function TimelineChart({ data }: { data: GlobalTimeline }) {
 function TimelineChartInner({ data, width, height }: { data: GlobalTimeline; width: number; height: number }) {
   const points = useMemo(() => buildPoints(data), [data]);
   const { tooltipData, tooltipLeft, tooltipTop, showTooltip, hideTooltip } = useTooltip<Point>();
+  // Incident tooltips contain a real link (View in Alerts); a bare onMouseLeave
+  // hides the tooltip the instant the cursor leaves the 3px circle, which fires
+  // before the mouse reaches the tooltip itself and makes the link unclickable.
+  // Debouncing the hide — and cancelling it if the tooltip itself is entered —
+  // gives the cursor time to travel there, same pattern as any hoverable tooltip.
+  const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  function scheduleHide() {
+    hideTimeoutRef.current = setTimeout(hideTooltip, 200);
+  }
+  function cancelHide() {
+    clearTimeout(hideTimeoutRef.current);
+  }
 
   const innerWidth = Math.max(width - MARGIN.left - MARGIN.right, 10);
   const innerHeight = Math.max(height - MARGIN.top - MARGIN.bottom, 10);
@@ -136,14 +149,15 @@ function TimelineChartInner({ data, width, height }: { data: GlobalTimeline; wid
               r={p.flagged ? 4.5 : 3}
               fill={p.color}
               opacity={p.flagged ? 0.95 : 0.55}
-              onMouseEnter={() =>
+              onMouseEnter={() => {
+                cancelHide();
                 showTooltip({
                   tooltipData: p,
                   tooltipLeft: xScale(p.timestamp) + MARGIN.left,
                   tooltipTop: (yScale(p.lane) ?? 0) + MARGIN.top,
-                })
-              }
-              onMouseLeave={hideTooltip}
+                });
+              }}
+              onMouseLeave={scheduleHide}
             />
           ))}
           <AxisBottom
@@ -159,6 +173,8 @@ function TimelineChartInner({ data, width, height }: { data: GlobalTimeline; wid
         <TooltipWithBounds
           left={tooltipLeft}
           top={tooltipTop}
+          onMouseEnter={cancelHide}
+          onMouseLeave={scheduleHide}
           style={{
             ...defaultStyles,
             background: "var(--surface-overlay)",
@@ -166,10 +182,16 @@ function TimelineChartInner({ data, width, height }: { data: GlobalTimeline; wid
             color: "var(--text-primary)",
             fontSize: 12,
             padding: "8px 10px",
+            pointerEvents: "auto",
           }}
         >
           <strong>{tooltipData.label}</strong>
           <div>{tooltipData.detail}</div>
+          {tooltipData.lane === "Incidents" ? (
+            <Link href="/alerts" style={{ color: "var(--accent-primary)", fontSize: 11 }}>
+              View in Alerts →
+            </Link>
+          ) : null}
         </TooltipWithBounds>
       ) : null}
     </div>
