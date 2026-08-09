@@ -7,6 +7,7 @@ import { scaleBand, scaleTime } from "@visx/scale";
 import { defaultStyles, useTooltip, TooltipWithBounds } from "@visx/tooltip";
 import { useMemo } from "react";
 import type { GlobalTimeline } from "@/hooks/useTimeline";
+import { ENTITY_COLORS, RISK_COLOR_UNKNOWN, RISK_COLORS } from "@/lib/theme";
 
 interface Point {
   id: string;
@@ -21,12 +22,7 @@ interface Point {
 const LANES = ["Incidents", "Transactions", "Communications", "Events"];
 const MARGIN = { top: 20, right: 24, bottom: 40, left: 110 };
 
-const SEVERITY_COLOR: Record<string, string> = {
-  Critical: "#FF3B47",
-  High: "#FF7D1A",
-  Medium: "#FFB800",
-  Low: "#1AE87B",
-};
+const SEVERITY_COLOR: Record<string, string> = RISK_COLORS;
 
 function buildPoints(data: GlobalTimeline): Point[] {
   const points: Point[] = [];
@@ -37,7 +33,7 @@ function buildPoints(data: GlobalTimeline): Point[] {
       lane: "Transactions",
       timestamp: new Date(t.timestamp),
       flagged: t.flagged,
-      color: t.flagged ? "#FF3B47" : "#F97316",
+      color: t.flagged ? RISK_COLORS.Critical : ENTITY_COLORS.Account,
       label: t.id,
       detail: `${t.subtype} · ₹${t.amount.toLocaleString("en-IN")}`,
     });
@@ -48,7 +44,7 @@ function buildPoints(data: GlobalTimeline): Point[] {
       lane: "Communications",
       timestamp: new Date(c.timestamp),
       flagged: c.flagged,
-      color: c.flagged ? "#FF3B47" : "#06B6D4",
+      color: c.flagged ? RISK_COLORS.Critical : ENTITY_COLORS.Device,
       label: c.id,
       detail: `${c.subtype} · ${c.duration_seconds}s`,
     });
@@ -59,7 +55,7 @@ function buildPoints(data: GlobalTimeline): Point[] {
       lane: "Events",
       timestamp: new Date(e.timestamp),
       flagged: false,
-      color: "#EC4899",
+      color: ENTITY_COLORS.Event,
       label: e.id,
       detail: e.subtype,
     });
@@ -70,7 +66,7 @@ function buildPoints(data: GlobalTimeline): Point[] {
       lane: "Incidents",
       timestamp: new Date(i.timestamp),
       flagged: true,
-      color: SEVERITY_COLOR[i.severity] ?? "#8892A4",
+      color: SEVERITY_COLOR[i.severity] ?? RISK_COLOR_UNKNOWN,
       label: i.id,
       detail: `${i.subtype} (${i.severity}) — ${i.description}`,
     });

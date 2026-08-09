@@ -3,6 +3,7 @@
 import { ChevronsLeft, ChevronsRight, ShieldHalf } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { cn } from "@/lib/cn";
 import { NAV_GROUPS } from "@/lib/constants";
 import { useUIStore } from "@/stores/uiStore";
 import styles from "./Sidebar.module.css";
@@ -13,7 +14,7 @@ export function Sidebar() {
   const toggleSidebar = useUIStore((s) => s.toggleSidebar);
 
   return (
-    <aside className={[styles.sidebar, collapsed && styles.collapsed].filter(Boolean).join(" ")}>
+    <aside className={cn(styles.sidebar, collapsed && styles.collapsed)}>
       <div className={styles.brand}>
         <div className={styles.brandMark}>
           <ShieldHalf size={16} strokeWidth={2} />
@@ -32,7 +33,7 @@ export function Sidebar() {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={[styles.item, active && styles.itemActive].filter(Boolean).join(" ")}
+                  className={cn(styles.item, active && styles.itemActive)}
                   title={collapsed ? item.label : undefined}
                 >
                   <span className={styles.itemIcon}>

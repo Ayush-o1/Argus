@@ -1,3 +1,4 @@
+import { ENTITY_COLORS, RISK_COLORS } from "@/lib/theme";
 import styles from "./MapControls.module.css";
 
 interface MapControlsProps {
@@ -15,7 +16,7 @@ export function MapControls({ showEntities, showShipments, onToggleEntities, onT
         className={[styles.toggle, showEntities && styles.toggleActive].filter(Boolean).join(" ")}
         onClick={onToggleEntities}
       >
-        <span className={styles.dot} style={{ background: "#3D7BFF" }} />
+        <span className={styles.dot} style={{ background: ENTITY_COLORS.Person }} />
         Entities
       </button>
       <button
@@ -23,7 +24,7 @@ export function MapControls({ showEntities, showShipments, onToggleEntities, onT
         className={[styles.toggle, showShipments && styles.toggleActive].filter(Boolean).join(" ")}
         onClick={onToggleShipments}
       >
-        <span className={styles.dot} style={{ background: "#FF7D1A" }} />
+        <span className={styles.dot} style={{ background: RISK_COLORS.High }} />
         Shipment Routes
       </button>
     </div>

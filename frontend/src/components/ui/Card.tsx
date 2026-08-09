@@ -1,4 +1,5 @@
 import type { HTMLAttributes } from "react";
+import { cn } from "@/lib/cn";
 import styles from "./Card.module.css";
 
 interface CardProps extends HTMLAttributes<HTMLDivElement> {
@@ -6,6 +7,5 @@ interface CardProps extends HTMLAttributes<HTMLDivElement> {
 }
 
 export function Card({ interactive, className, ...props }: CardProps) {
-  const classes = [styles.card, interactive && styles.interactive, className].filter(Boolean).join(" ");
-  return <div className={classes} {...props} />;
+  return <div className={cn(styles.card, interactive && styles.interactive, className)} {...props} />;
 }

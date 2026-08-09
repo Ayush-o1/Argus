@@ -7,13 +7,14 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { PageShell } from "@/components/layout/PageShell";
 import { TimelineChart } from "@/components/timeline/TimelineChart";
 import { useGlobalTimeline } from "@/hooks/useTimeline";
+import { ENTITY_COLORS, RISK_COLORS } from "@/lib/theme";
 import styles from "./page.module.css";
 
 const LEGEND = [
-  { label: "Flagged activity", color: "#FF3B47" },
-  { label: "Baseline transactions", color: "#F97316" },
-  { label: "Baseline communications", color: "#06B6D4" },
-  { label: "Events", color: "#EC4899" },
+  { label: "Flagged activity", color: RISK_COLORS.Critical },
+  { label: "Baseline transactions", color: ENTITY_COLORS.Account },
+  { label: "Baseline communications", color: ENTITY_COLORS.Device },
+  { label: "Events", color: ENTITY_COLORS.Event },
 ];
 
 export default function TimelinePage() {

@@ -1,4 +1,6 @@
 import { Maximize2, Waypoints } from "lucide-react";
+import { cn } from "@/lib/cn";
+import { ENTITY_COLORS } from "@/lib/theme";
 import type { LayoutName } from "./GraphCanvas";
 import styles from "./GraphControls.module.css";
 
@@ -44,7 +46,7 @@ export function GraphControls({
       </button>
       <button
         type="button"
-        className={[styles.iconButton, pathMode && styles.iconButtonActive].filter(Boolean).join(" ")}
+        className={cn(styles.iconButton, pathMode && styles.iconButtonActive)}
         onClick={onTogglePathMode}
         title="Find shortest path between two entities"
       >
@@ -59,15 +61,9 @@ export function GraphControls({
   );
 }
 
-const LEGEND_ITEMS = [
-  { label: "Person", color: "#3D7BFF" },
-  { label: "Organization", color: "#A855F7" },
-  { label: "Account", color: "#F97316" },
-  { label: "Device", color: "#06B6D4" },
-  { label: "Location", color: "#1AE87B" },
-  { label: "Event", color: "#EC4899" },
-  { label: "Document", color: "#84CC16" },
-];
+const LEGEND_ITEMS = (["Person", "Organization", "Account", "Device", "Location", "Event", "Document"] as const).map(
+  (label) => ({ label, color: ENTITY_COLORS[label] }),
+);
 
 export function GraphLegend() {
   return (

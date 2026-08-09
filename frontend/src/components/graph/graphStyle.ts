@@ -1,18 +1,11 @@
 import type { StylesheetJson } from "cytoscape";
+import { ENTITY_COLORS, RISK_COLORS, RISK_COLOR_UNKNOWN } from "@/lib/theme";
 
-const ENTITY_COLORS: Record<string, string> = {
-  Person: "#3D7BFF",
-  Organization: "#A855F7",
-  Location: "#1AE87B",
-  Vehicle: "#FFB800",
-  Device: "#06B6D4",
-  Account: "#F97316",
-  Event: "#EC4899",
-  Document: "#84CC16",
-  Shipment: "#F43F5E",
-  Case: "#3D7BFF",
-  Incident: "#FF7D1A",
-  Storyline: "#8892A4",
+const NODE_COLORS: Record<string, string> = {
+  ...ENTITY_COLORS,
+  Case: ENTITY_COLORS.Person,
+  Incident: RISK_COLORS.High,
+  Storyline: RISK_COLOR_UNKNOWN,
 };
 
 const EDGE_COLORS: Record<string, string> = {
@@ -34,7 +27,7 @@ const EDGE_COLORS: Record<string, string> = {
 };
 
 export function buildGraphStylesheet(): StylesheetJson {
-  const nodeColorRules = Object.entries(ENTITY_COLORS).map(([label, color]) => ({
+  const nodeColorRules = Object.entries(NODE_COLORS).map(([label, color]) => ({
     selector: `node[entityLabel = "${label}"]`,
     style: { "background-color": color },
   }));

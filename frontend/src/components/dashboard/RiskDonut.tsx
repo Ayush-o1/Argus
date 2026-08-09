@@ -1,15 +1,9 @@
 "use client";
 
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
+import { RISK_COLORS as COLORS } from "@/lib/theme";
 import type { Severity } from "@/lib/types";
 import styles from "./RiskDonut.module.css";
-
-const COLORS: Record<Severity, string> = {
-  Critical: "#FF3B47",
-  High: "#FF7D1A",
-  Medium: "#FFB800",
-  Low: "#1AE87B",
-};
 
 interface RiskDonutProps {
   data: { level: Severity; count: number }[];

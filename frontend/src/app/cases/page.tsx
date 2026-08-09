@@ -7,8 +7,10 @@ import { PageShell } from "@/components/layout/PageShell";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Input, Select, Textarea } from "@/components/ui/Input";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Tabs } from "@/components/ui/Tabs";
+import { useToast } from "@/components/ui/Toast";
 import { useCases, useCreateCase } from "@/hooks/useCases";
 import { formatRelativeTime } from "@/lib/formatters";
 import type { CaseSummary } from "@/lib/types";
@@ -39,6 +41,7 @@ export default function CasesPage() {
 
   const { data, isLoading } = useCases(statusTab === "All" ? undefined : statusTab);
   const createCase = useCreateCase();
+  const { showToast } = useToast();
 
   const cases = data?.data ?? [];
 
@@ -47,11 +50,15 @@ export default function CasesPage() {
     createCase.mutate(
       { title: title.trim(), priority, notes },
       {
-        onSuccess: () => {
+        onSuccess: (created) => {
           setTitle("");
           setNotes("");
           setPriority("Medium");
           setShowForm(false);
+          showToast(`Case ${created.case_id} created`, "success");
+        },
+        onError: () => {
+          showToast("Failed to create case — please try again", "error");
         },
       },
     );
@@ -69,28 +76,17 @@ export default function CasesPage() {
     >
       {showForm && (
         <div className={styles.createForm}>
-          <input
-            className={styles.input}
-            placeholder="Case title"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            autoFocus
-          />
+          <Input placeholder="Case title" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
           <div className={styles.formRow}>
-            <select className={styles.select} value={priority} onChange={(e) => setPriority(e.target.value)}>
+            <Select value={priority} onChange={(e) => setPriority(e.target.value)}>
               {["Low", "Medium", "High", "Critical"].map((p) => (
                 <option key={p} value={p}>
                   {p} priority
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
-          <textarea
-            className={styles.textarea}
-            placeholder="Initial notes (optional)"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-          />
+          <Textarea placeholder="Initial notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
           <div className={styles.formActions}>
             <Button variant="secondary" size="sm" onClick={() => setShowForm(false)}>
               Cancel
