@@ -49,16 +49,21 @@ async def update_job_progress(redis: Redis, job_id: str, stages: list[str]) -> N
 async def run_job(redis: Redis, job_id: str, coro: Awaitable[Any]) -> None:
     """Awaited inside an `asyncio.create_task` fire-and-forget from the route
     handler; writes the terminal state back to Redis under the same key."""
-    existing = await get_job(redis, job_id) or {}
-    stages = existing.get("stages", [])
     try:
         result = await coro
+        # Re-read stages *after* the coroutine finishes, not before — a job that
+        # calls update_job_progress while running (e.g. scenario generation)
+        # would otherwise have its terminal record overwritten with the stale
+        # (empty) stages list captured before it ran, silently discarding every
+        # progress update made during execution.
+        stages = (await get_job(redis, job_id) or {}).get("stages", [])
         await redis.set(
             _key(job_id),
             json.dumps({"job_type": None, "status": "done", "result": result, "error": None, "stages": stages}),
             ex=JOB_TTL_SECONDS,
         )
     except Exception as exc:  # noqa: BLE001 - job errors surface to the poller, not the process
+        stages = (await get_job(redis, job_id) or {}).get("stages", [])
         await redis.set(
             _key(job_id),
             json.dumps({"job_type": None, "status": "failed", "result": None, "error": str(exc), "stages": stages}),
