@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Spinner } from "@/components/ui/Spinner";
+import { Table, type TableColumn } from "@/components/ui/Table";
+import { cn } from "@/lib/cn";
 import {
   type Community,
   type Cycle,
@@ -126,7 +128,7 @@ export default function AnalyticsPage() {
             <button
               key={a.id}
               type="button"
-              className={[styles.algoCard, a.id === active && styles.algoCardActive].filter(Boolean).join(" ")}
+              className={cn(styles.algoCard, a.id === active && styles.algoCardActive)}
               onClick={() => handleSelect(a.id)}
             >
               <span className={styles.algoName}>{a.name}</span>
@@ -194,34 +196,28 @@ function renderResult(algorithm: AlgorithmId, result: AnyResult) {
   if (algorithm === "pagerank" || algorithm === "betweenness") {
     const rows = result as RankedEntity[];
     const maxScore = Math.max(...rows.map((r) => r.score), 1);
-    return (
-      <table className={styles.table}>
-        <thead>
-          <tr>
-            <th>Entity</th>
-            <th>Type</th>
-            <th>Score</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.account_id}>
-              <td>
-                <Link href={`/entities/${row.id}`} className={styles.entityLink}>
-                  {row.name}
-                </Link>
-              </td>
-              <td className={styles.labelTag}>{row.label}</td>
-              <td>
-                <div className={styles.scoreBarTrack}>
-                  <div className={styles.scoreBarFill} style={{ width: `${(row.score / maxScore) * 100}%` }} />
-                </div>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    );
+    const columns: TableColumn<RankedEntity>[] = [
+      {
+        key: "entity",
+        header: "Entity",
+        render: (row) => (
+          <Link href={`/entities/${row.id}`} className={styles.entityLink}>
+            {row.name}
+          </Link>
+        ),
+      },
+      { key: "type", header: "Type", render: (row) => <span className={styles.labelTag}>{row.label}</span> },
+      {
+        key: "score",
+        header: "Score",
+        render: (row) => (
+          <div className={styles.scoreBarTrack}>
+            <div className={styles.scoreBarFill} style={{ width: `${(row.score / maxScore) * 100}%` }} />
+          </div>
+        ),
+      },
+    ];
+    return <Table columns={columns} rows={rows} getRowKey={(row) => row.account_id} />;
   }
 
   if (algorithm === "louvain") {
@@ -257,65 +253,47 @@ function renderResult(algorithm: AlgorithmId, result: AnyResult) {
 
   if (algorithm === "similar") {
     const rows = result as SimilarEntity[];
-    return (
-      <table className={styles.table}>
-        <thead>
-          <tr>
-            <th>Entity</th>
-            <th>Type</th>
-            <th>Similarity</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, i) => (
-            <tr key={`${row.id}-${i}`}>
-              <td>
-                <Link href={`/entities/${row.id}`} className={styles.entityLink}>
-                  {row.name}
-                </Link>
-              </td>
-              <td className={styles.labelTag}>{row.label}</td>
-              <td>{(row.similarity * 100).toFixed(1)}%</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    );
+    const columns: TableColumn<SimilarEntity>[] = [
+      {
+        key: "entity",
+        header: "Entity",
+        render: (row) => (
+          <Link href={`/entities/${row.id}`} className={styles.entityLink}>
+            {row.name}
+          </Link>
+        ),
+      },
+      { key: "type", header: "Type", render: (row) => <span className={styles.labelTag}>{row.label}</span> },
+      { key: "similarity", header: "Similarity", render: (row) => `${(row.similarity * 100).toFixed(1)}%` },
+    ];
+    return <Table columns={columns} rows={rows} getRowKey={(row) => row.id} />;
   }
 
   if (algorithm === "risk-propagation") {
     const { seeds, propagated } = result as RiskPropagationResult;
+    const rows = propagated.slice(0, 50);
+    const columns: TableColumn<(typeof rows)[number]>[] = [
+      {
+        key: "entity",
+        header: "Entity",
+        render: (row) =>
+          row.id ? (
+            <Link href={`/entities/${row.id}`} className={styles.entityLink}>
+              {row.name}
+            </Link>
+          ) : (
+            row.name
+          ),
+      },
+      { key: "type", header: "Type", render: (row) => <span className={styles.labelTag}>{row.label}</span> },
+      { key: "risk", header: "Propagated risk", render: (row) => row.propagated_risk },
+    ];
     return (
       <div>
         <p className={styles.resultSubtitle} style={{ marginBottom: "var(--space-3)" }}>
           Seeded from {seeds.map((s) => s.name).join(", ")}
         </p>
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              <th>Entity</th>
-              <th>Type</th>
-              <th>Propagated risk</th>
-            </tr>
-          </thead>
-          <tbody>
-            {propagated.slice(0, 50).map((row, i) => (
-              <tr key={`${row.id}-${i}`}>
-                <td>
-                  {row.id ? (
-                    <Link href={`/entities/${row.id}`} className={styles.entityLink}>
-                      {row.name}
-                    </Link>
-                  ) : (
-                    row.name
-                  )}
-                </td>
-                <td className={styles.labelTag}>{row.label}</td>
-                <td>{row.propagated_risk}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <Table columns={columns} rows={rows} getRowKey={(row) => row.id ?? `${row.name}-${rows.indexOf(row)}`} />
       </div>
     );
   }
@@ -331,38 +309,26 @@ function renderResult(algorithm: AlgorithmId, result: AnyResult) {
         />
       );
     }
-    return (
-      <table className={styles.table}>
-        <thead>
-          <tr>
-            <th>Entity</th>
-            <th>Type</th>
-            <th>Burst</th>
-            <th>Baseline</th>
-            <th>Z-score</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.account_id}>
-              <td>
-                <Link href={`/entities/${row.id}`} className={styles.entityLink}>
-                  {row.name}
-                </Link>
-              </td>
-              <td className={styles.labelTag}>{row.label}</td>
-              <td>
-                {row.max_burst_count} tx in {row.burst_window_hours}h
-              </td>
-              <td className={styles.labelTag}>
-                μ={row.burst_baseline_mean}, σ={row.burst_baseline_std}
-              </td>
-              <td>{row.z_score}σ</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    );
+    const columns: TableColumn<TransactionAnomaly>[] = [
+      {
+        key: "entity",
+        header: "Entity",
+        render: (row) => (
+          <Link href={`/entities/${row.id}`} className={styles.entityLink}>
+            {row.name}
+          </Link>
+        ),
+      },
+      { key: "type", header: "Type", render: (row) => <span className={styles.labelTag}>{row.label}</span> },
+      { key: "burst", header: "Burst", render: (row) => `${row.max_burst_count} tx in ${row.burst_window_hours}h` },
+      {
+        key: "baseline",
+        header: "Baseline",
+        render: (row) => <span className={styles.labelTag}>μ={row.burst_baseline_mean}, σ={row.burst_baseline_std}</span>,
+      },
+      { key: "zscore", header: "Z-score", render: (row) => `${row.z_score}σ` },
+    ];
+    return <Table columns={columns} rows={rows} getRowKey={(row) => row.account_id} />;
   }
 
   const cycles = result as Cycle[];
