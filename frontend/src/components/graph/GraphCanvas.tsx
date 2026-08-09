@@ -5,8 +5,13 @@ import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import type { GraphEdge, GraphNode } from "@/lib/types";
 import { buildGraphStylesheet, nodeSize } from "./graphStyle";
 
+export interface AddElementsResult {
+  addedNodes: number;
+  addedEdges: number;
+}
+
 export interface GraphCanvasHandle {
-  addElements: (nodes: GraphNode[], edges: GraphEdge[]) => void;
+  addElements: (nodes: GraphNode[], edges: GraphEdge[]) => AddElementsResult;
   fit: () => void;
   runLayout: (name: LayoutName) => void;
   highlightNeighborhood: (nodeId: string | null) => void;
@@ -110,12 +115,20 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
     useImperativeHandle(ref, () => ({
       addElements(nodes, edges) {
         const cy = cyRef.current;
-        if (!cy) return;
-        const newNodes = nodes.filter((n) => cy.getElementById(n.id).empty()).map(toElement);
-        const newEdges = edges.filter((e) => cy.getElementById(e.id).empty()).map(toEdgeElement);
-        if (newNodes.length === 0 && newEdges.length === 0) return;
-        cy.add([...newNodes, ...newEdges]);
+        if (!cy) return { addedNodes: 0, addedEdges: 0 };
+        // Nodes/edges the caller fetched (e.g. a neighborhood expansion or a
+        // shortest path) commonly overlap with what's already on the canvas —
+        // the return value here reports only the genuinely new count, so the
+        // "N nodes · M edges" badge in GraphControls doesn't drift from what's
+        // actually rendered.
+        const newNodeDefs = nodes.filter((n) => cy.getElementById(n.id).empty());
+        const newEdgeDefs = edges.filter((e) => cy.getElementById(e.id).empty());
+        if (newNodeDefs.length === 0 && newEdgeDefs.length === 0) {
+          return { addedNodes: 0, addedEdges: 0 };
+        }
+        cy.add([...newNodeDefs.map(toElement), ...newEdgeDefs.map(toEdgeElement)]);
         runLayoutInternal(cy, { name: "cose", animate: true, randomize: false, fit: false });
+        return { addedNodes: newNodeDefs.length, addedEdges: newEdgeDefs.length };
       },
       fit() {
         cyRef.current?.fit(undefined, 40);

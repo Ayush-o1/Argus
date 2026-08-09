@@ -92,12 +92,11 @@ function GraphExplorerView({ data }: { data: Subgraph }) {
       `/api/graph/shortest-path?from_id=${fromId}&to_id=${toId}`,
     );
     if (result.data) {
-      canvasRef.current?.addElements(result.data.nodes, result.data.edges);
+      const added = canvasRef.current?.addElements(result.data.nodes, result.data.edges);
       canvasRef.current?.highlightPath(result.data.nodes.map((n) => n.id));
-      setCounts((prev) => ({
-        nodes: Math.max(prev.nodes, prev.nodes + result.data.nodes.length),
-        edges: Math.max(prev.edges, prev.edges + result.data.edges.length),
-      }));
+      if (added) {
+        setCounts((prev) => ({ nodes: prev.nodes + added.addedNodes, edges: prev.edges + added.addedEdges }));
+      }
     }
     setPathMode(false);
     setPathFrom(null);
@@ -111,11 +110,10 @@ function GraphExplorerView({ data }: { data: Subgraph }) {
 
   async function handleExpand(nodeId: string) {
     const result = await apiFetch<Subgraph>(`/api/entities/${nodeId}/graph?depth=1`);
-    canvasRef.current?.addElements(result.data.nodes, result.data.edges);
-    setCounts((prev) => ({
-      nodes: prev.nodes + result.data.nodes.length,
-      edges: prev.edges + result.data.edges.length,
-    }));
+    const added = canvasRef.current?.addElements(result.data.nodes, result.data.edges);
+    if (added) {
+      setCounts((prev) => ({ nodes: prev.nodes + added.addedNodes, edges: prev.edges + added.addedEdges }));
+    }
   }
 
   function handleLayoutChange(name: LayoutName) {
