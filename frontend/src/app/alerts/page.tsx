@@ -2,7 +2,8 @@
 
 import { AlertTriangle } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
 import { PageShell } from "@/components/layout/PageShell";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -32,8 +33,17 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 export default function AlertsPage() {
-  const [severityTab, setSeverityTab] = useState("All");
-  const [statusTab, setStatusTab] = useState("All");
+  return (
+    <Suspense fallback={<PageShell title="Alerts" subtitle="System-detected anomalies awaiting review">{null}</PageShell>}>
+      <AlertsPageInner />
+    </Suspense>
+  );
+}
+
+function AlertsPageInner() {
+  const searchParams = useSearchParams();
+  const [severityTab, setSeverityTab] = useState(() => searchParams.get("severity") ?? "All");
+  const [statusTab, setStatusTab] = useState(() => searchParams.get("status") ?? "All");
 
   const { data, isLoading } = useAlerts(
     statusTab === "All" ? undefined : statusTab,

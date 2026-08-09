@@ -2,7 +2,8 @@
 
 import { Plus, ShieldHalf } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
 import { PageShell } from "@/components/layout/PageShell";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -33,7 +34,16 @@ const PRIORITY_TONE: Record<CaseSummary["priority"], "critical" | "high" | "medi
 };
 
 export default function CasesPage() {
-  const [statusTab, setStatusTab] = useState("All");
+  return (
+    <Suspense fallback={<PageShell title="Cases" subtitle="Manage ongoing investigations">{null}</PageShell>}>
+      <CasesPageInner />
+    </Suspense>
+  );
+}
+
+function CasesPageInner() {
+  const searchParams = useSearchParams();
+  const [statusTab, setStatusTab] = useState(() => searchParams.get("status") ?? "All");
   const [showForm, setShowForm] = useState(false);
   const [title, setTitle] = useState("");
   const [priority, setPriority] = useState("Medium");

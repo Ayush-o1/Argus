@@ -21,8 +21,8 @@ export default function DashboardPage() {
       ) : (
         <>
           <div className={styles.statGrid}>
-            <StatCard label="Active Cases" value={data.active_cases} icon={ShieldHalf} />
-            <StatCard label="Open Alerts" value={data.open_alerts} icon={AlertTriangle} />
+            <StatCard label="Active Cases" value={data.active_cases} icon={ShieldHalf} href="/cases" />
+            <StatCard label="Open Alerts" value={data.open_alerts} icon={AlertTriangle} href="/alerts?status=Open" />
             <StatCard label="Avg Risk Score" value={data.avg_risk_score} decimals={1} suffix="/ 100" icon={TrendingUp} />
             <StatCard label="Flagged Entities" value={data.flagged_entities} icon={AlertTriangle} />
             <StatCard label="Persons" value={data.total_persons} icon={Users} />
