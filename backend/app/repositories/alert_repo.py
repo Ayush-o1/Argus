@@ -23,7 +23,7 @@ async def list_alerts(
     async with driver.session() as session:
         total_result = await session.run(
             f"MATCH (i:Incident) WHERE i.severity IN $severities {status_filter} RETURN count(i) AS total",
-            **params,
+            params,
         )
         total_record = await total_result.single()
         total = total_record["total"] if total_record else 0
@@ -36,7 +36,7 @@ async def list_alerts(
             RETURN i, involved
             ORDER BY i.timestamp DESC SKIP $skip LIMIT $limit
             """,
-            **params,
+            params,
         )
         alerts = []
         async for record in result:

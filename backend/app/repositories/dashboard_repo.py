@@ -39,10 +39,12 @@ async def get_dashboard_summary(driver: AsyncDriver) -> dict:
                 """
             )
         ).single()
+        assert counts is not None, "aggregate query always returns exactly one row"
 
         avg_risk_record = await (
             await session.run("MATCH (p:Person) RETURN avg(p.risk_score) AS avg_risk")
         ).single()
+        assert avg_risk_record is not None, "aggregate query always returns exactly one row"
 
         risk_distribution = []
         for label, low, high in RISK_BUCKETS:
@@ -53,6 +55,7 @@ async def get_dashboard_summary(driver: AsyncDriver) -> dict:
                     high=high,
                 )
             ).single()
+            assert record is not None, "aggregate query always returns exactly one row"
             risk_distribution.append({"level": label, "count": record["count"]})
 
         recent_incidents_result = await session.run(

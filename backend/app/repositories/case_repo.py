@@ -13,13 +13,13 @@ async def list_cases(driver: AsyncDriver, status: str | None, page: int, page_si
     params = {"status": status, "skip": (page - 1) * page_size, "limit": page_size}
 
     async with driver.session() as session:
-        total_result = await session.run(f"MATCH (c:Case) {status_filter} RETURN count(c) AS total", **params)
+        total_result = await session.run(f"MATCH (c:Case) {status_filter} RETURN count(c) AS total", params)
         total_record = await total_result.single()
         total = total_record["total"] if total_record else 0
 
         result = await session.run(
             f"MATCH (c:Case) {status_filter} RETURN c ORDER BY c.opened_at DESC SKIP $skip LIMIT $limit",
-            **params,
+            params,
         )
         cases = [dict(record["c"]) async for record in result]
 

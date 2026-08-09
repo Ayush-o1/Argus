@@ -154,11 +154,11 @@ async def list_entities(
     params = {"risk_min": risk_min, "city": city, "skip": (page - 1) * page_size, "limit": page_size}
 
     async with driver.session() as session:
-        total_result = await session.run(count_query, **params)
+        total_result = await session.run(count_query, params)
         total_record = await total_result.single()
         total = total_record["total"] if total_record else 0
 
-        result = await session.run(query, **params)
+        result = await session.run(query, params)
         nodes = [to_graph_node(dict(record["n"]), label) async for record in result]
 
     return nodes, total

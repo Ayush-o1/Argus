@@ -8,6 +8,8 @@ Account is denormalized with `owner_id`/`owner_type`, so results are joined
 back to the owning Person/Organization for display without extra traversal.
 """
 
+from typing import Any
+
 from neo4j import AsyncDriver
 
 PROJECTION_NAME = "entityGraph"
@@ -120,7 +122,7 @@ async def run_louvain(driver: AsyncDriver) -> dict:
             continue
         communities.setdefault(row["communityId"], []).append(owner)
 
-    summary = []
+    summary: list[dict[str, Any]] = []
     for community_id, members in communities.items():
         risk_scores = [m["account_risk_score"] or 0 for m in members]
         avg_risk = sum(risk_scores) / len(risk_scores) if risk_scores else 0
