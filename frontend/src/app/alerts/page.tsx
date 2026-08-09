@@ -3,7 +3,7 @@
 import { AlertTriangle } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { PageShell } from "@/components/layout/PageShell";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -32,6 +32,13 @@ const STATUS_LABEL: Record<string, string> = {
   Closed: "Closed",
 };
 
+const SEVERITY_RANK: Record<Incident["severity"], number> = {
+  Critical: 0,
+  High: 1,
+  Medium: 2,
+  Low: 3,
+};
+
 export default function AlertsPage() {
   return (
     <Suspense fallback={<PageShell title="Alerts" subtitle="System-detected anomalies awaiting review">{null}</PageShell>}>
@@ -51,7 +58,13 @@ function AlertsPageInner() {
   );
   const reviewAlert = useReviewAlert();
 
-  const alerts = data?.data ?? [];
+  // The API only sorts by timestamp — for a triage surface, severity should
+  // decide order first (what needs attention), recency second, so a Critical
+  // alert doesn't get buried under a page of more-recent Medium ones.
+  const alerts = useMemo(
+    () => [...(data?.data ?? [])].sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity]),
+    [data],
+  );
 
   return (
     <PageShell title="Alerts" subtitle="System-detected anomalies awaiting review">
