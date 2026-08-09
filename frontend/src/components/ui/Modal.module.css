@@ -1,0 +1,62 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(6, 7, 10, 0.6);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+  z-index: 1000;
+  animation: argus-fade-in var(--transition-base);
+}
+
+.modal {
+  background: var(--surface-raised);
+  border: 1px solid var(--surface-border);
+  border-radius: 12px;
+  box-shadow: var(--card-shadow-hover);
+  width: 100%;
+  max-width: 480px;
+  max-height: 85vh;
+  overflow-y: auto;
+  animation: argus-rise-in var(--transition-base);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-5) var(--space-6);
+  border-bottom: 1px solid var(--surface-border-faint);
+}
+
+.title {
+  font-size: var(--text-md);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+}
+
+.closeButton {
+  color: var(--text-tertiary);
+  padding: var(--space-1);
+  border-radius: 6px;
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+.closeButton:hover {
+  color: var(--text-primary);
+  background: var(--surface-hover);
+}
+
+.body {
+  padding: var(--space-6);
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  padding: var(--space-5) var(--space-6);
+  border-top: 1px solid var(--surface-border-faint);
+}
