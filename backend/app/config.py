@@ -4,9 +4,22 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Application configuration, sourced from environment variables / .env."""
+    """Application configuration, sourced from environment variables / .env.
 
-    model_config = SettingsConfigDict(env_file="../.env", extra="ignore")
+    pydantic-settings resolves values in this priority order:
+      1. Actual environment variables (highest — used by Docker, CI, hosting platforms)
+      2. .env file in the parent directory (../env — local dev, running from backend/)
+      3. .env file in the current directory (.env — Docker WORKDIR /app)
+      4. Defaults defined below (lowest)
+    """
+
+    model_config = SettingsConfigDict(
+        # Check both locations: ../env works when running `uvicorn` from backend/;
+        # .env works when the process CWD is /app inside Docker (where .env may be mounted).
+        env_file=["../.env", ".env"],
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_user: str = "neo4j"
@@ -21,6 +34,10 @@ class Settings(BaseSettings):
     argus_api_token: str = "argus_dev_token"
 
     cors_origins: str = "http://localhost:3000"
+
+    # Path to the generator directory. Empty string = auto-detect from file location
+    # (correct for local development). Set to /generator in Docker (see backend/Dockerfile).
+    generator_dir: str = ""
 
     # Logging level. Use "INFO" in production, "DEBUG" for verbose local dev output.
     log_level: str = "INFO"

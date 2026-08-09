@@ -15,8 +15,19 @@ from redis.asyncio import Redis
 from app.config import get_settings
 from app.services import jobs
 
-GENERATOR_DIR = Path(__file__).resolve().parents[3] / "generator"
-GENERATOR_PYTHON = GENERATOR_DIR / ".venv" / "bin" / "python3"
+# Default: resolve relative to this file's location (works when running from repo root).
+# Override: set GENERATOR_DIR env var (used in Docker where generator lives at /generator).
+_DEFAULT_GENERATOR_DIR = Path(__file__).resolve().parents[3] / "generator"
+
+
+def _get_generator_dir() -> Path:
+    """Return the generator directory, preferring the GENERATOR_DIR env-var override."""
+    settings = get_settings()
+    return Path(settings.generator_dir) if settings.generator_dir else _DEFAULT_GENERATOR_DIR
+
+
+def _get_generator_python() -> Path:
+    return _get_generator_dir() / ".venv" / "bin" / "python3"
 
 SCENARIO_TYPES = [
     "shell_company_ring",
@@ -40,8 +51,10 @@ async def start_scenario_job(
 
 async def _run(redis: Redis, job_id: str, scenario_type: str, complexity: str, seed: int | None) -> dict:
     settings = get_settings()
+    generator_dir = _get_generator_dir()
+    generator_python = _get_generator_python()
     cmd = [
-        str(GENERATOR_PYTHON),
+        str(generator_python),
         "generate_scenario.py",
         "--type",
         scenario_type,
@@ -59,7 +72,7 @@ async def _run(redis: Redis, job_id: str, scenario_type: str, complexity: str, s
 
     proc = await asyncio.create_subprocess_exec(
         *cmd,
-        cwd=str(GENERATOR_DIR),
+        cwd=str(generator_dir),
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )

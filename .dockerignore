@@ -1,0 +1,32 @@
+# Root-level .dockerignore — the backend image now builds with the repo root
+# as its build context (see docker-compose.yml), so this must live here, not
+# under backend/, to actually take effect. Patterns are prefixed with **/ so
+# they match at any depth (backend/.venv, generator/.venv, frontend/node_modules, ...).
+
+# Python
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/.venv/
+**/venv/
+**/*.egg-info/
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+
+# Node / frontend (not needed to build the backend image)
+**/node_modules/
+**/.next/
+
+# Environment / secrets
+.env
+**/.env
+**/.env.*
+
+# VCS
+.git/
+.gitignore
+
+# Dev only
+**/*.md
+Makefile

@@ -38,8 +38,13 @@ services:
 
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      # Build context must be the repo root, not ./backend: the Dockerfile
+      # bundles generator/ (see backend/Dockerfile's generator-builder stage)
+      # so app/services/scenario.py's subprocess call to generator/.venv has
+      # something to run inside the container, and that directory lives
+      # outside a ./backend-scoped build context.
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: argus-backend
     ports:
       - "8000:8000"
