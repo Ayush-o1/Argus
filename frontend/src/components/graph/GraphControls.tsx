@@ -1,4 +1,4 @@
-import { Maximize2, Waypoints } from "lucide-react";
+import { Maximize2, RotateCcw, Waypoints } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { ENTITY_COLORS } from "@/lib/theme";
 import type { LayoutName } from "./GraphCanvas";
@@ -20,6 +20,9 @@ interface GraphControlsProps {
   pathMode: boolean;
   onTogglePathMode: () => void;
   pathModeHint?: string;
+  /** Shown only when viewing a seeded subgraph (e.g. arrived via ?seed=), so
+   * there's always a way back to the full overview without editing the URL. */
+  onResetView?: () => void;
 }
 
 export function GraphControls({
@@ -31,6 +34,7 @@ export function GraphControls({
   pathMode,
   onTogglePathMode,
   pathModeHint,
+  onResetView,
 }: GraphControlsProps) {
   return (
     <div className={styles.bar}>
@@ -52,6 +56,11 @@ export function GraphControls({
       >
         <Waypoints size={15} />
       </button>
+      {onResetView ? (
+        <button type="button" className={styles.iconButton} onClick={onResetView} title="Back to full overview">
+          <RotateCcw size={15} />
+        </button>
+      ) : null}
       {pathMode && <span className={styles.countBadge}>{pathModeHint ?? "Click a start entity"}</span>}
       <div className={styles.spacer} />
       <span className={styles.countBadge}>
@@ -65,15 +74,32 @@ const LEGEND_ITEMS = (["Person", "Organization", "Account", "Device", "Location"
   (label) => ({ label, color: ENTITY_COLORS[label] }),
 );
 
-export function GraphLegend() {
+interface GraphLegendProps {
+  hiddenTypes: string[];
+  onToggleType: (label: string) => void;
+}
+
+/** Doubles as a complexity-management control: click a type to hide/show it
+ * on the canvas, rather than always rendering every node the graph returns. */
+export function GraphLegend({ hiddenTypes, onToggleType }: GraphLegendProps) {
   return (
     <div className={styles.legend}>
-      {LEGEND_ITEMS.map((item) => (
-        <span key={item.label} className={styles.legendItem}>
-          <span className={styles.legendDot} style={{ background: item.color }} />
-          {item.label}
-        </span>
-      ))}
+      {LEGEND_ITEMS.map((item) => {
+        const hidden = hiddenTypes.includes(item.label);
+        return (
+          <button
+            key={item.label}
+            type="button"
+            className={cn(styles.legendItem, hidden && styles.legendItemHidden)}
+            onClick={() => onToggleType(item.label)}
+            title={hidden ? `Show ${item.label} nodes` : `Hide ${item.label} nodes`}
+            aria-pressed={!hidden}
+          >
+            <span className={styles.legendDot} style={{ background: item.color }} />
+            {item.label}
+          </button>
+        );
+      })}
     </div>
   );
 }

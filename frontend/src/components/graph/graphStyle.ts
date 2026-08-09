@@ -93,6 +93,13 @@ export function buildGraphStylesheet(): StylesheetJson {
       selector: "edge.highlighted",
       style: { "line-color": "#3D7BFF", "target-arrow-color": "#3D7BFF", opacity: 1, width: 2 },
     },
+    {
+      // Used by the legend's type filter — keeps hidden nodes/edges in the
+      // Cytoscape instance (so re-showing them is instant, no re-fetch) rather
+      // than removing elements outright.
+      selector: ".hidden",
+      style: { display: "none" },
+    },
   ] as StylesheetJson;
 }
 

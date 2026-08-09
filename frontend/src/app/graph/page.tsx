@@ -1,7 +1,7 @@
 "use client";
 
 import { Waypoints } from "lucide-react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useRef, useState } from "react";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Spinner } from "@/components/ui/Spinner";
@@ -58,20 +58,30 @@ function GraphPageInner() {
             />
           </div>
         ) : (
-          <GraphExplorerView key={seed ?? "overview"} data={data} />
+          <GraphExplorerView key={seed ?? "overview"} data={data} isSeeded={Boolean(seed)} />
         )}
       </div>
     </PageShell>
   );
 }
 
-function GraphExplorerView({ data }: { data: Subgraph }) {
+function GraphExplorerView({ data, isSeeded }: { data: Subgraph; isSeeded: boolean }) {
+  const router = useRouter();
   const canvasRef = useRef<GraphCanvasHandle>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [layout, setLayout] = useState<LayoutName>("cose");
   const [counts, setCounts] = useState({ nodes: data.nodes.length, edges: data.edges.length });
   const [pathMode, setPathMode] = useState(false);
   const [pathFrom, setPathFrom] = useState<string | null>(null);
+  const [hiddenTypes, setHiddenTypes] = useState<string[]>([]);
+
+  function toggleType(label: string) {
+    setHiddenTypes((prev) => {
+      const next = prev.includes(label) ? prev.filter((t) => t !== label) : [...prev, label];
+      canvasRef.current?.setTypeVisibility(next);
+      return next;
+    });
+  }
 
   function handleSelect(nodeId: string | null) {
     if (pathMode) {
@@ -132,6 +142,7 @@ function GraphExplorerView({ data }: { data: Subgraph }) {
         pathMode={pathMode}
         onTogglePathMode={togglePathMode}
         pathModeHint={pathFrom ? `From ${pathFrom} — click an end entity` : "Click a start entity"}
+        onResetView={isSeeded ? () => router.push("/graph") : undefined}
       />
       <GraphCanvas
         ref={canvasRef}
@@ -140,7 +151,7 @@ function GraphExplorerView({ data }: { data: Subgraph }) {
         onSelectNode={handleSelect}
         onExpandNode={handleExpand}
       />
-      <GraphLegend />
+      <GraphLegend hiddenTypes={hiddenTypes} onToggleType={toggleType} />
       {selectedId && !pathMode ? (
         <NodeDetailPanel entityId={selectedId} onExpand={handleExpand} onClose={() => handleSelect(null)} />
       ) : null}

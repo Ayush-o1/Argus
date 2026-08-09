@@ -16,6 +16,9 @@ export interface GraphCanvasHandle {
   runLayout: (name: LayoutName) => void;
   highlightNeighborhood: (nodeId: string | null) => void;
   highlightPath: (nodeIds: string[]) => void;
+  /** Hides every node whose entityLabel is in `hiddenLabels` (and any edge
+   * touching one), without removing elements — re-showing a type is instant. */
+  setTypeVisibility: (hiddenLabels: string[]) => void;
 }
 
 export type LayoutName = "cose" | "breadthfirst" | "concentric" | "grid";
@@ -148,6 +151,16 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
         const neighborhood = node.closedNeighborhood();
         cy.elements().difference(neighborhood).addClass("faded");
         neighborhood.addClass("highlighted");
+      },
+      setTypeVisibility(hiddenLabels) {
+        const cy = cyRef.current;
+        if (!cy) return;
+        cy.nodes().forEach((node) => {
+          node.toggleClass("hidden", hiddenLabels.includes(node.data("entityLabel")));
+        });
+        cy.edges().forEach((edge) => {
+          edge.toggleClass("hidden", edge.source().hasClass("hidden") || edge.target().hasClass("hidden"));
+        });
       },
       highlightPath(nodeIds) {
         const cy = cyRef.current;
