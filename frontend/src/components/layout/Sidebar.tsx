@@ -41,7 +41,7 @@ export function Sidebar() {
                   key={item.href}
                   href={item.href}
                   className={cn(styles.item, active && styles.itemActive)}
-                  title={collapsed ? item.label : undefined}
+                  title={item.label}
                 >
                   <span className={styles.itemIcon}>
                     <Icon size={17} strokeWidth={1.75} />

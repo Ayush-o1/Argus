@@ -157,3 +157,22 @@
   background: var(--surface-hover);
   color: var(--text-primary);
 }
+
+/* Below tablet width, the fixed-width expanded sidebar leaves too little
+ * room for actual page content (dense tables/grids start wrapping badly) —
+ * force icon-only mode regardless of the manual collapse toggle's state.
+ * The toggle itself stops being meaningful here, so it's hidden too. */
+@media (max-width: 900px) {
+  .sidebar {
+    width: var(--sidebar-collapsed) !important;
+    min-width: var(--sidebar-collapsed) !important;
+  }
+
+  .brandName,
+  .groupTitle,
+  .itemLabel,
+  .itemBadge,
+  .footer {
+    display: none !important;
+  }
+}
