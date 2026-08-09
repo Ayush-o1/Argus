@@ -1,9 +1,8 @@
 "use client";
 
 import { Search } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { usePathname } from "next/navigation";
-import { useEffect } from "react";
+import { useUIStore } from "@/stores/uiStore";
 import styles from "./Topbar.module.css";
 
 function humanize(segment: string) {
@@ -15,23 +14,8 @@ function humanize(segment: string) {
 
 export function Topbar() {
   const pathname = usePathname();
-  const router = useRouter();
+  const setCommandPaletteOpen = useUIStore((s) => s.setCommandPaletteOpen);
   const segments = pathname.split("/").filter(Boolean);
-
-  useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        router.push("/search");
-      }
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "b") {
-        e.preventDefault();
-        router.push("/graph");
-      }
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [router]);
 
   return (
     <header className={styles.topbar}>
@@ -49,7 +33,7 @@ export function Topbar() {
       </div>
 
       <div className={styles.actions}>
-        <button type="button" className={styles.searchButton} onClick={() => router.push("/search")}>
+        <button type="button" className={styles.searchButton} onClick={() => setCommandPaletteOpen(true)}>
           <Search size={14} />
           <span>Search</span>
           <span className={styles.kbd}>⌘K</span>

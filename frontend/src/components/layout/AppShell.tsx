@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { AskArgusPanel } from "@/components/assistant/AskArgusPanel";
+import { CommandPalette } from "./CommandPalette";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 import styles from "./AppShell.module.css";
@@ -13,6 +14,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         {children}
       </div>
       <AskArgusPanel />
+      <CommandPalette />
     </div>
   );
 }
