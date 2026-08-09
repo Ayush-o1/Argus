@@ -40,6 +40,7 @@ help:
 	@echo "  $(CYAN)Checks$(RESET)"
 	@echo "    make lint             Run ruff + eslint"
 	@echo "    make typecheck        Run mypy (backend)"
+	@echo "    make test             Run pytest (backend)"
 	@echo "    make health           Probe http://localhost:8000/api/health"
 	@echo ""
 	@echo "  $(CYAN)Frontend build$(RESET)"
@@ -164,6 +165,11 @@ lint:
 typecheck:
 	@echo "$(CYAN)▶ Running mypy (backend)$(RESET)"
 	@cd backend && .venv/bin/mypy app
+
+.PHONY: test
+test:
+	@echo "$(CYAN)▶ Running pytest (backend)$(RESET)"
+	@cd backend && .venv/bin/pytest
 
 .PHONY: health
 health:

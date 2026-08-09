@@ -128,3 +128,7 @@ Scenario generation uses `start_job_with_progress` instead, because it needs to 
 ## Linting
 
 `ruff` (line length 120, `select = ["E", "F", "I", "UP", "B"]`), configured in `pyproject.toml`. `B008` (function calls in argument defaults) is deliberately ignored — `Depends(...)` in a default is the standard FastAPI DI idiom, not a bug.
+
+## Testing
+
+`backend/tests/` holds unit tests for the pure-logic pieces that don't require a live Neo4j/Redis connection: human-ID label resolution (`entity_labels.py`), the deterministic narrative templates (`narrative.py`), the anomaly-detection sliding-window/z-score math (`anomaly.py`), and the `Envelope`/`Meta` response models. Run with `pytest` from `backend/` (config lives in `pyproject.toml`'s `[tool.pytest.ini_options]`). Repository functions that require a live database are exercised by manual/`curl` verification and the frontend's integration paths rather than mocked unit tests — mocking the Neo4j driver would test the mock, not the Cypher.

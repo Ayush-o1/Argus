@@ -91,8 +91,10 @@ Every environment variable, its default, and what it affects is documented in [d
 
 ## Development workflow
 
-- Backend: `ruff check .` / `mypy app` from `backend/` (dev extras: `pip install -e ".[dev]"`).
-- Frontend: `npm run lint`, `npm run build` from `frontend/`.
+- Backend: `ruff check .` / `mypy app` / `pytest` from `backend/` (dev extras: `pip install -e ".[dev]"`).
+- Frontend: `npm run lint`, `npx tsc --noEmit`, `npm run build` from `frontend/`.
+- `make lint` / `make typecheck` / `make test` run the equivalent checks from the repo root.
+- GitHub Actions (`.github/workflows/ci.yml`) runs all of the above on every push and PR to `main`.
 - No schema migration tool — the Neo4j schema (constraints, indexes) is created idempotently by the generator on every run; see [docs/database.md](docs/database.md).
 - See [docs/backend.md](docs/backend.md#adding-a-new-endpoint) and [docs/generator.md](docs/generator.md) for where to add new endpoints or storyline types.
 
