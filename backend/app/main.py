@@ -1,3 +1,4 @@
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -22,6 +23,16 @@ from app.api.routes import (
 from app.config import get_settings
 from app.database.neo4j import close_neo4j, connect_neo4j
 from app.database.redis import close_redis, connect_redis
+
+# Configure root logger from settings so every module in the app honours LOG_LEVEL.
+# Uvicorn controls its own access-log format separately; this covers app-level messages.
+_settings = get_settings()
+logging.basicConfig(
+    level=getattr(logging, _settings.log_level.upper(), logging.INFO),
+    format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%S",
+)
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
