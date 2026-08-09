@@ -6,6 +6,11 @@ import { useUIStore } from "@/stores/uiStore";
 import styles from "./Topbar.module.css";
 
 function humanize(segment: string) {
+  // Dynamic route segments are human-readable IDs like CASE-0026 or
+  // PRS-0003296 — splitting on "-" for those turns them into "CASE 0026",
+  // silently changing the ID's actual format. Only word-ish static route
+  // segments (dashboard, graph, scenario, ...) get title-cased.
+  if (/\d/.test(segment)) return segment.toUpperCase();
   return segment
     .split("-")
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
