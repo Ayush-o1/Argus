@@ -17,16 +17,24 @@ RISK_BUCKETS = [
 
 async def get_dashboard_summary(driver: AsyncDriver) -> dict:
     async with driver.session() as session:
+        # Every MATCH after the first must be OPTIONAL: once a preceding WITH has
+        # collapsed the stream to an aggregated row, a plain MATCH that finds zero
+        # matches (e.g. zero active Cases after an analyst closes them all, or zero
+        # open High/Critical Incidents after all alerts are closed) drops the row
+        # count to zero for the rest of the query — .single() then returns None and
+        # every downstream `counts["..."]` lookup raises. OPTIONAL MATCH keeps the
+        # row alive with a 0 count instead. Confirmed via direct Cypher reproduction.
         counts = await (
             await session.run(
                 """
                 MATCH (p:Person) WITH count(p) AS persons
-                MATCH (o:Organization) WITH persons, count(o) AS orgs
-                MATCH ()-[t:TRANSACTED_WITH]->() WITH persons, orgs, count(t) AS transactions
-                MATCH (p2:Person) WHERE p2.risk_score >= 80 WITH persons, orgs, transactions, count(p2) AS flagged
-                MATCH (a:Case) WHERE a.status IN ['Open', 'UnderReview']
+                OPTIONAL MATCH (o:Organization) WITH persons, count(o) AS orgs
+                OPTIONAL MATCH ()-[t:TRANSACTED_WITH]->() WITH persons, orgs, count(t) AS transactions
+                OPTIONAL MATCH (p2:Person) WHERE p2.risk_score >= 80
+                WITH persons, orgs, transactions, count(p2) AS flagged
+                OPTIONAL MATCH (a:Case) WHERE a.status IN ['Open', 'UnderReview']
                 WITH persons, orgs, transactions, flagged, count(a) AS active_cases
-                MATCH (i:Incident) WHERE i.status = 'Open' AND i.severity IN ['High', 'Critical']
+                OPTIONAL MATCH (i:Incident) WHERE i.status = 'Open' AND i.severity IN ['High', 'Critical']
                 RETURN persons, orgs, transactions, flagged, active_cases, count(i) AS open_alerts
                 """
             )
