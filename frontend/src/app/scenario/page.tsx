@@ -2,13 +2,15 @@
 
 import { Check, FlaskConical, Loader2, Shuffle } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PageShell } from "@/components/layout/PageShell";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { useToast } from "@/components/ui/Toast";
 import { useScenarioJob, useScenarioTypes } from "@/hooks/useScenario";
+import { cn } from "@/lib/cn";
 import styles from "./page.module.css";
 
 const TYPE_LABELS: Record<string, string> = {
@@ -43,8 +45,23 @@ export default function ScenarioPage() {
   const [complexity, setComplexity] = useState("Medium");
   const [seed, setSeed] = useState<number | null>(null);
   const { start, job, jobId, reset } = useScenarioJob();
+  const { showToast } = useToast();
 
   const activeType = type ?? typesData?.types[0] ?? "";
+  const status = job.data?.status;
+
+  // Job status arrives via polling, not a mutation callback, so a toast on
+  // completion needs its own effect — fired once per job by keying off jobId.
+  const notifiedJobRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!jobId || !status || status === "running" || notifiedJobRef.current === jobId) return;
+    notifiedJobRef.current = jobId;
+    if (status === "done") {
+      showToast("Scenario generated successfully", "success");
+    } else if (status === "failed") {
+      showToast(job.data?.error ?? "Scenario generation failed", "error");
+    }
+  }, [jobId, status, job.data?.error, showToast]);
 
   function randomizeSeed() {
     setSeed(Math.floor(Math.random() * 1_000_000));
@@ -55,7 +72,6 @@ export default function ScenarioPage() {
     start.mutate({ type: activeType, complexity, seed });
   }
 
-  const status = job.data?.status;
   const stages = job.data?.stages ?? [];
   const result = job.data?.result;
 
@@ -85,9 +101,7 @@ export default function ScenarioPage() {
                 <button
                   key={c}
                   type="button"
-                  className={[styles.complexityOption, c === complexity && styles.complexityOptionActive]
-                    .filter(Boolean)
-                    .join(" ")}
+                  className={cn(styles.complexityOption, c === complexity && styles.complexityOptionActive)}
                   onClick={() => setComplexity(c)}
                 >
                   {c}
@@ -142,7 +156,16 @@ export default function ScenarioPage() {
           )}
 
           {status === "failed" && (
-            <EmptyState icon={FlaskConical} title="Generation failed" description={job.data?.error ?? "Unknown error"} />
+            <EmptyState
+              icon={FlaskConical}
+              title="Generation failed"
+              description={job.data?.error ?? "Unknown error"}
+              actions={
+                <Button variant="secondary" size="sm" onClick={reset}>
+                  Try Again
+                </Button>
+              }
+            />
           )}
 
           {status === "done" && result && (
