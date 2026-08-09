@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { PageShell } from "@/components/layout/PageShell";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { useBrowseEntities } from "@/hooks/useEntities";
 import { useSearch } from "@/hooks/useSearch";
 import styles from "./page.module.css";
 
@@ -18,16 +19,30 @@ export default function SearchPage() {
   const [riskMin, setRiskMin] = useState(0);
   const debouncedQuery = useDebouncedValue(query, 250);
 
-  const { data, isFetching } = useSearch(debouncedQuery);
+  const hasQuery = debouncedQuery.trim().length > 0;
+  const hasFilters = activeTypes.length > 0 || riskMin > 0;
+  // With no typed name, the type/risk filters used to render but do nothing —
+  // the page just showed "type a name" regardless of what was checked. Now,
+  // as soon as a filter is active, that becomes a real server-side browse
+  // across the selected types (or all facet types if only risk is set).
+  const browseMode = !hasQuery && hasFilters;
+
+  const textSearch = useSearch(hasQuery ? debouncedQuery : "");
+  const browse = useBrowseEntities(browseMode ? (activeTypes.length > 0 ? activeTypes : FACET_TYPES) : [], riskMin);
+
+  const isFetching = hasQuery ? textSearch.isFetching : browse.isFetching;
 
   const filtered = useMemo(() => {
-    const results = data?.data ?? [];
+    if (browseMode) {
+      return browse.data.filter((node) => activeTypes.length === 0 || activeTypes.includes(node.label));
+    }
+    const results = textSearch.data?.data ?? [];
     return results.filter((node) => {
       if (activeTypes.length > 0 && !activeTypes.includes(node.label)) return false;
       if (node.risk_score < riskMin) return false;
       return true;
     });
-  }, [data, activeTypes, riskMin]);
+  }, [browseMode, browse.data, textSearch.data, activeTypes, riskMin]);
 
   function toggleType(type: string) {
     setActiveTypes((prev) => (prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]));
@@ -71,11 +86,11 @@ export default function SearchPage() {
         </aside>
 
         <div>
-          {query.trim().length === 0 ? (
+          {!hasQuery && !hasFilters ? (
             <EmptyState
               icon={SearchIcon}
               title="Search the graph"
-              description="Type a name to find persons, organizations, vehicles, and locations across the synthetic world."
+              description="Type a name, or check a type / set a minimum risk score to browse, to find persons, organizations, vehicles, and locations across the synthetic world."
             />
           ) : isFetching ? (
             <div className={styles.resultsList}>
@@ -84,7 +99,11 @@ export default function SearchPage() {
               ))}
             </div>
           ) : filtered.length === 0 ? (
-            <EmptyState icon={SearchIcon} title="No results" description={`Nothing matches "${query}".`} />
+            <EmptyState
+              icon={SearchIcon}
+              title="No results"
+              description={hasQuery ? `Nothing matches "${query}".` : "No entities match these filters."}
+            />
           ) : (
             <>
               <div className={styles.resultsHeader}>

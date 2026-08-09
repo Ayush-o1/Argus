@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import type { GraphNode, Subgraph, TimelineItem } from "@/lib/types";
 
@@ -23,6 +23,31 @@ export function useEntities(params: ListEntitiesParams) {
       return apiFetch<GraphNode[]>(`/api/entities?${search.toString()}`);
     },
   });
+}
+
+/** Browse entities across multiple types with a shared risk floor and no name
+ * text — /api/entities only accepts a single `type`, so this fans out one
+ * request per type and merges. Used by Search's filter-only mode (the audit
+ * flagged that the type/risk filter UI previously did nothing until the user
+ * also typed a name). */
+export function useBrowseEntities(types: string[], riskMin: number) {
+  const queries = useQueries({
+    queries: types.map((type) => ({
+      queryKey: ["entities", { type, risk_min: riskMin, page_size: 50 }],
+      queryFn: async () => {
+        const search = new URLSearchParams({ type, page: "1", page_size: "50" });
+        if (riskMin) search.set("risk_min", String(riskMin));
+        return (await apiFetch<GraphNode[]>(`/api/entities?${search.toString()}`)).data;
+      },
+    })),
+  });
+
+  const isFetching = queries.some((q) => q.isFetching);
+  const data = queries
+    .flatMap((q) => q.data ?? [])
+    .sort((a, b) => b.risk_score - a.risk_score);
+
+  return { data, isFetching };
 }
 
 export function useEntity(entityId: string | undefined) {
