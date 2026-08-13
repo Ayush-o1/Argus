@@ -1,52 +1,54 @@
 """
 Generator configuration: seed, scale parameters, and the fixed reference
-data (cities, banks, telecoms, carriers) that grounds ARGUS in real Indian
-geography. See ARGUS_PLAN.md Phase 4 and Phase 8 for rationale.
+data (banks, telecoms, carriers) for the synthetic world. The geography
+itself — regions, countries, cities, trade lanes — lives in `geography.py`.
+See ARGUS_PLAN.md Phase 4 and Phase 8 for rationale.
 """
 
 from dataclasses import dataclass, field
 
+from geography import CITIES, REGIONS, City  # noqa: F401  (re-exported for generators)
 
-@dataclass(frozen=True)
-class City:
-    name: str
-    state: str
-    lat: float
-    lng: float
-    weight: float  # relative population/activity weight for sampling
+# Every institution here is fictional. Names are grouped by region so that an
+# account opened in Rotterdam isn't held at a bank whose name only makes sense
+# in Gujarat — regional plausibility is what makes the dataset readable as a
+# global picture rather than one country's data with foreign coordinates.
+SYNTHETIC_BANKS_BY_REGION: dict[str, list[str]] = {
+    "South Asia": ["Surya FinTech Bank", "Narmada Cooperative Bank", "Konkan Trust Bank", "Deccan Mercantile Bank"],
+    "Middle East": ["Gulf Meridian Bank", "Al-Nahda Commercial Bank", "Pearl Coast Financial"],
+    "Central Asia": ["Steppe Continental Bank", "Caspian Union Bank"],
+    "Southeast Asia": ["Straits Anchor Bank", "Mekong Commercial Bank", "Equator Trust Bank"],
+    "East Asia": ["Orient Harbour Bank", "Pacific Rim Mercantile", "東 Meridian Trust"],
+    "Europe": ["Nordkap Handelsbank", "Meridian Clearing Bank", "Alpine Reserve Bank", "Hansa Union Bank"],
+    "Africa": ["Sahel Continental Bank", "Cape Meridian Bank", "Nile Commercial Trust"],
+    "North America": ["Atlantic Charter Bank", "Cascadia Federal Trust", "Isthmus Commercial Bank"],
+    "South America": ["Andes Mercantile Bank", "Rio Plata Comercial"],
+    "Oceania": ["Southern Cross Mutual", "Tasman Reserve Bank"],
+}
 
+# Flat list for code paths that just need a plausible institution name.
+SYNTHETIC_BANKS = [name for names in SYNTHETIC_BANKS_BY_REGION.values() for name in names]
 
-# Real coordinates. Weights are illustrative (roughly population-order), not
-# census-accurate — they only need to produce a plausible distribution.
-CITIES: list[City] = [
-    City("Mumbai", "Maharashtra", 19.0760, 72.8777, 20),
-    City("Delhi", "Delhi", 28.7041, 77.1025, 20),
-    City("Bengaluru", "Karnataka", 12.9716, 77.5946, 16),
-    City("Hyderabad", "Telangana", 17.3850, 78.4867, 12),
-    City("Chennai", "Tamil Nadu", 13.0827, 80.2707, 12),
-    City("Pune", "Maharashtra", 18.5204, 73.8567, 10),
-    City("Ahmedabad", "Gujarat", 23.0225, 72.5714, 8),
-    City("Jaipur", "Rajasthan", 26.9124, 75.7873, 6),
-    City("Lucknow", "Uttar Pradesh", 26.8467, 80.9462, 5),
-    City("Patna", "Bihar", 25.5941, 85.1376, 4),
+SYNTHETIC_TELECOMS = [
+    "Saffron Mobility",
+    "Aether Telecom",
+    "NordLink Wireless",
+    "Meridian Mobile",
+    "Pacific Signal",
+    "Sahara Cellular",
 ]
-
-SYNTHETIC_BANKS = [
-    "Surya FinTech Bank",
-    "Narmada Cooperative Bank",
-    "Reserve Nexus Bank",
-    "Konkan Trust Bank",
-    "Deccan Mercantile Bank",
-    "Himalaya Savings Bank",
-]
-
-SYNTHETIC_TELECOMS = ["Saffron Mobility", "Aether Telecom", "NordLink Wireless"]
 
 SYNTHETIC_CARRIERS = [
     "Shakti Logistics Pvt Ltd",
     "Astra Freight Lines",
     "Konkan Port Movers",
     "Ganga Cargo Systems",
+    "Meridian Container Lines",
+    "Northwind Maritime",
+    "Blue Isthmus Shipping",
+    "Sable Coast Freight",
+    "Orient Anchor Lines",
+    "Transverse Bulk Carriers",
 ]
 
 ORG_INDUSTRIES = [
@@ -60,6 +62,9 @@ ORG_INDUSTRIES = [
     "Import/Export",
     "IT Services",
     "Agriculture",
+    "Maritime Shipping",
+    "Commodities Trading",
+    "Freight Forwarding",
 ]
 
 OCCUPATIONS = [

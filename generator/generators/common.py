@@ -4,11 +4,21 @@ import random
 import uuid
 from datetime import datetime, timedelta
 
+from faker import Faker
+
 from config import CITIES, City
+from geography import REGION_LOCALES
 
 # ~0.15 degrees of jitter around a city center keeps every generated point
 # plausibly "in the city" without pretending to be a real street address.
 CITY_JITTER_DEGREES = 0.15
+
+_CITY_WEIGHTS = [c.weight for c in CITIES]
+
+# One Faker per locale, built lazily and cached. Constructing a Faker is
+# comparatively expensive, and generating 4,000 persons would otherwise build
+# one per person; they're seeded centrally by `seed_locale_fakers`.
+_FAKER_CACHE: dict[str, Faker] = {}
 
 
 def new_id(prefix: str, counter: int) -> str:
@@ -21,7 +31,29 @@ def new_uuid() -> str:
 
 
 def weighted_city(rng: random.Random) -> City:
-    return rng.choices(CITIES, weights=[c.weight for c in CITIES], k=1)[0]
+    return rng.choices(CITIES, weights=_CITY_WEIGHTS, k=1)[0]
+
+
+def faker_for_region(rng: random.Random, region: str) -> Faker:
+    """A Faker whose locale suits `region`, so synthetic names match their place."""
+    locales = REGION_LOCALES.get(region) or ["en_US"]
+    locale = rng.choice(locales)
+    if locale not in _FAKER_CACHE:
+        _FAKER_CACHE[locale] = Faker(locale)
+    return _FAKER_CACHE[locale]
+
+
+def seed_locale_fakers(seed: int) -> None:
+    """Seed every locale Faker so a given --seed reproduces the same world.
+
+    Faker.seed() is a classmethod seeding the shared generator, so this must be
+    called after the cache is warm to cover locales instantiated later; it is
+    cheap enough to call once per run before generation begins.
+    """
+    Faker.seed(seed)
+    for locale in {loc for locs in REGION_LOCALES.values() for loc in locs}:
+        if locale not in _FAKER_CACHE:
+            _FAKER_CACHE[locale] = Faker(locale)
 
 
 def jittered_point(rng: random.Random, city: City) -> tuple[float, float]:

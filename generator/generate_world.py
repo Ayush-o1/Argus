@@ -21,6 +21,7 @@ from neo4j import GraphDatabase
 from config import GeneratorConfig
 from generators.account_generator import generate_accounts
 from generators.case_generator import generate_seed_cases
+from generators.common import seed_locale_fakers
 from generators.communication_generator import generate_communications
 from generators.device_generator import generate_devices
 from generators.document_generator import generate_documents
@@ -73,8 +74,11 @@ def step(label: str):
 
 def build_world(cfg: GeneratorConfig) -> dict:
     rng = random.Random(cfg.seed)
+    # Kept as the default/fallback Faker; per-region locales are resolved inside
+    # the generators via `common.faker_for_region` so names match their place.
     faker = Faker("en_IN")
     faker.seed_instance(cfg.seed)
+    seed_locale_fakers(cfg.seed)
     scale = cfg.scale
 
     logger.info("ARGUS world generation — seed %d", cfg.seed)

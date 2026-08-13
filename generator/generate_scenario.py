@@ -27,6 +27,7 @@ from neo4j import GraphDatabase
 
 from generators.account_generator import generate_accounts
 from generators.case_generator import generate_seed_cases
+from generators.common import seed_locale_fakers
 from generators.device_generator import generate_devices
 from generators.document_generator import generate_documents
 from generators.neo4j_writer import write_scenario
@@ -112,13 +113,22 @@ def _fetch_existing_persons(session, count: int) -> list[dict]:
 
 
 def _fetch_existing_locations(session) -> list[dict]:
-    result = session.run("MATCH (l:Location) RETURN l.id AS id, l.type AS type")
+    # lat/lng/region are required by the shipment generator's trade-lane model,
+    # which routes between regions and measures detours geometrically.
+    result = session.run(
+        """
+        MATCH (l:Location)
+        RETURN l.id AS id, l.type AS type, l.lat AS lat, l.lng AS lng,
+               l.region AS region, l.city AS city, l.country AS country
+        """
+    )
     return [dict(record) for record in result]
 
 
 def build_scenario(scenario_type: str, complexity: str, seed: int, driver) -> dict:
     rng = random.Random(seed)
     Faker("en_IN").seed_instance(seed)
+    seed_locale_fakers(seed)
     scale = COMPLEXITY_SCALE[complexity]
 
     with driver.session() as session:

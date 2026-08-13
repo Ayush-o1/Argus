@@ -9,7 +9,7 @@ persons). Owners are drawn in shuffled order and given 1-4 (person) or 1-3
 import random
 from datetime import date, timedelta
 
-from config import SYNTHETIC_BANKS
+from config import SYNTHETIC_BANKS, SYNTHETIC_BANKS_BY_REGION
 from generators.common import new_id, new_uuid
 
 ACCOUNT_TYPE_WEIGHTED_PERSON = [("Checking", 55), ("Savings", 35), ("Crypto", 10)]
@@ -23,12 +23,14 @@ def generate_accounts(
     accounts: list[dict] = []
     counter = id_offset
 
-    owners = [(p["id"], "Person") for p in persons] + [(o["id"], "Organization") for o in orgs]
+    owners = [(p["id"], "Person", p.get("region")) for p in persons] + [
+        (o["id"], "Organization", o.get("region")) for o in orgs
+    ]
     rng.shuffle(owners)
 
     types_cls, type_w_cls = zip(*BALANCE_CLASS_WEIGHTED)
 
-    for owner_uuid, owner_type in owners:
+    for owner_uuid, owner_type, owner_region in owners:
         if len(accounts) >= target_count:
             break
         num_accounts = rng.randint(1, 4) if owner_type == "Person" else rng.randint(1, 3)
@@ -40,11 +42,13 @@ def generate_accounts(
                 break
             counter += 1
             opened = date.today() - timedelta(days=rng.randint(60, 365 * 15))
+            bank, offshore = _pick_bank(rng, owner_region)
             accounts.append(
                 {
                     "id": new_uuid(),
                     "account_id": new_id("ACC", counter),
-                    "bank": rng.choice(SYNTHETIC_BANKS),
+                    "bank": bank,
+                    "offshore": offshore,
                     "type": rng.choices(types, weights=type_weights, k=1)[0],
                     "balance_class": rng.choices(types_cls, weights=type_w_cls, k=1)[0],
                     "status": "Active",
@@ -56,3 +60,22 @@ def generate_accounts(
             )
 
     return accounts
+
+
+# Most account holders bank where they live. The minority who don't are exactly
+# what a cross-border investigation looks for, so the deviation is recorded as a
+# queryable property rather than being lost in an otherwise-uniform bank pool.
+OFFSHORE_ACCOUNT_RATE = 0.14
+
+
+def _pick_bank(rng: random.Random, owner_region: str | None) -> tuple[str, bool]:
+    local_pool = SYNTHETIC_BANKS_BY_REGION.get(owner_region or "", [])
+    if not local_pool:
+        return rng.choice(SYNTHETIC_BANKS), False
+    if rng.random() < OFFSHORE_ACCOUNT_RATE:
+        # Draw from banks outside the holder's own region, so the flag means
+        # what it says rather than sometimes landing back on a local bank.
+        foreign = [b for b in SYNTHETIC_BANKS if b not in local_pool]
+        if foreign:
+            return rng.choice(foreign), True
+    return rng.choice(local_pool), False
