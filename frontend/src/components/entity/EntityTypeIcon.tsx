@@ -1,4 +1,14 @@
-import { Building2, FileText, Landmark, Package, ShieldHalf, Smartphone, User, Car as VehicleIcon } from "lucide-react";
+import {
+  Building2,
+  CreditCard,
+  FileText,
+  Landmark,
+  Package,
+  ShieldHalf,
+  Smartphone,
+  User,
+  Car as VehicleIcon,
+} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 export const ENTITY_TYPE_COLOR: Record<string, string> = {
@@ -17,6 +27,10 @@ export const ENTITY_TYPE_COLOR: Record<string, string> = {
 
 const ICONS: Record<string, LucideIcon> = {
   Person: User,
+  // Account had a colour but no icon, so it fell through to the Person
+  // fallback — every account in search results, alerts and evidence lists was
+  // drawn as a human being.
+  Account: CreditCard,
   Organization: Building2,
   Location: Landmark,
   Vehicle: VehicleIcon,

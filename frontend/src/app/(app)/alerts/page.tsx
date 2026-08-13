@@ -1,18 +1,16 @@
 "use client";
 
-import { AlertTriangle, Waypoints } from "lucide-react";
-import Link from "next/link";
+import { AlertTriangle } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useMemo, useState } from "react";
 import { PageShell } from "@/components/layout/PageShell";
+import { AlertDetail } from "@/components/alerts/AlertDetail";
 import { Badge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SegmentedControl, type Segment } from "@/components/ui/SegmentedControl";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useAlerts, useReviewAlert } from "@/hooks/useAlerts";
 import { cn } from "@/lib/cn";
-import { entityId, entityName } from "@/lib/entityDisplay";
 import { formatRelativeTime } from "@/lib/formatters";
 import { RISK_COLORS } from "@/lib/theme";
 import type { Incident } from "@/lib/types";
@@ -35,12 +33,6 @@ const SEVERITY_COLOR: Record<Incident["severity"], string> = {
   Low: RISK_COLORS.Low,
 };
 
-const STATUS_LABEL: Record<string, string> = {
-  Open: "Open",
-  UnderInvestigation: "Investigating",
-  Closed: "Closed",
-};
-
 const SEVERITY_RANK: Record<Incident["severity"], number> = {
   Critical: 0,
   High: 1,
@@ -58,10 +50,12 @@ export default function AlertsPage() {
 
 function AlertsPageInner() {
   const searchParams = useSearchParams();
+  const focusId = searchParams.get("focus");
   const [severity, setSeverity] = useState<SeverityFilter>(
     () => (searchParams.get("severity") as SeverityFilter) ?? "All",
   );
   const [status, setStatus] = useState<StatusFilter>(() => (searchParams.get("status") as StatusFilter) ?? "All");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const { data, isLoading } = useAlerts(status === "All" ? undefined : status, severity === "All" ? undefined : severity);
   const reviewAlert = useReviewAlert();
@@ -78,6 +72,15 @@ function AlertsPageInner() {
       ),
     [data],
   );
+
+  // Derived rather than synced: an incoming ?focus wins until the analyst picks
+  // something, and a filter change that drops the selection falls back to the
+  // top of the queue on the same render.
+  const selected: Incident | null =
+    alerts.find((a) => a.incident_id === selectedId) ??
+    (focusId ? (alerts.find((a) => a.incident_id === focusId) ?? null) : null) ??
+    alerts[0] ??
+    null;
 
   const severitySegments: Segment<SeverityFilter>[] = [
     { value: "All", label: "All severities" },
@@ -108,10 +111,9 @@ function AlertsPageInner() {
       </div>
 
       {isLoading ? (
-        <div className={styles.list}>
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Skeleton key={i} height={92} />
-          ))}
+        <div className={styles.workspace}>
+          <Skeleton height={420} />
+          <Skeleton height={420} />
         </div>
       ) : alerts.length === 0 ? (
         <div className={styles.emptyWrap}>
@@ -122,92 +124,54 @@ function AlertsPageInner() {
           />
         </div>
       ) : (
-        <div className={styles.list}>
-          {alerts.map((alert) => {
-            const alertStatus = alert.status ?? "Open";
-            const isClosed = alertStatus === "Closed";
-            const entities = alert.involved_entities ?? [];
-            const firstId = entities.map((e) => entityId(e.label, e.properties)).find(Boolean);
-
-            return (
-              <div
-                key={alert.incident_id}
-                className={cn(styles.alertCard, isClosed && styles.resolved)}
-                style={{ ["--severity-color" as string]: SEVERITY_COLOR[alert.severity] }}
-              >
-                <div className={styles.head}>
-                  <Badge tone={SEVERITY_TONE[alert.severity]}>{alert.severity}</Badge>
-                  <span className={styles.type}>{alert.type.replace(/([A-Z])/g, " $1").trim()}</span>
-                  <Badge tone={isClosed ? "ok" : "neutral"}>{STATUS_LABEL[alertStatus] ?? alertStatus}</Badge>
-                  <span className={styles.time}>{formatRelativeTime(alert.timestamp)}</span>
-                </div>
-
-                {/* Investigate leads. Closing an alert is the dismissive path
-                    and must not out-rank it visually — it previously rendered
-                    as the filled primary button on every open alert. */}
-                <div className={styles.actions}>
-                  {firstId ? (
-                    <Link href={`/graph?seed=${firstId}`}>
-                      <Button size="sm" variant="secondary" title="Open the involved entities in the Graph Explorer">
-                        <Waypoints size={13} /> Graph
-                      </Button>
-                    </Link>
-                  ) : null}
-                  {alertStatus === "Open" && (
-                    <Button
-                      size="sm"
-                      variant="primary"
-                      disabled={reviewAlert.isPending}
-                      onClick={() => reviewAlert.mutate({ alertId: alert.incident_id, status: "UnderInvestigation" })}
+        // Queue selects, detail argues. A stack of self-contained cards forced
+        // every alert to carry its full context inline, so the page could only
+        // ever be skimmed — and comparing two alerts meant scrolling between
+        // two walls of text.
+        <div className={styles.workspace}>
+          <div className={styles.queueColumn}>
+            <header className={styles.queueHead}>
+              <span className={styles.queueTitle}>Queue</span>
+              <span className={styles.queueCount}>{alerts.length}</span>
+            </header>
+            <ul className={styles.queue} role="listbox" aria-label="Alert queue">
+              {alerts.map((alert) => {
+                const isSelected = alert.incident_id === selected?.incident_id;
+                const isClosed = (alert.status ?? "Open") === "Closed";
+                return (
+                  <li key={alert.incident_id}>
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={isSelected}
+                      className={cn(styles.queueRow, isSelected && styles.queueRowSelected, isClosed && styles.resolved)}
+                      style={{ ["--severity-color" as string]: SEVERITY_COLOR[alert.severity] }}
+                      onClick={() => setSelectedId(alert.incident_id)}
                     >
-                      Investigate
-                    </Button>
-                  )}
-                  {!isClosed && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      disabled={reviewAlert.isPending}
-                      onClick={() => reviewAlert.mutate({ alertId: alert.incident_id, status: "Closed" })}
-                    >
-                      Close
-                    </Button>
-                  )}
-                  {isClosed && (
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      disabled={reviewAlert.isPending}
-                      onClick={() => reviewAlert.mutate({ alertId: alert.incident_id, status: "Open" })}
-                    >
-                      Reopen
-                    </Button>
-                  )}
-                </div>
+                      <span className={styles.queueTop}>
+                        <Badge tone={SEVERITY_TONE[alert.severity]}>{alert.severity}</Badge>
+                        <span className={styles.queueTime}>{formatRelativeTime(alert.timestamp)}</span>
+                      </span>
+                      <span className={styles.queueType}>{alert.type.replace(/([A-Z])/g, " $1").trim()}</span>
+                      <span className={styles.queueDesc}>{alert.description}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
 
-                <p className={styles.description}>{alert.description}</p>
-
-                {entities.length > 0 && (
-                  <div className={styles.entityChips}>
-                    <span className={styles.chipLabel}>Involves</span>
-                    {entities.map((entity, i) => {
-                      const id = entityId(entity.label, entity.properties);
-                      const name = entityName(entity.label, entity.properties);
-                      return id ? (
-                        <Link key={i} href={`/entities/${id}`} className={styles.chip}>
-                          {name}
-                        </Link>
-                      ) : (
-                        <span key={i} className={styles.chip}>
-                          {name}
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+          <div className={styles.detailColumn}>
+            {selected ? (
+              <AlertDetail
+                alert={selected}
+                allAlerts={alerts}
+                onSelect={(a) => setSelectedId(a.incident_id)}
+                onReview={(next) => reviewAlert.mutate({ alertId: selected.incident_id, status: next })}
+                isReviewing={reviewAlert.isPending}
+              />
+            ) : null}
+          </div>
         </div>
       )}
     </PageShell>

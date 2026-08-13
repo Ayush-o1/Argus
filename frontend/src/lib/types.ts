@@ -33,6 +33,10 @@ export interface Incident {
   timestamp: string;
   description: string;
   status?: string;
+  /** The storyline that planted this incident. Two alerts sharing one are
+   * genuinely part of the same activity, which is what makes "related alerts"
+   * a real link rather than a similarity heuristic. */
+  storyline_id?: string | null;
   involved_entities?: { label: string; properties: Record<string, unknown> }[];
 }
 
