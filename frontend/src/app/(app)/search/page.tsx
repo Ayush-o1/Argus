@@ -42,13 +42,14 @@ function SearchPageInner() {
   const params = useSearchParams();
   const [query, setQuery] = useState("");
   const [activeTypes, setActiveTypes] = useState<string[]>([]);
+  const [activeRegions, setActiveRegions] = useState<string[]>([]);
   // Entering from the dashboard's risk ladder pre-seeds the threshold, so the
   // click lands on a filtered result set rather than an empty search box.
   const [riskMin, setRiskMin] = useState(() => Number(params.get("risk") ?? 0) || 0);
   const debouncedQuery = useDebouncedValue(query, 250);
 
   const hasQuery = debouncedQuery.trim().length > 0;
-  const hasFilters = activeTypes.length > 0 || riskMin > 0;
+  const hasFilters = activeTypes.length > 0 || activeRegions.length > 0 || riskMin > 0;
   // With no typed name, the type/risk filters used to render but do nothing —
   // the page just showed "type a name" regardless of what was checked. Now,
   // as soon as a filter is active, that becomes a real server-side browse
@@ -60,17 +61,24 @@ function SearchPageInner() {
 
   const isFetching = hasQuery ? textSearch.isFetching : browse.isFetching;
 
+  const browseData = browse.data;
+
   const filtered = useMemo(() => {
+    const inRegion = (node: (typeof browseData)[number]) =>
+      activeRegions.length === 0 || activeRegions.includes(String(node.properties.region ?? ""));
+
     if (browseMode) {
-      return browse.data.filter((node) => activeTypes.length === 0 || activeTypes.includes(node.label));
+      return browseData.filter(
+        (node) => (activeTypes.length === 0 || activeTypes.includes(node.label)) && inRegion(node),
+      );
     }
     const results = textSearch.data?.data ?? [];
     return results.filter((node) => {
       if (activeTypes.length > 0 && !activeTypes.includes(node.label)) return false;
       if (node.risk_score < riskMin) return false;
-      return true;
+      return inRegion(node);
     });
-  }, [browseMode, browse.data, textSearch.data, activeTypes, riskMin]);
+  }, [browseMode, browseData, textSearch.data, activeTypes, activeRegions, riskMin]);
 
   // Counts come from the result set actually on screen, so a facet never
   // advertises a number the current query can't deliver.
@@ -80,12 +88,38 @@ function SearchPageInner() {
     return counts;
   }, [filtered]);
 
+  // Regions offered are only those present in the unfiltered result set, so
+  // the facet can never advertise a region the current query cannot deliver.
+  // Counts, however, must ignore the region filter itself — otherwise every
+  // unselected region would read 0 the moment one was ticked.
+  const regionCounts = useMemo(() => {
+    const source = browseMode ? browseData : (textSearch.data?.data ?? []);
+    const counts: Record<string, number> = {};
+    for (const node of source) {
+      if (activeTypes.length > 0 && !activeTypes.includes(node.label)) continue;
+      if (!browseMode && node.risk_score < riskMin) continue;
+      const region = node.properties.region;
+      if (region) counts[String(region)] = (counts[String(region)] ?? 0) + 1;
+    }
+    return counts;
+  }, [browseMode, browseData, textSearch.data, activeTypes, riskMin]);
+
+  const availableRegions = useMemo(
+    () => Object.keys(regionCounts).sort((a, b) => regionCounts[b] - regionCounts[a]),
+    [regionCounts],
+  );
+
+  function toggleRegion(region: string) {
+    setActiveRegions((prev) => (prev.includes(region) ? prev.filter((r) => r !== region) : [...prev, region]));
+  }
+
   function toggleType(type: string) {
     setActiveTypes((prev) => (prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]));
   }
 
   function resetFilters() {
     setActiveTypes([]);
+    setActiveRegions([]);
     setRiskMin(0);
   }
 
@@ -128,6 +162,23 @@ function SearchPageInner() {
               />
             ))}
           </div>
+
+          {availableRegions.length > 0 ? (
+            <div className={styles.filterGroup}>
+              <div className={styles.filterHead}>
+                <span className={styles.filterTitle}>Region</span>
+              </div>
+              {availableRegions.map((region) => (
+                <Checkbox
+                  key={region}
+                  label={region}
+                  checked={activeRegions.includes(region)}
+                  onChange={() => toggleRegion(region)}
+                  count={regionCounts[region]}
+                />
+              ))}
+            </div>
+          ) : null}
 
           <div className={styles.filterGroup}>
             <RangeSlider

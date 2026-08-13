@@ -22,7 +22,7 @@ Interactive docs (Swagger UI, generated from the same FastAPI app) are available
 
 | Method | Path | Params | Description |
 |---|---|---|---|
-| GET | `/api/entities` | `type` (default `Person`), `risk_min` (default 0), `city`, `page`, `page_size` | Paginated, risk-sorted list. `type` must be one of `Person`, `Organization`, `Location`, `Vehicle`, `Device` (`graph_repo.BROWSABLE_LABELS`); anything else is a **400**. It previously fell back to `Person` for unrecognised values, which returned people labelled as the requested type. `risk_min`/`city` apply to Person and Organization only. |
+| GET | `/api/entities` | `type` (default `Person`), `risk_min` (default 0), `city`, `page`, `page_size` | Paginated, risk-sorted list. `type` must be one of `Person`, `Organization`, `Location`, `Vehicle`, `Device` (`graph_repo.BROWSABLE_LABELS`); anything else is a **400**. It previously fell back to `Person` for unrecognised values, which returned people labelled as the requested type. `risk_min` applies to **every** label — it was previously restricted to Person/Organization, so browsing any other type with a threshold returned a full unfiltered page presented as matching the filter. `city` applies to Person, Organization and Location, the labels that carry the property.  |
 | GET | `/api/entities/{entity_id}` | — | Full node by human ID (any type), plus a `connections` map (`{label: count}`). 404 if not found. |
 | GET | `/api/entities/{entity_id}/graph` | `depth` (default 1) | Subgraph = the entity plus its `depth`-hop neighborhood. |
 | GET | `/api/entities/{entity_id}/timeline` | — | Person/Organization activity feed (events, transactions, communications), newest first. |
@@ -55,7 +55,10 @@ Interactive docs (Swagger UI, generated from the same FastAPI app) are available
 | Method | Path | Params | Description |
 |---|---|---|---|
 | GET | `/api/map/entities` | `type` (`Person`\|`Organization`, optional) | Every geo-located Person/Organization (`lat`/`lng` not null). |
-| GET | `/api/map/shipments` | — | Shipment routes with resolved origin/destination coordinates and names. |
+| GET | `/api/map/shipments` | — | Shipment routes with resolved origin/destination/via coordinates, trade lane, anomaly kind, detour ratio, distance and manifest. `via` is set only on `circuitous` routes, so it is an OPTIONAL MATCH — a plain MATCH would drop every normal shipment. |
+| GET | `/api/map/regions` | — | Per-region aggregates (entity/org/country counts, avg risk, elevated count, anomalous routes) plus map centre and zoom. Backs the map's world tier and the dashboard's Global posture panel. |
+| GET | `/api/map/countries` | `region` (optional) | Per-country aggregates, optionally scoped to one region. Backs the map's regional tier. |
+| GET | `/api/map/corridors` | — | Region-to-region trade corridors aggregated from actual shipments, with shipment count and anomaly share. Direction is collapsed — the question at world scale is how much moves between two regions, not which way. |
 
 ## Timeline — `app/api/routes/timeline.py`
 

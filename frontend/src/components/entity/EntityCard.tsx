@@ -5,13 +5,24 @@ import type { GraphNode } from "@/lib/types";
 import { EntityTypeIcon } from "./EntityTypeIcon";
 import styles from "./EntityCard.module.css";
 
+// City alone is ambiguous in a world with 70 of them across 50 countries —
+// "Bengaluru" and "Santos" carry very different context, and an analyst
+// scanning results shouldn't have to open each one to find out where it is.
+function placeOf(node: GraphNode): string {
+  const p = node.properties;
+  const city = p.city ?? p.registered_city;
+  return [city, p.country].filter(Boolean).join(", ");
+}
+
 function metaLine(node: GraphNode): string {
   const p = node.properties;
   switch (node.label) {
     case "Person":
-      return [p.occupation, p.city].filter(Boolean).join(" · ");
+      return [p.occupation, placeOf(node)].filter(Boolean).join(" · ");
     case "Organization":
-      return [p.industry, p.registered_city].filter(Boolean).join(" · ");
+      return [p.industry, placeOf(node)].filter(Boolean).join(" · ");
+    case "Location":
+      return [p.type, placeOf(node)].filter(Boolean).join(" · ");
     case "Vehicle":
       return [p.make, p.model, p.plate].filter(Boolean).join(" · ");
     case "Device":

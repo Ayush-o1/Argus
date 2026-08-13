@@ -137,6 +137,26 @@ def to_graph_node(props: dict, label: str) -> dict:
     }
 
 
+# `city` only exists on these labels; Vehicles and Devices are located through
+# their owner rather than carrying coordinates of their own.
+CITY_FILTERABLE_LABELS = ("Person", "Organization", "Location")
+
+
+def build_browse_filters(label: str, risk_min: float, city: str | None) -> tuple[str, str]:
+    """Cypher fragments for the browse filters, as (risk_filter, city_filter).
+
+    The risk filter applies to every browsable label. Restricting it to
+    Person/Organization meant "High risk and above" silently returned every
+    Location, Vehicle and Device on the page — unfiltered rows presented as
+    matching the filter. All five labels carry a non-null risk_score, so
+    applying it uniformly is simply the honest answer, including when that
+    answer is no results at all.
+    """
+    risk_filter = "AND n.risk_score >= $risk_min" if risk_min > 0 else ""
+    city_filter = "AND n.city = $city" if city and label in CITY_FILTERABLE_LABELS else ""
+    return risk_filter, city_filter
+
+
 async def list_entities(
     driver: AsyncDriver,
     entity_type: str,
@@ -151,8 +171,7 @@ async def list_entities(
         # of people labelled as that type — wrong data presented as correct.
         raise ValueError(f"Unsupported entity type: {entity_type}")
     label = entity_type
-    city_filter = "AND n.city = $city" if city and label in ("Person", "Organization") else ""
-    risk_filter = "AND n.risk_score >= $risk_min" if label in ("Person", "Organization") else ""
+    risk_filter, city_filter = build_browse_filters(label, risk_min, city)
 
     count_query = f"MATCH (n:{label}) WHERE true {risk_filter} {city_filter} RETURN count(n) AS total"
     query = f"""
