@@ -21,6 +21,8 @@ Neo4j Community Edition 5 + the Graph Data Science (GDS) plugin, self-hosted via
 | `Case` | `case_id` | `title` | `case_generator.py` |
 | `Storyline` | `storyline_id` | — (`type` doubles as name) | `storyline_generator.py` |
 
+Placed entities (`Person`, `Organization`, `Location`) additionally carry `country`, `country_code` and `region` alongside `city`/`state`, so the graph can be rolled up geographically without joining against a separate reference table — this is what `/api/map/regions` and `/api/map/countries` aggregate over. `Shipment` carries `origin_region`, `destination_region`, `lane`, `anomaly_kind`, `detour_ratio`, `distance_km` and a nullable `via_id`.
+
 Every node also carries an opaque `id` property (a UUID4 string) — this is the node's true primary key, unique-constrained (see below), and what every relationship pattern matches on internally. The human-readable ID (`person_id`, `account_id`, ...) is what the API and UI expose to users; `backend/app/repositories/entity_labels.py` maps the ID's string prefix (`PRS`, `ACC`, ...) back to a label and field name so a route can resolve `/api/entities/PRS-0000442` without knowing the label ahead of time.
 
 `Transaction` and `Communication` are **not node labels** — see [architecture.md#why-transactionscommunications-are-edge-properties-not-nodes](architecture.md#why-transactionscommunications-are-edge-properties-not-nodes). `Alert` is also not a separate label — alerts are a filtered view over `Incident` (severity `High`/`Critical`); see `backend/app/repositories/alert_repo.py`.

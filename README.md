@@ -2,7 +2,9 @@
 
 A graph-native investigation and analytics platform built entirely on procedurally generated synthetic data.
 
-ARGUS is set in **real Indian geography** (real cities, states, coordinates), but every person, organization, phone number, account, transaction, and document inside it is **100% synthetic**. No real individual or real company is represented. There is no scraping, no OSINT, and no surveillance functionality — this is an engineering demonstration of graph database design, graph analytics, and investigation-workflow tooling.
+ARGUS models a **global operating picture**: 70 real cities across 50 countries and 10 regions, with real coordinates and real trade geography. Every person, organization, phone number, account, transaction, shipment, and document inside it is **100% synthetic**. No real individual or real company is represented. There is no scraping, no OSINT, and no surveillance functionality — this is an engineering demonstration of graph database design, graph analytics, and investigation-workflow tooling.
+
+South Asia is the heaviest-weighted region by design — it is the declared **area of interest**, not the whole world model. An analyst moves World → Region → Country → City → Entity → Relationship → Event → Case, and the application preserves that context across the graph, map, search and case surfaces.
 
 `ARGUS_PLAN.md` in this repository is the original pre-build design proposal — architecture rationale and phase-by-phase reasoning, kept for historical context. **The `docs/` directory below is the current, maintained source of truth** for how the system actually works.
 
@@ -12,13 +14,14 @@ An analyst-facing tool for exploring a connected dataset of people, organization
 
 ## Key capabilities
 
-- **Command Center** — a dashboard built around what needs attention: a metric strip that ranks alerts and elevated entities ahead of corpus totals, a priority queue of the highest-risk entities, and a severity ladder where every band is a filtered entry point.
+- **Command Center** — a dashboard built around what needs attention: a metric strip that ranks alerts and elevated entities ahead of corpus totals, a priority queue of the highest-risk entities, a global posture panel ranking regions by escalation, and a severity ladder where every band is a filtered entry point.
 - **Graph Explorer** — Cytoscape.js canvas over the live Neo4j graph. Opens on a risk-led overview rather than the whole graph; entity type and risk are encoded as independent channels (fill vs. border ring); labels are gated by zoom and importance; focus mode isolates a neighborhood; clicking an edge explains *why* two entities are connected. Plus neighborhood expansion, shortest-path finding, and multiple layouts.
 - **Analytics Engine** — PageRank, Betweenness, Louvain communities, Node2Vec similarity, custom risk propagation, and cycle detection via Neo4j Graph Data Science; plus Isolation Forest + z-score transaction-anomaly detection that independently rediscovers injected anomalies without reading their ground-truth labels.
 - **Cases & Alerts** — an investigation workspace (evidence board, notes, status/priority) and a triage queue over system-flagged incidents, ordered by severity before recency, with one-click pivot from an alert into the graph.
 - **Local Intelligence Layer** — deterministic, template-composed entity/case narratives (no model, no network call), plus an entirely optional local-LLM assistant that the rest of the product has zero dependency on.
 - **Scenario Generator** — creates a new synthetic investigation storyline on demand by running the real generation engine as a background job against the live graph.
-- **Map & Timeline** — geospatial view (MapLibre + deck.gl) that aggregates entities into risk-coloured density hexagons at country zoom and resolves to individual points as you zoom in, rendering anomalous shipment routes at full strength while routine traffic recedes to background texture; plus a temporal activity view (@visx) over the same dataset.
+- **Map** — a global geospatial workspace (MapLibre + deck.gl) with three scale tiers that swap datasets rather than restyle one: regions and trade corridors at world zoom, country aggregates at regional zoom, individual entities and shipment routes locally. Routes and the ranked context panel scope to the visible extent, so drilling in actually narrows what you see. Clicking a flagged route explains *why* it was flagged.
+- **Timeline** — a temporal investigation workspace: daily volume with burst detection (days above 2σ of flagged volume), time-range and per-lane filters, and a ranked panel of what actually happened inside the current selection.
 
 See [docs/analytics.md](docs/analytics.md) and [docs/ai-layer.md](docs/ai-layer.md) for how these actually work.
 
@@ -43,7 +46,7 @@ No hosted AI dependency anywhere in ARGUS Core — every "intelligence" feature 
 | Frontend | Next.js 16 (App Router), TypeScript, vanilla CSS Modules, Cytoscape.js, MapLibre GL + deck.gl, @visx/Recharts, TanStack Query, Zustand, Framer Motion |
 | Backend | FastAPI (Python 3.12), async Neo4j driver, async Redis client |
 | Database | Neo4j 5 Community Edition + Graph Data Science (GDS) plugin, self-hosted via Docker |
-| Data generation | Python + Faker (`en_IN` locale), deterministic/seeded |
+| Data generation | Python + Faker (per-region locales), deterministic/seeded |
 | Intelligence | Neo4j GDS algorithms, scikit-learn (Isolation Forest), deterministic template NLG; optional local LLM via Ollama |
 
 ## Repository layout
@@ -129,4 +132,4 @@ ARGUS is local-first by design, built for a single analyst on one machine. It in
 
 ## Ethics note
 
-ARGUS contains no real personal data, no scraped data, and no surveillance functionality of any kind. Every entity is procedurally generated. Real Indian geography is used only to ground the synthetic world in plausible places — no real individual or organization is represented.
+ARGUS contains no real personal data, no scraped data, and no surveillance functionality of any kind. Every entity, relationship, shipment and event is procedurally generated and fictional. Real geography — city names, coordinates, country dialing codes, corporate legal forms, trade corridors — is used only to ground the synthetic world in plausible places, so that a generated dataset reads coherently to an analyst. No real individual or organization is represented, and nothing here describes real events.

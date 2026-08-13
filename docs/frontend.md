@@ -52,9 +52,9 @@ frontend/src/
 | `/dashboard` | Command center: metric strip, priority queue, incident feed, risk ladder, active cases | `useDashboardSummary`, `useEntities` |
 | `/graph` | Cytoscape.js canvas — the Graph Explorer | `useGraphOverview`, `useSubgraph` |
 | `/search` | Full-text search + browse, with type/risk facets | `useSearch`, `useBrowseEntities` |
-| `/map` | MapLibre + deck.gl over India | `useMapEntities`, `useMapShipments` |
-| `/timeline` | @visx swimlane chart | `useGlobalTimeline` |
-| `/entities/[id]` | Entity profile — Properties/Risk/Activity/Cases & Alerts/Summary tabs | `useEntity`, `useEntityTimeline`, `useEntityCases`, `useEntityAlerts`, `useEntitySummary` |
+| `/map` | Global geospatial workspace (MapLibre + deck.gl), three scale tiers | `useMapEntities`, `useMapShipments`, `useMapRegions`, `useMapCountries`, `useMapCorridors` |
+| `/timeline` | Volume histogram + burst detection + swimlane chart + ranked moments | `useGlobalTimeline` |
+| `/entities/[id]` | Entity hub — risk and contributing factors always visible in the sidebar; Properties/Activity/Cases & Alerts/Summary tabs | `useEntity`, `useEntityTimeline`, `useEntityCases`, `useEntityAlerts`, `useEntitySummary` |
 | `/cases`, `/cases/[id]` | Case list + workspace (evidence board, notes, summary) | `useCases`, `useCase`, `useCaseSummary` |
 | `/alerts` | Alert review queue | `useAlerts`, `useReviewAlert` |
 | `/analytics` | Algorithm picker + result renderer | `useAnalyticsJob` |
@@ -136,25 +136,61 @@ Layout uses `cytoscape-fcose` (registered once behind a module-level guard so St
 
 > Do **not** add a retry/`setStyle` guard around the base-map style load. React StrictMode's dev-only double-mount aborts the first `Map` instance's in-flight `style.json` fetch, which looks like a failure in the network panel but is harmless — the surviving instance's own fetch succeeds. A previous "resilience" fix that re-issued `setStyle()` raced with that successful load and was itself the cause of intermittent blank basemaps. See [troubleshooting.md](troubleshooting.md#map-renders-without-a-basemap).
 
-### Zoom-dependent rendering
+### Scale tiers
 
-The map switches representation at `HEX_ZOOM_THRESHOLD` (6.2) rather than drawing every point at every scale:
+The map opens on the **world**, not a country — the product models a global picture, and opening on one country frames every investigation as local before the analyst has asked anything. `scaleForZoom()` maps the current zoom to one of three tiers, and each tier renders a *different dataset* rather than restyling one:
 
-- **Below the threshold** — a `HexagonLayer` aggregates entities into density bins coloured by `MAX` risk within each bin, so a country-wide view shows *where* risk concentrates instead of thousands of overlapping dots. Hovering a bin reports its count; clicking flies in two zoom levels.
-- **Above it** — a `ScatterplotLayer` of individual entities, sized and coloured by risk tier, with the selected entity drawn larger and ringed in white.
-- **Above `LABEL_ZOOM_THRESHOLD` (7.5)** — a `TextLayer` labels only critical-risk entities and the current selection.
+| Tier | Zoom | Entities | Routes |
+|---|---|---|---|
+| `world` | < 3.3 | Region bubbles from `/api/map/regions` | Region-to-region corridors from `/api/map/corridors` |
+| `regional` | 3.3–5.8 | Country bubbles from `/api/map/countries` | Individual shipment routes |
+| `local` | ≥ 5.8 | Individual entities; labels for critical/selected above 7.2 | Individual shipment routes |
+
+They swap datasets because they answer different questions: at world zoom the analyst is reading "which regions are active", and several thousand individual points cannot express that however they are drawn. Bubble radius is area-proportional (`√count`) — sizing by radius alone over-weights large aggregates.
+
+### Arcs are chords, not great circles
+
+Every `ArcLayer` sets `greatCircle: false`. A true great-circle path between, say, Central Asia and North America passes near the pole, which Web Mercator projects **off the top of the viewport** as a stray vertical line. `getHeight` cannot rein this in either: ArcLayer bows arcs along Z, which projects flat in a top-down view. These arcs abstract a trade relationship rather than claim a sailed route, so a straight chord is both more readable and more honest about what it represents.
+
+A `circuitous` shipment is drawn as **two** legs through its `via` port — collapsing it to one origin→destination arc would hide the detour, which is the entire reason the route was flagged.
+
+### Viewport scoping
+
+Once zoomed past the world tier, both the route layer and `MapContextPanel` filter to the visible extent (`withinBounds`). Without this, drilling into a region was decorative: the camera moved but the panel still listed Germany and Brazil, and intercontinental arcs merely transiting the view were the loudest thing on screen. Filtering on the viewport rather than a remembered "active region" also stays correct when the analyst pans and zooms freely instead of clicking through.
+
+### The context panel
+
+`MapContextPanel` is the ranked companion to the canvas — regions at world tier, countries at regional tier, ordered by elevated entities then route anomalies. It exists for two reasons: comparing two similar circles across a world map is a poor way to answer "where is risk highest", and region names drawn onto the canvas collided with the basemap's own continent labels. It also gives drill-down an explicit affordance rather than relying on the analyst guessing that bubbles are clickable.
 
 ### Route hierarchy
 
-Routes are split across two `ArcLayer`s so anomalies are never out-shouted by routine traffic. Anomalous routes always draw at full width and opacity and are the only pickable ones; normal routes render only when the filter is set to "all", at 0.6px and 22% opacity — present as texture, not as competition. `MapControls` exposes entity-type, risk-floor and route filters (all on the shared `SelectControl`, highlighted when non-default) plus an entity search that flies to a result.
+Routes are split across two `ArcLayer`s so anomalies are never out-shouted by routine traffic. Anomalous routes are the only pickable ones; normal routes render only when the filter is set to "all", at 0.6px and 22% opacity — present as texture, not as competition. At world tier the route filter applies to corridors too, so the control means the same thing at every scale; `ELEVATED_ANOMALY_RATE` (4.5%) sits meaningfully above the generator's 3% base rate, since a threshold below the baseline would paint most corridors red and make "anomalous" meaningless.
 
-Clicking an entity opens `SelectedEntityPopup` (profile + graph pivots); clicking an anomalous route opens `ShipmentDetailPopup` (carrier, status, anomaly flag, risk score).
+Person points use a lighter neutral than the design system's low-risk slate (`PERSON_MAP_COLOR`). The UI token is deliberately quiet, but at 3.5px on a near-black basemap it was invisible — hiding 4,000 people and leaving 400 organizations looking like the whole dataset.
 
-`app/(app)/map/page.tsx` reads a `?focus=<entityId>` query param (used by the entity profile's "View on Map" action — see below): the matching entity is derived via `useMemo` over the already-loaded entity list rather than stored in state, and a `useEffect` flies the camera to it. Manual selection is tracked separately (`undefined` = no override yet, so the focused entity still wins; `null` = the popup was explicitly closed) to avoid syncing derived data into state.
+`MapControls` exposes entity-type, risk-floor and route filters (all on the shared `SelectControl`), a "World" reset, an entity search that flies to a result, and a badge naming the current tier and what it shows.
+
+Clicking an entity opens `SelectedEntityPopup`; clicking an anomalous route opens `ShipmentDetailPopup`, which explains *why* the route was flagged (off-lane / circuitous with its detour ratio and via-port / manifest discrepancy) rather than reporting `Route anomaly: Yes`.
+
+`app/(app)/map/page.tsx` reads two query params. `?focus=<entityId>` (from the entity profile's "View on Map") derives the matching entity via `useMemo` over the already-loaded list rather than storing it in state, and flies the camera to it; manual selection is tracked separately (`undefined` = no override yet, so the focused entity still wins; `null` = the popup was explicitly closed). `?region=<name>` (from the dashboard's Global posture panel) waits on the region rollup **and** on the map having reported bounds — MapLibre ignores `flyTo` before its style has loaded, and an earlier version latched its "already flown" ref before the map existed, so the link silently did nothing.
 
 ## Timeline
 
-`components/timeline/TimelineChart.tsx` — a hand-built @visx swimlane chart (four lanes: Incidents, Transactions, Communications, Events), not a Recharts chart, because the timeline needs heterogeneous point types on shared lanes with custom tooltips, which is easier to get right with @visx's low-level primitives (`scaleTime`, `scaleBand`, `Group`, `useTooltip`) than to force through a pre-built chart component.
+The page is a temporal investigation workspace, not a single chart. `components/timeline/timelineModel.ts` holds the pure model — day bucketing, range filtering, and burst detection — so the analysis is testable and separate from rendering.
+
+- **Burst detection.** A day is a burst when its flagged volume exceeds the mean by `BURST_SIGMA` (2) standard deviations, guarded against zero variance so a flat dataset doesn't mark every day. Two sigma isolates a handful of days on this dataset; a threshold that fired constantly would be decoration, not a finding.
+- **`ActivityHistogram`** answers "what changed" — daily volume with flagged activity stacked in front of the baseline, burst days marked explicitly rather than left to be eyeballed. Each bar has a full-height transparent hit area, because a 2px bar is far too small a click target. Selecting a day narrows the rest of the page.
+- **`TimelineChart`** — a hand-built @visx swimlane chart (four lanes: Incidents, Transactions, Communications, Events), not a Recharts chart, because it needs heterogeneous point types on shared lanes with custom tooltips, which is easier with @visx's low-level primitives than through a pre-built chart component. Baseline points render at 1.6px/0.3 opacity and flagged records are drawn **last**: at 3px/0.55 they merged into solid bands that buried the very records the lane exists to surface, and source ordering could let an ordinary record occlude a finding.
+- **`NotableMoments`** ranks everything flagged inside the current selection, incidents first by severity. It deliberately covers flagged transactions and communications too — bursts here are driven by those, so an incidents-only panel went empty exactly when the analyst clicked the most interesting day on the chart. Transactions and communications are relationships rather than nodes, so those rows stay informational instead of pretending to link somewhere.
+
+### Search facets
+
+`/search` offers entity-type, region and minimum-risk facets. Two rules keep them honest:
+
+- Type counts come from the result set actually on screen, so a facet never advertises a number the current query cannot deliver.
+- Region counts deliberately **ignore the region filter itself** — computing them post-filter would make every unselected region read zero the moment one was ticked.
+
+Result rows show `city, country` rather than a bare city: across 70 cities in 50 countries, "Bengaluru" and "Santos" carry very different context, and an analyst scanning results shouldn't have to open each one to find out where it is.
 
 ## Cross-page linking
 
@@ -163,7 +199,9 @@ Entity, Case, Alert, Graph, and Map are meant to be jumped between, not treated 
 - Entity profile → `/graph?seed={id}` ("View in Graph"), `/map?focus={id}` (when the entity has `lat`/`lng`), and a "Cases & Alerts" tab backed by `GET /api/entities/{id}/cases` / `/alerts` — both reverse the same `Case-[:LINKED_TO]->Entity` and `Incident-[:INVOLVES]->Entity` relationships the forward-direction case/alert queries already use.
 - Dashboard stat cards → `/cases` and `/alerts?status=Open` (the latter pre-selects the status tab via `useSearchParams`, which requires wrapping the page in `<Suspense>` per Next's static-export rules).
 - Timeline incident tooltips → `/alerts`. (Getting a tooltip's embedded link to actually be clickable took a debounced-hide fix — a bare `onMouseLeave` on the 3px SVG circle closed the tooltip before the cursor could reach it; see the comment in `TimelineChart.tsx`.)
-- Scenario Generator results → `/graph?seed=`, `/cases/{id}`, `/entities/{id}` for the storyline's key entity.
+- Scenario Generator results → `/graph?seed=`, `/cases/{id}`, `/entities/{id}` for the storyline's key entity, plus a "what to look for" brief naming the storyline's signature and the surface that shows it.
+- Dashboard Global posture → `/map?region={name}`, which flies the map to that region rather than dropping the analyst at the world view with no indication of what they clicked.
+- Entity profile → an "already referenced in N cases and N alerts" banner that opens the Cases & Alerts tab. Whether an entity is already under investigation changes what to do next, so it belongs on arrival rather than three clicks in. Connection counts link into the graph — "9 Persons" is only useful if the analyst can go and see them.
 
 ## Entity display for denormalized references
 

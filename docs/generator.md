@@ -54,20 +54,36 @@ storyline_count: int = 15
 
 There is no CLI flag to override these individually — to change scale, edit `ScaleConfig`'s defaults directly (or construct a `GeneratorConfig(scale=ScaleConfig(...))` if calling `build_world` from other code). `--seed`, `--neo4j-uri/--neo4j-user/--neo4j-password`, and `--no-wipe` are the only CLI-exposed flags.
 
-`config.py` also holds the fixed reference data that grounds the world in real Indian geography without using any real personal data: 10 real cities (with real lat/lng and a sampling weight roughly proportional to population), synthetic bank/telecom/logistics-carrier name pools, industry and occupation lists, and document types.
+`config.py` holds the synthetic reference data — bank, telecom and carrier name pools (grouped by region), industry and occupation lists, document types. The **geography itself lives in `geography.py`**: 70 real cities across 50 countries and 10 regions, each with real coordinates, an activity weight, and functional tags (`port`, `financial`, `hub`). No real personal data is used anywhere; only place names and coordinates are real, which is what grounds synthetic entities in plausible geography.
 
-## Entity generation — India-context patterns
+South Asia — and India within it — carries the heaviest weighting by design. It is the product's declared **area of interest**, not the whole world model; roughly 29% of persons are placed there, with the remainder spread across the other nine regions. The world was previously ten Indian cities, which meant no amount of frontend work could produce a global operating picture.
+
+`geography.py` also defines the two structures that give shipments meaning:
+
+- **`TRADE_LANES`** — weighted region-to-region corridors (East Asia ↔ Europe, South Asia ↔ Middle East, ...). Shipments are routed along these rather than between two randomly chosen ports. This baseline is what makes an anomaly mean anything: with uniformly random endpoints, no route can be more surprising than any other.
+- **`IMPLAUSIBLE_LANES`** — region pairs with essentially no direct freight relationship. A shipment routed along one of these is what "off-lane" means in this dataset, defined against the baseline rather than asserted by a flag.
+
+## Entity generation — regional patterns
 
 Every generator module lives in `generator/generators/` and follows the same shape: `generate_x(rng, ..., count, id_offset=0) -> list[dict]`.
 
-- **Persons** (`person_generator.py`) — `Faker("en_IN")` names (gendered), age 18–75, occupation drawn from a fixed list (Import Merchant, Software Engineer, Chartered Accountant, ...), city/state from the weighted city list, Indian-format phone numbers via Faker.
-- **Organizations** (`organization_generator.py`) — names built from an Indian-flavored root list (Shakti, Surya, Bharat, Konkan, Deccan, ...) plus an industry-specific suffix pool (e.g. Logistics → "Logistics Pvt Ltd", "Freight Lines"). Weighted org type: 65% Corporation, 10% Shell, 10% NGO, 8% Government, 7% Criminal.
+- **Persons** (`person_generator.py`) — names come from a Faker locale matching the entity's **region** (`REGION_LOCALES`), so a person registered in Rotterdam or Busan isn't given an Indian name. Age 18–75, occupation from a fixed list, city/state/country/region from the weighted city list. Phone numbers are synthesised under the country's real dialing code rather than via Faker, whose `phone_number` provider is missing on several of the locales used here and wouldn't carry a country code anyway. ~12% are expatriates, taking their nationality **and their name** from a different country of origin than their city of residence — deriving the name from the city instead produced people whose name silently contradicted the only nationality field an analyst could filter on.
+- **Organizations** (`organization_generator.py`) — names combine a regional root (`NAME_ROOTS_BY_REGION`), an industry suffix, and the **real legal form of the country of registration** (`Pte Ltd` in Singapore, `GmbH` in Germany, `K.K.` in Japan, `S.A.` in Panama). Weighted org type: 65% Corporation, 10% Shell, 10% NGO, 8% Government, 7% Criminal.
 - **Vehicles** (`vehicle_generator.py`) — real Indian makes/models (Tata Nexon, Mahindra Bolero, Maruti Suzuki Swift, ...), synthetic plates in the `SS00XX0000` state-code format (`MH`, `DL`, `KA`, ...). ~1 in 3 owners get a vehicle.
-- **Accounts** (`account_generator.py`) — 1–4 per person, 1–3 per organization, drawn from a shuffled owner list until `target_count` is hit; type/balance-class are weighted categorical draws.
+- **Accounts** (`account_generator.py`) — 1–4 per person, 1–3 per organization, drawn from a shuffled owner list until `target_count` is hit; type/balance-class are weighted categorical draws. Banks are drawn from the owner's own region, with a 14% offshore minority held at a bank **outside** it and marked `offshore: true` — a cross-border holding is exactly what an investigation looks for, so the deviation is a queryable property rather than something lost in a uniform bank pool.
 - **Devices** (`device_generator.py`) — 1–3 per person, synthetic IMEI/MAC, carrier from a synthetic-telecom list.
 - **Transactions** (`transaction_generator.py`) — per-account baseline volume is itself a weighted draw (`3, 8, 20, or 45` transactions, weighted toward the low end) so that a later injected burst reads as a genuine statistical deviation rather than blending into noise. Amount scales with the account's `balance_class`.
 - **Communications** (`communication_generator.py`) — builds a contact graph first (5–15 contacts per connected person), then generates traffic along those edges — this is what makes the resulting graph look like a real social network instead of uniform random noise.
-- **Documents, Events, Shipments** — see their respective generator modules; shipments get a 3% "route anomaly" rate independent of storyline injection.
+- **Documents, Events** — see their respective generator modules.
+- **Shipments** (`shipment_generator.py`) — ~97% follow `TRADE_LANES`; the remaining ~3% deviate in one of three **inspectable kinds** rather than via a single opaque boolean, because each is a different analytic question with a different follow-up:
+
+  | Kind | What it is | Recorded as |
+  |---|---|---|
+  | `off_lane` | Endpoints in two regions with no freight relationship | `origin_region`/`destination_region` in `IMPLAUSIBLE_LANES` |
+  | `circuitous` | Plausible endpoints, implausible detour | `via_id` (a third-region port) + `detour_ratio` ≥ 1.4 |
+  | `manifest_shift` | Declared cargo ≠ recorded cargo | `manifest` vs `declared_manifest` |
+
+  Transit time scales with the **routed** distance (~500 km/day), so arrival dates stay consistent with the path actually drawn on the map.
 
 ## Storyline injection (`storyline_generator.py`)
 
@@ -78,7 +94,7 @@ Stage 8 plants deliberately-entangled entity clusters — **ground truth**, not 
 | `shell_company_ring` | 3–8 organizations forcibly retyped as `Shell`, 1–3 shared controllers (`CONTROLS` edges), circular transaction routing between the ring's accounts (A→B→C→...→A, each hop retaining a small cut) |
 | `money_routing_network` | A 4–7 account transaction chain, high value, each hop skimming a cut — classic layering |
 | `communication_cluster` | 5–10 people with an unusually dense communication pattern over a 48-hour window |
-| `supply_chain_divergence` | Marks 1–4 existing route-anomaly shipments as high-risk and bundles them into one storyline |
+| `supply_chain_divergence` | Marks 1–4 existing route-anomaly shipments as high-risk and bundles them into one storyline. The on-demand path (`generate_scenario.py`) sets `anomaly_kind` and a mismatched `declared_manifest` alongside `route_anomaly` — flipping the boolean alone produced flagged arcs whose map detail panel could give no reason for the flag |
 | `document_forgery_ring` | 3–6 documents flagged with an inconsistency type (issuer/subject mismatch, duplicate serial, backdated issue) |
 | `identity_overlap` | 1–2 additional people sharing a device with its registered owner (`SHARES_DEVICE`) |
 | `anomalous_transaction_burst` | 15–50 transactions from one account in a 6-hour window, several times its baseline velocity |
