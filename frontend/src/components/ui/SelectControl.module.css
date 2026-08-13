@@ -1,0 +1,64 @@
+.wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.icon {
+  position: absolute;
+  left: var(--space-3);
+  color: var(--text-tertiary);
+  pointer-events: none;
+  display: flex;
+}
+
+.chevron {
+  position: absolute;
+  right: var(--space-2);
+  color: var(--text-tertiary);
+  pointer-events: none;
+  display: flex;
+}
+
+.select {
+  -webkit-appearance: none;
+  appearance: none;
+  height: var(--control-height);
+  padding: 0 26px 0 var(--space-3);
+  border-radius: 8px;
+  background: var(--surface-overlay);
+  border: 1px solid var(--surface-border);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition:
+    background-color var(--transition-fast),
+    border-color var(--transition-fast);
+}
+
+.withIcon {
+  padding-left: 32px;
+}
+
+.select:hover {
+  background: var(--surface-hover);
+}
+
+.select:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 1px;
+}
+
+/* Native option lists render with the OS palette; forcing the surface color
+   keeps the open dropdown from flashing white on a dark app. */
+.select option {
+  background: var(--surface-overlay);
+  color: var(--text-primary);
+}
+
+.active {
+  border-color: rgba(61, 123, 255, 0.5);
+  background: var(--accent-glow);
+  color: var(--accent-primary-hover);
+}

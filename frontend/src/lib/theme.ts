@@ -6,14 +6,19 @@
  * change a color here, change it there too, and vice versa.
  */
 
+/** Monotonic in salience — see the risk block in styles/tokens.css for why
+ * "Low" is deliberately a quiet slate rather than a saturated green. */
 export const RISK_COLORS = {
   Critical: "#FF3B47",
   High: "#FF7D1A",
-  Medium: "#FFB800",
-  Low: "#1AE87B",
+  Medium: "#E0A800",
+  Low: "#64748B",
 } as const;
 
 export const RISK_COLOR_UNKNOWN = "#8892A4";
+
+/** Positive confirmation only (resolved/cleared/healthy) — never "low risk". */
+export const STATUS_OK = "#22C55E";
 
 export const ENTITY_COLORS = {
   Person: "#3D7BFF",

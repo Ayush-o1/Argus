@@ -40,6 +40,11 @@
 }
 
 .low {
-  background: rgba(26, 232, 123, 0.12);
-  color: var(--risk-low);
+  background: rgba(100, 116, 139, 0.16);
+  color: #94a3b8;
+}
+
+.ok {
+  background: rgba(34, 197, 94, 0.12);
+  color: var(--status-ok);
 }

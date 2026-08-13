@@ -7,8 +7,14 @@ than the frontend fanning out N separate list calls just to compute totals.
 
 from neo4j import AsyncDriver
 
+# Half-open [low, high) so adjacent bands can't double-count — except the top
+# band, which must include the 100 endpoint. Storyline-injected entities are
+# scored at exactly 100.0, so an exclusive upper bound silently dropped every
+# genuinely critical entity from the distribution: the dashboard reported
+# "Critical: 0" while simultaneously reporting 4 flagged entities, and the
+# buckets summed to 3996 of 4000 persons.
 RISK_BUCKETS = [
-    ("Critical", 80, 100),
+    ("Critical", 80, None),
     ("High", 60, 80),
     ("Medium", 35, 60),
     ("Low", 0, 35),
@@ -48,9 +54,10 @@ async def get_dashboard_summary(driver: AsyncDriver) -> dict:
 
         risk_distribution = []
         for label, low, high in RISK_BUCKETS:
+            upper_clause = "AND p.risk_score < $high" if high is not None else ""
             record = await (
                 await session.run(
-                    "MATCH (p:Person) WHERE p.risk_score >= $low AND p.risk_score < $high RETURN count(p) AS count",
+                    f"MATCH (p:Person) WHERE p.risk_score >= $low {upper_clause} RETURN count(p) AS count",
                     low=low,
                     high=high,
                 )

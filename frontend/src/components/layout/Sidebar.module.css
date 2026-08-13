@@ -123,6 +123,9 @@
   text-overflow: ellipsis;
 }
 
+/* Neutral by default — a count is just context. Only the alert queue, which
+ * is the one nav item representing unreviewed work, earns the red treatment;
+ * making every count red would flatten the signal the alert badge carries. */
 .itemBadge {
   display: inline-flex;
   align-items: center;
@@ -131,10 +134,17 @@
   height: 18px;
   padding: 0 5px;
   border-radius: 9px;
+  background: var(--surface-border);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--font-semibold);
+}
+
+.itemBadgeAlert {
   background: var(--risk-critical);
   color: #fff;
-  font-size: 10px;
-  font-weight: var(--font-semibold);
 }
 
 .footer {

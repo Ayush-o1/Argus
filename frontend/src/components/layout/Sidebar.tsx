@@ -35,19 +35,29 @@ export function Sidebar() {
             {group.items.map((item) => {
               const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
               const Icon = item.icon;
-              const badgeCount = !collapsed && item.badgeKey === "alerts" ? summary?.open_alerts : undefined;
+              const count =
+                item.badgeKey === "alerts"
+                  ? summary?.open_alerts
+                  : item.badgeKey === "cases"
+                    ? summary?.active_cases
+                    : undefined;
               return (
                 <Link
                   key={item.href}
                   href={item.href}
                   className={cn(styles.item, active && styles.itemActive)}
-                  title={item.label}
+                  title={item.hint ? `${item.label} — ${item.hint}` : item.label}
+                  aria-current={active ? "page" : undefined}
                 >
                   <span className={styles.itemIcon}>
                     <Icon size={17} strokeWidth={1.75} />
                   </span>
                   {!collapsed && <span className={styles.itemLabel}>{item.label}</span>}
-                  {badgeCount ? <span className={styles.itemBadge}>{badgeCount}</span> : null}
+                  {count ? (
+                    <span className={cn(styles.itemBadge, item.badgeKey === "alerts" && styles.itemBadgeAlert)}>
+                      {count}
+                    </span>
+                  ) : null}
                 </Link>
               );
             })}

@@ -2,6 +2,7 @@
 
 import { Search } from "lucide-react";
 import { usePathname } from "next/navigation";
+import { useDashboardSummary } from "@/hooks/useDashboard";
 import { useUIStore } from "@/stores/uiStore";
 import styles from "./Topbar.module.css";
 
@@ -20,6 +21,7 @@ function humanize(segment: string) {
 export function Topbar() {
   const pathname = usePathname();
   const setCommandPaletteOpen = useUIStore((s) => s.setCommandPaletteOpen);
+  const { data: summary } = useDashboardSummary();
   const segments = pathname.split("/").filter(Boolean);
 
   return (
@@ -37,12 +39,25 @@ export function Topbar() {
         )}
       </div>
 
+      <button type="button" className={styles.searchField} onClick={() => setCommandPaletteOpen(true)}>
+        <Search size={14} />
+        <span className={styles.searchPlaceholder}>Search entities, cases, alerts…</span>
+        <span className={styles.kbd}>⌘K</span>
+      </button>
+
       <div className={styles.actions}>
-        <button type="button" className={styles.searchButton} onClick={() => setCommandPaletteOpen(true)}>
-          <Search size={14} />
-          <span>Search</span>
-          <span className={styles.kbd}>⌘K</span>
-        </button>
+        {summary ? (
+          <span className={styles.worldStat} title="Entities in the current synthetic world">
+            {(summary.total_persons + summary.total_organizations).toLocaleString("en-IN")} entities
+          </span>
+        ) : null}
+        {/* The product is explicitly a simulation over generated data. Stating
+         * that once, quietly, in persistent chrome is more honest than either
+         * hiding it or repeating a banner on every page. */}
+        <span className={styles.simBadge} title="All data in this instance is procedurally generated. No real individuals or organizations are represented.">
+          <span className={styles.simDot} />
+          Synthetic
+        </span>
       </div>
     </header>
   );

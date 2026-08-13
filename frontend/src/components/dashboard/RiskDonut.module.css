@@ -1,36 +1,70 @@
-.wrap {
-  display: flex;
-  align-items: center;
-  gap: var(--space-6);
-}
-
-.legend {
+.ladder {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: 2px;
 }
 
-.legendRow {
+.row {
+  display: grid;
+  grid-template-columns: 88px 1fr 52px 46px;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-2);
+  border-radius: 7px;
+  transition: background-color var(--transition-fast);
+}
+
+.row:hover {
+  background: var(--surface-hover);
+}
+
+.rowHead {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  font-size: var(--text-sm);
+  min-width: 0;
 }
 
 .dot {
-  width: 8px;
-  height: 8px;
+  display: block;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   flex-shrink: 0;
 }
 
-.legendLabel {
+.level {
+  font-size: var(--text-sm);
   color: var(--text-secondary);
-  flex: 1;
 }
 
-.legendValue {
+.track {
+  display: block;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-inset);
+  overflow: hidden;
+}
+
+.fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  transition: width var(--transition-base);
+}
+
+.count {
   font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
   color: var(--text-primary);
-  font-weight: var(--font-medium);
+  text-align: right;
+}
+
+.share {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-tertiary);
+  text-align: right;
 }

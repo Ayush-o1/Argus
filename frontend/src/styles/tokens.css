@@ -27,12 +27,21 @@
   --accent-primary-hover: #5590ff;
   --accent-glow: rgba(61, 123, 255, 0.15);
 
-  /* === RISK / SEVERITY === */
+  /* === RISK / SEVERITY ===
+     Deliberately monotonic in *salience*, not just hue: an analyst scanning a
+     dense screen should have their eye pulled to critical first and never to
+     "low". A saturated green for the common case (>99% of entities here) turns
+     a calm baseline into the loudest thing on screen, so low/none read as
+     quiet slate and only genuine escalation earns chroma. */
   --risk-critical: #ff3b47;
   --risk-high: #ff7d1a;
-  --risk-medium: #ffb800;
-  --risk-low: #1ae87b;
+  --risk-medium: #e0a800;
+  --risk-low: #64748b;
+  --risk-none: #475569;
   --risk-unknown: #8892a4;
+  /* Reserved for explicit positive confirmations (resolved, cleared, healthy) —
+     never for "low risk", which is a baseline rather than an achievement. */
+  --status-ok: #22c55e;
 
   /* === ENTITY TYPES (graph node colors) === */
   --entity-person: #3d7bff;
@@ -81,6 +90,15 @@
   --space-12: 48px;
   --space-16: 64px;
   --space-20: 80px;
+
+  /* === DENSITY ===
+     ARGUS is a data-dense product: these drive list/table/row rhythm so every
+     surface scans at the same cadence instead of each page inventing its own. */
+  --row-height: 44px;
+  --row-height-compact: 36px;
+  --row-padding-x: var(--space-4);
+  --control-height: 34px;
+  --control-height-sm: 28px;
 
   /* === SIDEBAR === */
   --sidebar-width: 240px;

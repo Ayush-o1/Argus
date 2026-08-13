@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import styles from "./Badge.module.css";
 
-type Tone = "neutral" | "accent" | "critical" | "high" | "medium" | "low";
+type Tone = "neutral" | "accent" | "critical" | "high" | "medium" | "low" | "ok";
 
 interface BadgeProps {
   tone?: Tone;

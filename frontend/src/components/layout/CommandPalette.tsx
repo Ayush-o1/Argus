@@ -4,6 +4,9 @@ import { CornerDownLeft, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type KeyboardEvent as ReactKeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { EntityTypeIcon } from "@/components/entity/EntityTypeIcon";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { useSearch } from "@/hooks/useSearch";
 import { cn } from "@/lib/cn";
 import { NAV_GROUPS } from "@/lib/constants";
 import { useUIStore } from "@/stores/uiStore";
@@ -13,7 +16,11 @@ interface FlatItem {
   label: string;
   href: string;
   group: string;
-  icon: (typeof NAV_GROUPS)[number]["items"][number]["icon"];
+  icon?: (typeof NAV_GROUPS)[number]["items"][number]["icon"];
+  /** Secondary line, e.g. an entity's type and ID. */
+  meta?: string;
+  /** Entity label (Person/Organization/…) when this row is a graph entity. */
+  entityLabel?: string;
 }
 
 const FLAT_ITEMS: FlatItem[] = NAV_GROUPS.flatMap((group) =>
@@ -58,11 +65,25 @@ export function CommandPalette() {
     if (open) requestAnimationFrame(() => inputRef.current?.focus());
   }, [open]);
 
-  const results = useMemo(() => {
+  // Entity lookup is what makes this a genuine "jump to anything" surface
+  // rather than a page switcher; pages stay in the list so navigation still
+  // works, but real graph entities rank alongside them.
+  const debouncedQuery = useDebouncedValue(query, 180);
+  const entityQuery = debouncedQuery.trim().length > 1 ? debouncedQuery : "";
+  const { data: entityData, isFetching } = useSearch(entityQuery);
+
+  const results = useMemo<FlatItem[]>(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return FLAT_ITEMS;
-    return FLAT_ITEMS.filter((item) => item.label.toLowerCase().includes(q));
-  }, [query]);
+    const pages = q ? FLAT_ITEMS.filter((item) => item.label.toLowerCase().includes(q)) : FLAT_ITEMS;
+    const entities: FlatItem[] = (entityData?.data ?? []).slice(0, 7).map((node) => ({
+      label: node.name,
+      href: `/entities/${node.id}`,
+      group: "Entities",
+      meta: `${node.label} · ${node.id}`,
+      entityLabel: node.label,
+    }));
+    return [...pages, ...entities];
+  }, [query, entityData]);
 
   function navigate(href: string) {
     router.push(href);
@@ -95,7 +116,7 @@ export function CommandPalette() {
           <input
             ref={inputRef}
             className={styles.input}
-            placeholder="Jump to a page…"
+            placeholder="Search entities, or jump to a page…"
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
@@ -106,14 +127,14 @@ export function CommandPalette() {
         </div>
         <div className={styles.list}>
           {results.length === 0 ? (
-            <div className={styles.empty}>No matching pages</div>
+            <div className={styles.empty}>{isFetching ? "Searching…" : "No matching entities or pages"}</div>
           ) : (
             results.map((item, i) => {
               const showGroup = item.group !== lastGroup;
               lastGroup = item.group;
               const Icon = item.icon;
               return (
-                <div key={item.href}>
+                <div key={`${item.group}-${item.href}`}>
                   {showGroup ? <div className={styles.groupLabel}>{item.group}</div> : null}
                   <button
                     type="button"
@@ -122,9 +143,16 @@ export function CommandPalette() {
                     onClick={() => navigate(item.href)}
                   >
                     <span className={styles.itemIcon}>
-                      <Icon size={15} />
+                      {item.entityLabel ? (
+                        <EntityTypeIcon label={item.entityLabel} size={14} />
+                      ) : Icon ? (
+                        <Icon size={15} />
+                      ) : null}
                     </span>
-                    {item.label}
+                    <span className={styles.itemBody}>
+                      <span className={styles.itemLabel}>{item.label}</span>
+                      {item.meta ? <span className={styles.itemMeta}>{item.meta}</span> : null}
+                    </span>
                   </button>
                 </div>
               );

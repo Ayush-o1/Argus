@@ -1,50 +1,84 @@
 "use client";
 
-import { AlertTriangle, Building2, ShieldHalf, TrendingUp, Users } from "lucide-react";
+import Link from "next/link";
+import type { ReactNode } from "react";
 import { Card } from "@/components/ui/Card";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { CaseList } from "@/components/dashboard/CaseList";
 import { IncidentFeed } from "@/components/dashboard/IncidentFeed";
+import { MetricStrip } from "@/components/dashboard/MetricStrip";
+import { PriorityQueue } from "@/components/dashboard/PriorityQueue";
 import { RiskDonut } from "@/components/dashboard/RiskDonut";
-import { StatCard } from "@/components/dashboard/StatCard";
 import { PageShell } from "@/components/layout/PageShell";
 import { useDashboardSummary } from "@/hooks/useDashboard";
 import styles from "./page.module.css";
+
+interface PanelProps {
+  title: string;
+  hint?: string;
+  href?: string;
+  linkLabel?: string;
+  flush?: boolean;
+  children: ReactNode;
+}
+
+function Panel({ title, hint, href, linkLabel = "View all", flush, children }: PanelProps) {
+  return (
+    <Card className={styles.panel}>
+      <div className={styles.panelHead}>
+        <div className={styles.panelTitleGroup}>
+          <span className={styles.panelTitle}>{title}</span>
+          {hint ? <span className={styles.panelHint}>{hint}</span> : null}
+        </div>
+        {href ? (
+          <Link href={href} className={styles.panelLink}>
+            {linkLabel} →
+          </Link>
+        ) : null}
+      </div>
+      <div className={flush ? styles.panelBodyFlush : styles.panelBody}>{children}</div>
+    </Card>
+  );
+}
 
 export default function DashboardPage() {
   const { data, isLoading } = useDashboardSummary();
 
   return (
-    <PageShell title="Dashboard" subtitle="Command center overview">
+    <PageShell title="Command Center" subtitle="What needs attention across the synthetic world right now">
       {isLoading || !data ? (
         <DashboardSkeleton />
       ) : (
         <>
-          <div className={styles.statGrid}>
-            <StatCard label="Active Cases" value={data.active_cases} icon={ShieldHalf} href="/cases" />
-            <StatCard label="Open Alerts" value={data.open_alerts} icon={AlertTriangle} href="/alerts?status=Open" />
-            <StatCard label="Avg Risk Score" value={data.avg_risk_score} decimals={1} suffix="/ 100" icon={TrendingUp} />
-            <StatCard label="Flagged Entities" value={data.flagged_entities} icon={AlertTriangle} />
-            <StatCard label="Persons" value={data.total_persons} icon={Users} />
-            <StatCard label="Organizations" value={data.total_organizations} icon={Building2} />
-          </div>
+          <MetricStrip summary={data} />
 
           <div className={styles.mainGrid}>
             <div className={styles.column}>
-              <Card className={styles.panel}>
-                <span className={styles.panelTitle}>Recent Incidents</span>
+              <Panel
+                title="Priority queue"
+                hint="Highest-risk entities — start here"
+                href="/search"
+                linkLabel="Browse all"
+              >
+                <PriorityQueue />
+              </Panel>
+              <Panel
+                title="Recent incidents"
+                hint="System-detected activity, newest first"
+                href="/alerts"
+                flush
+              >
                 <IncidentFeed incidents={data.recent_incidents} />
-              </Card>
+              </Panel>
             </div>
+
             <div className={styles.column}>
-              <Card className={styles.panel}>
-                <span className={styles.panelTitle}>Entity Risk Distribution</span>
+              <Panel title="Risk distribution" hint="Population by severity band" flush>
                 <RiskDonut data={data.risk_distribution} />
-              </Card>
-              <Card className={styles.panel}>
-                <span className={styles.panelTitle}>Recent Cases</span>
+              </Panel>
+              <Panel title="Active cases" hint="Open investigations" href="/cases" flush>
                 <CaseList cases={data.recent_cases} />
-              </Card>
+              </Panel>
             </div>
           </div>
         </>
@@ -56,14 +90,10 @@ export default function DashboardPage() {
 function DashboardSkeleton() {
   return (
     <div>
-      <div className={styles.statGrid}>
-        {Array.from({ length: 6 }).map((_, i) => (
-          <Skeleton key={i} height={88} />
-        ))}
-      </div>
-      <div className={styles.skeletonGrid}>
-        <Skeleton height={220} />
-        <Skeleton height={160} />
+      <Skeleton height={92} />
+      <div className={styles.skeletonGrid} style={{ marginTop: "var(--space-5)" }}>
+        <Skeleton height={260} />
+        <Skeleton height={200} />
       </div>
     </div>
   );
