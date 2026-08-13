@@ -6,7 +6,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { useDashboardSummary } from "@/hooks/useDashboard";
 import { formatCompactNumber } from "@/lib/formatters";
-import { GraphMotif } from "./GraphMotif";
+import { ProductPreview } from "./ProductPreview";
 import styles from "./Hero.module.css";
 
 const FALLBACK_STATS = [
@@ -47,7 +47,7 @@ export function Hero() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.05, ease: [0.16, 1, 0.3, 1] }}
         >
-          See the connections <span className={styles.headlineAccent}>others miss.</span>
+          Investigate the <span className={styles.headlineAccent}>whole picture.</span>
         </motion.h1>
 
         <motion.p
@@ -56,9 +56,10 @@ export function Hero() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.12, ease: [0.16, 1, 0.3, 1] }}
         >
-          ARGUS is a graph-native investigation platform — entity graphs, geospatial patterns, and
-          case management over a fully synthetic, India-grounded dataset. No real individuals, no
-          scraping, no surveillance. An engineering demonstration built to work like the real thing.
+          A graph-native investigation workspace over a fully synthetic world: 4,000 entities across
+          50 countries, their accounts, devices, shipments and communications — and the relationships
+          between them. Move from a global picture to a single relationship without losing context. No
+          real individuals, no scraping, no surveillance.
         </motion.p>
 
         <motion.div
@@ -99,8 +100,7 @@ export function Hero() {
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.8, delay: 0.15, ease: [0.16, 1, 0.3, 1] }}
       >
-        <div className={styles.visualFrame} />
-        <GraphMotif />
+        <ProductPreview />
       </motion.div>
     </section>
   );

@@ -19,7 +19,7 @@ const CAPABILITIES: Capability[] = [
   {
     icon: Map,
     title: "Geospatial Intelligence",
-    desc: "Shipment routes and entity locations across real Indian geography, clustered and filtered so anomalies stand out instead of drowning in lines.",
+    desc: "A world-first map that moves from regions and trade corridors down to individual entities, with off-lane routing and manifest discrepancies surfaced rather than drowning in lines.",
   },
   {
     icon: BarChart3,
