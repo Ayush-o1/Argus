@@ -54,3 +54,39 @@
 .rowValue {
   color: var(--text-primary);
 }
+
+.finding {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: 8px;
+  background: var(--surface-raised);
+  border: 1px solid var(--surface-border);
+  /* Severity is carried by the badge; the container stays neutral so the panel
+     doesn't become a block of red. */
+}
+
+.findingHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.findingTitle {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.findingDetail {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.findingDetail strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}

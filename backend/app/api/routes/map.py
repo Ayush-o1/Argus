@@ -18,3 +18,21 @@ async def map_entities(type: str | None = None, driver: AsyncDriver = Depends(ge
 async def map_shipments(driver: AsyncDriver = Depends(get_db)) -> Envelope[list]:
     shipments = await map_repo.get_map_shipments(driver)
     return Envelope(data=shipments)
+
+
+@router.get("/regions")
+async def map_regions(driver: AsyncDriver = Depends(get_db)) -> Envelope[list]:
+    """Regional aggregates + map centers — the world view's data source."""
+    return Envelope(data=await map_repo.get_region_rollup(driver))
+
+
+@router.get("/countries")
+async def map_countries(region: str | None = None, driver: AsyncDriver = Depends(get_db)) -> Envelope[list]:
+    """Country aggregates, optionally scoped to one region."""
+    return Envelope(data=await map_repo.get_country_rollup(driver, region))
+
+
+@router.get("/corridors")
+async def map_corridors(driver: AsyncDriver = Depends(get_db)) -> Envelope[list]:
+    """Region-to-region trade corridors with their anomaly share."""
+    return Envelope(data=await map_repo.get_corridors(driver))

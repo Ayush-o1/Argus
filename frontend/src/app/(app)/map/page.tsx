@@ -3,14 +3,22 @@
 import { Map as MapIcon } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { ArgusMap, type ArgusMapHandle } from "@/components/map/ArgusMap";
+import { ArgusMap, type ArgusMapHandle, type MapBounds, type MapScale } from "@/components/map/ArgusMap";
+import { MapContextPanel } from "@/components/map/MapContextPanel";
 import { MapControls, MapLegend, type EntityTypeFilter, type RouteFilter } from "@/components/map/MapControls";
 import { SelectedEntityPopup } from "@/components/map/SelectedEntityPopup";
 import { ShipmentDetailPopup } from "@/components/map/ShipmentDetailPopup";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Spinner } from "@/components/ui/Spinner";
 import { PageShell } from "@/components/layout/PageShell";
-import { useMapEntities, useMapShipments, type ShipmentRoute } from "@/hooks/useMap";
+import {
+  useMapCorridors,
+  useMapCountries,
+  useMapEntities,
+  useMapRegions,
+  useMapShipments,
+  type ShipmentRoute,
+} from "@/hooks/useMap";
 import type { GraphNode } from "@/lib/types";
 import styles from "./page.module.css";
 
@@ -34,6 +42,9 @@ function MapPageInner() {
 
   const { data: rawEntities, isLoading: loadingEntities } = useMapEntities(entityType === "all" ? undefined : entityType);
   const { data: shipments, isLoading: loadingShipments } = useMapShipments();
+  const { data: regions } = useMapRegions();
+  const { data: countries } = useMapCountries();
+  const { data: corridors } = useMapCorridors();
 
   const entities = useMemo(
     () => (rawEntities ?? []).filter((e) => e.risk_score >= riskFilter),
@@ -44,7 +55,8 @@ function MapPageInner() {
   // still wins; null = the popup was explicitly closed.
   const [manualSelection, setManualSelection] = useState<GraphNode | null | undefined>(undefined);
   const [selectedShipment, setSelectedShipment] = useState<ShipmentRoute | null>(null);
-  const [clustered, setClustered] = useState(false);
+  const [scale, setScale] = useState<MapScale>("world");
+  const [bounds, setBounds] = useState<MapBounds | null>(null);
   const mapRef = useRef<ArgusMapHandle>(null);
 
   const isLoading = loadingEntities || loadingShipments;
@@ -105,21 +117,33 @@ function MapPageInner() {
               onToggleEntities={() => setShowEntities((v) => !v)}
               onToggleShipments={() => setShowShipments((v) => !v)}
               onSearchSelect={handleSearchSelect}
-              clusteredView={clustered}
+              scale={scale}
+              onResetView={() => mapRef.current?.resetView()}
             />
             <ArgusMap
               ref={mapRef}
               entities={entities}
               shipments={shipments ?? []}
+              regions={regions ?? []}
+              countries={countries ?? []}
+              corridors={corridors ?? []}
               showEntities={showEntities}
               showShipments={showShipments}
               routeFilter={routeFilter}
               selectedEntityId={selected?.id ?? null}
               onSelectEntity={handleSelectEntity}
               onSelectShipment={handleSelectShipment}
-              onClusteredChange={setClustered}
+              onScaleChange={setScale}
+              onBoundsChange={setBounds}
             />
-            <MapLegend />
+            <MapContextPanel
+              scale={scale}
+              regions={regions ?? []}
+              countries={countries ?? []}
+              bounds={bounds}
+              onFlyTo={(lng, lat, z) => mapRef.current?.flyToView(lng, lat, z)}
+            />
+            <MapLegend scale={scale} />
             {selected ? <SelectedEntityPopup node={selected} onClose={() => setManualSelection(null)} /> : null}
             {selectedShipment ? (
               <ShipmentDetailPopup shipment={selectedShipment} onClose={() => setSelectedShipment(null)} />
