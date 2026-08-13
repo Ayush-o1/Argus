@@ -10,9 +10,13 @@ import { useEntity } from "@/hooks/useEntities";
 import type { NeighborConnection } from "./GraphCanvas";
 import styles from "./NodeDetailPanel.module.css";
 
+// Country matters more than state in a graph spanning 50 of them: the
+// analytically interesting thing about a relationship here is usually that it
+// crosses a border, which a bare city name doesn't reveal.
 const DISPLAY_KEYS: Record<string, string[]> = {
-  Person: ["occupation", "city", "state", "status"],
-  Organization: ["type", "industry", "registered_city", "status"],
+  Person: ["occupation", "city", "country", "nationality", "status"],
+  Organization: ["type", "industry", "registered_city", "country", "status"],
+  Location: ["type", "city", "country", "region"],
   Vehicle: ["make", "model", "plate"],
   Account: ["bank", "type", "balance_class"],
   Device: ["type", "carrier"],
