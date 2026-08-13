@@ -1,29 +1,29 @@
 "use client";
 
 import { Plus, ShieldHalf } from "lucide-react";
-import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useMemo, useState } from "react";
 import { PageShell } from "@/components/layout/PageShell";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input, Select, Textarea } from "@/components/ui/Input";
+import { SegmentedControl, type Segment } from "@/components/ui/SegmentedControl";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { Tabs } from "@/components/ui/Tabs";
+import { Table, type TableColumn } from "@/components/ui/Table";
 import { useToast } from "@/components/ui/Toast";
 import { useCases, useCreateCase } from "@/hooks/useCases";
-import { formatRelativeTime } from "@/lib/formatters";
+import { formatDate, formatRelativeTime } from "@/lib/formatters";
 import type { CaseSummary } from "@/lib/types";
 import styles from "./page.module.css";
 
-const STATUS_TABS = ["All", "Draft", "Open", "UnderReview", "Closed"];
+type StatusFilter = "All" | "Draft" | "Open" | "UnderReview" | "Closed";
 
-const STATUS_TONE: Record<CaseSummary["status"], "neutral" | "accent" | "high" | "low"> = {
+const STATUS_TONE: Record<CaseSummary["status"], "neutral" | "accent" | "high" | "ok"> = {
   Draft: "neutral",
   Open: "accent",
   UnderReview: "high",
-  Closed: "low",
+  Closed: "ok",
 };
 
 const PRIORITY_TONE: Record<CaseSummary["priority"], "critical" | "high" | "medium" | "low"> = {
@@ -33,27 +33,63 @@ const PRIORITY_TONE: Record<CaseSummary["priority"], "critical" | "high" | "medi
   Low: "low",
 };
 
+const PRIORITY_RANK: Record<CaseSummary["priority"], number> = {
+  Critical: 0,
+  High: 1,
+  Medium: 2,
+  Low: 3,
+};
+
+/** Closed work should never outrank live work in a queue, regardless of how
+ * urgent it was when it was open. */
+const STATUS_RANK: Record<CaseSummary["status"], number> = {
+  UnderReview: 0,
+  Open: 1,
+  Draft: 2,
+  Closed: 3,
+};
+
 export default function CasesPage() {
   return (
-    <Suspense fallback={<PageShell title="Cases" subtitle="Manage ongoing investigations">{null}</PageShell>}>
+    <Suspense fallback={<PageShell title="Cases" subtitle="Investigation workspaces">{null}</PageShell>}>
       <CasesPageInner />
     </Suspense>
   );
 }
 
 function CasesPageInner() {
+  const router = useRouter();
   const searchParams = useSearchParams();
-  const [statusTab, setStatusTab] = useState(() => searchParams.get("status") ?? "All");
+  const [status, setStatus] = useState<StatusFilter>(() => (searchParams.get("status") as StatusFilter) ?? "All");
   const [showForm, setShowForm] = useState(false);
   const [title, setTitle] = useState("");
   const [priority, setPriority] = useState("Medium");
   const [notes, setNotes] = useState("");
 
-  const { data, isLoading } = useCases(statusTab === "All" ? undefined : statusTab);
+  const { data, isLoading } = useCases(status === "All" ? undefined : status);
   const createCase = useCreateCase();
   const { showToast } = useToast();
 
-  const cases = data?.data ?? [];
+  // Ordered the way an analyst picks up work: live cases first, most urgent
+  // within that, newest as the tiebreak. The API returns creation order only.
+  const cases = useMemo(
+    () =>
+      [...(data?.data ?? [])].sort(
+        (a, b) =>
+          STATUS_RANK[a.status] - STATUS_RANK[b.status] ||
+          PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority] ||
+          new Date(b.opened_at).getTime() - new Date(a.opened_at).getTime(),
+      ),
+    [data],
+  );
+
+  const counts = useMemo(() => {
+    const all = data?.data ?? [];
+    return {
+      open: all.filter((c) => c.status === "Open").length,
+      review: all.filter((c) => c.status === "UnderReview").length,
+    };
+  }, [data]);
 
   function handleCreate() {
     if (!title.trim()) return;
@@ -74,13 +110,54 @@ function CasesPageInner() {
     );
   }
 
+  const statusSegments: Segment<StatusFilter>[] = [
+    { value: "All", label: "All" },
+    { value: "Open", label: "Open", count: status === "All" ? counts.open : undefined },
+    { value: "UnderReview", label: "Under review", count: status === "All" ? counts.review : undefined },
+    { value: "Draft", label: "Draft" },
+    { value: "Closed", label: "Closed" },
+  ];
+
+  const columns: TableColumn<CaseSummary>[] = [
+    {
+      key: "title",
+      header: "Case",
+      render: (c) => (
+        <div className={styles.titleCell}>
+          <span className={styles.caseTitle}>{c.title}</span>
+          <span className={styles.caseId}>{c.case_id}</span>
+        </div>
+      ),
+    },
+    {
+      key: "priority",
+      header: "Priority",
+      render: (c) => <Badge tone={PRIORITY_TONE[c.priority]}>{c.priority}</Badge>,
+    },
+    {
+      key: "status",
+      header: "Status",
+      render: (c) => <Badge tone={STATUS_TONE[c.status]}>{c.status === "UnderReview" ? "Under review" : c.status}</Badge>,
+    },
+    {
+      key: "opened",
+      header: "Opened",
+      align: "right",
+      render: (c) => (
+        <span className={styles.ageCell} title={formatDate(c.opened_at)}>
+          {formatRelativeTime(c.opened_at)}
+        </span>
+      ),
+    },
+  ];
+
   return (
     <PageShell
       title="Cases"
-      subtitle="Manage ongoing investigations"
+      subtitle="Investigation workspaces — live cases first, most urgent at the top"
       actions={
         <Button size="sm" onClick={() => setShowForm((v) => !v)}>
-          <Plus size={16} /> New Case
+          <Plus size={16} /> New case
         </Button>
       }
     >
@@ -102,41 +179,38 @@ function CasesPageInner() {
               Cancel
             </Button>
             <Button size="sm" onClick={handleCreate} disabled={!title.trim() || createCase.isPending}>
-              {createCase.isPending ? "Creating…" : "Create Case"}
+              {createCase.isPending ? "Creating…" : "Create case"}
             </Button>
           </div>
         </div>
       )}
 
-      <div style={{ marginBottom: "var(--space-5)" }}>
-        <Tabs tabs={STATUS_TABS} active={statusTab} onChange={setStatusTab} />
+      <div className={styles.filterRow}>
+        <SegmentedControl segments={statusSegments} value={status} onChange={setStatus} ariaLabel="Filter cases by status" />
+        <span className={styles.resultCount}>
+          {cases.length} {cases.length === 1 ? "case" : "cases"}
+        </span>
       </div>
 
       {isLoading ? (
-        <div className={styles.grid}>
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Skeleton key={i} height={110} />
+        <div className={styles.skeletons}>
+          {Array.from({ length: 8 }).map((_, i) => (
+            <Skeleton key={i} height={44} />
           ))}
         </div>
       ) : cases.length === 0 ? (
-        <EmptyState icon={ShieldHalf} title="No cases" description="No investigations match this filter." />
+        <EmptyState
+          icon={ShieldHalf}
+          title="No cases"
+          description="No investigations match this filter. Create a case to start tracking evidence and entities."
+        />
       ) : (
-        <div className={styles.grid}>
-          {cases.map((c) => (
-            <Link key={c.case_id} href={`/cases/${c.case_id}`} className={styles.caseCard}>
-              <div className={styles.caseTopRow}>
-                <span className={styles.caseTitle}>{c.title}</span>
-              </div>
-              <div className={styles.badgeRow}>
-                <Badge tone={STATUS_TONE[c.status]}>{c.status}</Badge>
-                <Badge tone={PRIORITY_TONE[c.priority]}>{c.priority}</Badge>
-              </div>
-              <span className={styles.caseMeta}>
-                {c.case_id} · Opened {formatRelativeTime(c.opened_at)}
-              </span>
-            </Link>
-          ))}
-        </div>
+        <Table
+          columns={columns}
+          rows={cases}
+          getRowKey={(c) => c.case_id}
+          onRowClick={(c) => router.push(`/cases/${c.case_id}`)}
+        />
       )}
     </PageShell>
   );

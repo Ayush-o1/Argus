@@ -32,6 +32,11 @@ type AlgorithmId =
 
 interface AlgorithmDef {
   id: AlgorithmId;
+  /** The investigative question this run answers — what the analyst is
+   * actually here for. Leading with "PageRank" told a first-time user what
+   * the code does, not what they would learn by running it. */
+  question: string;
+  /** The underlying method, kept visible as supporting credibility. */
   name: string;
   description: string;
   needsInput?: "entity" | "seeds";
@@ -40,40 +45,47 @@ interface AlgorithmDef {
 const ALGORITHMS: AlgorithmDef[] = [
   {
     id: "pagerank",
+    question: "Who holds the most influence?",
     name: "PageRank",
     description: "Globally influential entities — importance amplified by connections to other important entities.",
   },
   {
     id: "betweenness",
+    question: "Who connects otherwise separate groups?",
     name: "Betweenness Centrality",
     description: "Bridge entities connecting otherwise disconnected groups. High score = key connector.",
   },
   {
     id: "louvain",
+    question: "Which clusters operate together?",
     name: "Louvain Communities",
     description: "Partitions the transaction network into densely connected clusters, ranked by average risk.",
   },
   {
     id: "similar",
-    name: "Similar Entities",
-    description: "Node2Vec graph embeddings + cosine similarity — entities in a structurally similar role.",
+    question: "Who else behaves like this entity?",
+    name: "Node2Vec similarity",
+    description: "Graph embeddings + cosine similarity — entities occupying a structurally similar role.",
     needsInput: "entity",
   },
   {
     id: "risk-propagation",
+    question: "How far does this entity's risk spread?",
     name: "Risk Propagation",
     description: "Spreads risk from a seed entity across the network, attenuating by hop distance.",
     needsInput: "seeds",
   },
   {
     id: "cycle-detection",
+    question: "Is money moving in circles?",
     name: "Cycle Detection",
     description: "Circular money-movement paths (A → B → ... → A) — the classic laundering-ring signature.",
   },
   {
     id: "anomalies",
-    name: "Transaction Anomalies",
-    description: "Isolation Forest + z-score over per-account behavior — independent of any ground-truth flags.",
+    question: "Which transactions don't fit the pattern?",
+    name: "Isolation Forest + z-score",
+    description: "Unsupervised outlier detection over per-account behavior — independent of any ground-truth flags.",
   },
 ];
 
@@ -131,8 +143,8 @@ export default function AnalyticsPage() {
               className={cn(styles.algoCard, a.id === active && styles.algoCardActive)}
               onClick={() => handleSelect(a.id)}
             >
-              <span className={styles.algoName}>{a.name}</span>
-              <span className={styles.algoDesc}>{a.description}</span>
+              <span className={styles.algoName}>{a.question}</span>
+              <span className={styles.algoMethod}>{a.name}</span>
             </button>
           ))}
         </div>
@@ -140,8 +152,11 @@ export default function AnalyticsPage() {
         <Card className={styles.resultPanel}>
           <div className={styles.resultHeader}>
             <div>
-              <div className={styles.resultTitle}>{algorithm.name}</div>
-              <div className={styles.resultSubtitle}>{algorithm.description}</div>
+              <div className={styles.resultTitle}>{algorithm.question}</div>
+              <div className={styles.resultSubtitle}>
+                <span className={styles.methodTag}>{algorithm.name}</span>
+                {algorithm.description}
+              </div>
             </div>
             {!algorithm.needsInput && (
               <Button onClick={run} disabled={status === "running"}>

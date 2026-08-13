@@ -51,6 +51,28 @@
   line-height: 1.4;
 }
 
+/* The method name is supporting evidence for the question above it, so it
+   reads as a technical annotation rather than the headline. */
+.algoMethod {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  color: var(--text-tertiary);
+}
+
+.methodTag {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  color: var(--accent-primary-hover);
+  background: var(--accent-glow);
+  border-radius: 4px;
+  padding: 2px 6px;
+  margin-right: var(--space-2);
+  vertical-align: 1px;
+}
+
 .resultPanel {
   display: flex;
   flex-direction: column;
