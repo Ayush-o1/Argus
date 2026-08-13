@@ -91,6 +91,20 @@ Keyboard shortcuts (registered in `CommandPalette.tsx` and `AskArgusPanel.tsx` v
 | `Escape` | Close the command palette (or a `Modal`, if one's open) |
 | `⌘J` / `Ctrl+J` | Toggle Ask ARGUS (only registered when the assistant is available) |
 
+## Navigation model
+
+Application navigation and marketing navigation are deliberately separate.
+
+- The sidebar brand links to `/dashboard`, the **application** home. This is the
+  convention in comparable products, and the inverse would eject an analyst out
+  of the workspace mid-investigation via the control they are most likely to
+  click by reflex. It was previously an inert `<div>`, which left no way back to
+  anything.
+- Leaving the workspace is an explicit, labelled **Product overview** item in
+  the sidebar footer, styled as a quieter sibling of the nav items because it
+  does something categorically different from moving between surfaces.
+- Both directions are plain `<Link>`s, so browser back/forward behave normally.
+
 ## Data fetching
 
 `lib/api.ts`'s `apiFetch<T>(path, init)` is the single fetch wrapper every hook uses: prefixes `NEXT_PUBLIC_API_BASE_URL` (default `http://localhost:8000`), attaches `Authorization: Bearer {NEXT_PUBLIC_ARGUS_API_TOKEN}`, throws a typed `ApiError` (carries `status`) on any non-2xx response, and returns the parsed `Envelope<T>` (mirrors the backend's [Envelope shape](backend.md#response-envelope) — `lib/api.ts` redeclares the interface rather than sharing a types package, consistent with the deliberate frontend/backend separation described in [architecture.md](architecture.md#why-three-separate-deployables-instead-of-one)).
@@ -100,6 +114,58 @@ Keyboard shortcuts (registered in `CommandPalette.tsx` and `AskArgusPanel.tsx` v
 ### The job-polling hook pattern
 
 `useAnalyticsJob<T>()` (`hooks/useAnalytics.ts`) and `useScenarioJob()` (`hooks/useScenario.ts`) both implement the same client-side half of the [background-job contract](backend.md#background-jobs): a `useMutation` (`start`) kicks off the job and captures the returned `job_id` into local state, and a `useQuery` (`job`) polls `GET .../results/{job_id}` (or `.../status/{job_id}`) with `refetchInterval` conditional on `status === "running"` — so polling stops itself the instant the job settles. `useAnalyticsJob` polls every 1.2s; `useScenarioJob` every 0.9s (it's rendering live per-stage progress, so a tighter interval reads better).
+
+## Command Center
+
+The dashboard is one workspace with a single reading order — situation, then
+where, then who, then what changed — rather than a grid of parallel cards with
+no relationship between them.
+
+- **`SituationBrief`** states the position in a sentence before showing any
+  figure, with the counters as corroboration beneath it. Every clause is
+  composed from values the summary and region rollup actually contain.
+- **`RegionStrip`** makes regional posture a *filter* rather than a set of exits
+  to the map. Selecting a region scopes the lead queue, so "Europe is elevated"
+  becomes a question pursued in place. It is one horizontally scrolling row: an
+  auto-fit grid left the eleventh cell stranded on a second row beside a wide
+  gap, which read as a layout fault rather than a filter.
+- **`LeadQueue` + `LeadContext`** are master-detail. The queue selects; the
+  panel argues, using the scorer's own recorded `risk_factors` under "why it
+  surfaced", the alerts and cases already referencing the entity, and its real
+  connection counts. The previous queue navigated straight out to a profile, so
+  comparing two leads meant leaving and coming back.
+
+Leads are drawn from **both** Person and Organization. The earlier queue asked
+only for Persons, silently excluding every elevated Organization — the label
+carrying the shell-company and corporate-network findings.
+
+The selection is *derived*, not synced in an effect: `leads.find(...) ?? leads[0]`.
+A region filter that drops the current selection therefore resolves on the same
+render, with no intermediate frame showing a stale or absent lead.
+
+## Alerts triage
+
+Queue selects, detail argues — the same shape as the Command Center, for the
+same reason. A stack of self-contained cards forced every alert to carry its
+full context inline, so the page could only be skimmed.
+
+`AlertDetail` answers the six questions triage needs before a decision. Two are
+computed rather than stored:
+
+- **Spread** — the distinct countries and regions across the alert's involved
+  entities. An alert touching five countries across four regions is a materially
+  different finding from a local one.
+- **Related alerts** — matched on shared `storyline_id`, a real link in the
+  graph rather than a similarity heuristic over text. Alerts planted by one
+  storyline are one investigation.
+
+## Case workspace
+
+`CaseFootprint` opens the case with reach and cause: countries, regions and peak
+risk computed across the linked entities' own geography, and the alerts that
+involve anything on the evidence board. Related alerts are matched by
+intersecting `involved_entity_ids` with the board, which costs one request for
+the whole alert set rather than one per entity.
 
 ## Graph Explorer
 
