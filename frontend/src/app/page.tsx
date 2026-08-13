@@ -7,6 +7,7 @@ import { MarketingFooter } from "@/components/marketing/MarketingFooter";
 import { MarketingNav } from "@/components/marketing/MarketingNav";
 import { SpotlightSection } from "@/components/marketing/SpotlightSection";
 import { TechCredibility } from "@/components/marketing/TechCredibility";
+import { TriageMotif } from "@/components/marketing/TriageMotif";
 import { WorkflowSection } from "@/components/marketing/WorkflowSection";
 
 export default function LandingPage() {
@@ -41,6 +42,18 @@ export default function LandingPage() {
           ]}
           visual={<MapMotif />}
           reversed
+        />
+        <SpotlightSection
+          eyebrow="Risk & triage"
+          title="A queue, not a wall of data."
+          desc="Risk is encoded so severity always wins your attention — a quiet baseline, loud escalation. The command center opens on what changed and what to look at next, and the alert queue is ordered by severity before recency so a critical finding never sits below newer noise."
+          points={[
+            "Priority queue ranks the highest-risk entities on arrival",
+            "Alerts sort by severity first, with one-click pivot into the graph",
+            "Isolation Forest flags transaction outliers with no ground-truth labels",
+            "Every severity band is a filtered entry point, not just a statistic",
+          ]}
+          visual={<TriageMotif />}
         />
         <WorkflowSection />
         <TechCredibility />

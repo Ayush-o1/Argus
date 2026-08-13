@@ -22,7 +22,7 @@ Interactive docs (Swagger UI, generated from the same FastAPI app) are available
 
 | Method | Path | Params | Description |
 |---|---|---|---|
-| GET | `/api/entities` | `type` (default `Person`), `risk_min` (default 0), `city`, `page`, `page_size` | Paginated, risk-sorted list of Person/Organization/Vehicle/Device. |
+| GET | `/api/entities` | `type` (default `Person`), `risk_min` (default 0), `city`, `page`, `page_size` | Paginated, risk-sorted list. `type` must be one of `Person`, `Organization`, `Location`, `Vehicle`, `Device` (`graph_repo.BROWSABLE_LABELS`); anything else is a **400**. It previously fell back to `Person` for unrecognised values, which returned people labelled as the requested type. `risk_min`/`city` apply to Person and Organization only. |
 | GET | `/api/entities/{entity_id}` | — | Full node by human ID (any type), plus a `connections` map (`{label: count}`). 404 if not found. |
 | GET | `/api/entities/{entity_id}/graph` | `depth` (default 1) | Subgraph = the entity plus its `depth`-hop neighborhood. |
 | GET | `/api/entities/{entity_id}/timeline` | — | Person/Organization activity feed (events, transactions, communications), newest first. |
@@ -42,7 +42,7 @@ Interactive docs (Swagger UI, generated from the same FastAPI app) are available
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/api/dashboard/summary` | Aggregate counts (persons, orgs, transactions, flagged entities, active cases, open alerts, avg risk), risk-band distribution, 6 most recent incidents and cases. |
+| GET | `/api/dashboard/summary` | Aggregate counts (persons, orgs, transactions, flagged entities, active cases, open alerts, avg risk), risk-band distribution, 6 most recent incidents and cases. Risk bands are half-open `[low, high)` except the top band, which is inclusive of 100 — storyline-injected entities score exactly 100.0, and an exclusive upper bound previously dropped them from the distribution entirely (reported `Critical: 0` alongside 4 flagged entities). |
 
 ## Search — `app/api/routes/search.py`
 

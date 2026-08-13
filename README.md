@@ -12,12 +12,13 @@ An analyst-facing tool for exploring a connected dataset of people, organization
 
 ## Key capabilities
 
-- **Graph Explorer** — Cytoscape.js canvas over the live Neo4j graph: neighborhood expansion, shortest-path finding, multiple layouts.
+- **Command Center** — a dashboard built around what needs attention: a metric strip that ranks alerts and elevated entities ahead of corpus totals, a priority queue of the highest-risk entities, and a severity ladder where every band is a filtered entry point.
+- **Graph Explorer** — Cytoscape.js canvas over the live Neo4j graph. Opens on a risk-led overview rather than the whole graph; entity type and risk are encoded as independent channels (fill vs. border ring); labels are gated by zoom and importance; focus mode isolates a neighborhood; clicking an edge explains *why* two entities are connected. Plus neighborhood expansion, shortest-path finding, and multiple layouts.
 - **Analytics Engine** — PageRank, Betweenness, Louvain communities, Node2Vec similarity, custom risk propagation, and cycle detection via Neo4j Graph Data Science; plus Isolation Forest + z-score transaction-anomaly detection that independently rediscovers injected anomalies without reading their ground-truth labels.
-- **Cases & Alerts** — an investigation workspace (evidence board, notes, status/priority) and a review queue over system-flagged incidents.
+- **Cases & Alerts** — an investigation workspace (evidence board, notes, status/priority) and a triage queue over system-flagged incidents, ordered by severity before recency, with one-click pivot from an alert into the graph.
 - **Local Intelligence Layer** — deterministic, template-composed entity/case narratives (no model, no network call), plus an entirely optional local-LLM assistant that the rest of the product has zero dependency on.
 - **Scenario Generator** — creates a new synthetic investigation storyline on demand by running the real generation engine as a background job against the live graph.
-- **Map & Timeline** — geospatial view (MapLibre + deck.gl) and temporal activity view (@visx) over the same dataset.
+- **Map & Timeline** — geospatial view (MapLibre + deck.gl) that aggregates entities into risk-coloured density hexagons at country zoom and resolves to individual points as you zoom in, rendering anomalous shipment routes at full strength while routine traffic recedes to background texture; plus a temporal activity view (@visx) over the same dataset.
 
 See [docs/analytics.md](docs/analytics.md) and [docs/ai-layer.md](docs/ai-layer.md) for how these actually work.
 

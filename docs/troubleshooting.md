@@ -49,6 +49,14 @@ Two independent causes have been confirmed in this stack, and both matter:
 
 A known, non-blocking, **dev-mode-only** artifact from React StrictMode's mount/unmount/remount cycle interacting with Cytoscape.js's internal event system during rapid client-side navigation. Confirmed absent in a production build (`next build && next start`). If you see this in `npm run dev`, it is not a regression to chase — verify against a production build before treating it as a real bug.
 
+## Map renders without a basemap
+
+Symptom: the Map page shows entity points and route arcs floating on an empty background, and the network panel reports `net::ERR_ABORTED` for `basemaps.cartocdn.com/.../style.json`.
+
+The aborted request is usually a red herring. React StrictMode mounts, tears down, and remounts the effect that constructs the MapLibre `Map`, and the discarded first instance's in-flight style fetch is cancelled — that abort is expected and harmless, because the surviving instance issues its own fetch which succeeds.
+
+**Do not add a retry or a `setStyle()` guard for this.** A previous attempt to "fix" the abort by re-issuing `setStyle()` on a timer raced with the already-succeeding load and was itself the cause of intermittent blank basemaps; removing it made the map load reliably. If the basemap genuinely fails, verify outbound network access to `basemaps.cartocdn.com` first (`curl -I https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json`) before touching `ArgusMap.tsx`.
+
 ## Ollama / "Ask ARGUS" panel never appears
 
 This is expected, not a bug, if you haven't installed Ollama. The panel (`⌘J`) only renders when `GET /api/ai/assistant-status` reports `available: true`, which requires a local Ollama process reachable at `OLLAMA_BASE_URL` (default `http://localhost:11434`). Install Ollama, `ollama pull llama3.2:3b` (the model `app/services/ollama.py` requests by name), and confirm `curl http://localhost:11434/api/tags` succeeds. Every other ARGUS feature works identically with Ollama absent — see [ai-layer.md](ai-layer.md).
