@@ -13,7 +13,7 @@
   padding: var(--space-3) var(--space-4);
   text-decoration: none;
   border-bottom: 1px solid var(--surface-border-faint);
-  transition: background var(--dur-fast) var(--ease-out);
+  transition: background var(--transition-fast);
 }
 
 .list li:last-child .row {
@@ -25,7 +25,7 @@
 }
 
 .row:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-primary);
   outline-offset: -2px;
 }
 
@@ -73,7 +73,7 @@
   display: block;
   height: 100%;
   border-radius: 999px;
-  transition: width var(--dur-med) var(--ease-out);
+  transition: width var(--transition-base);
 }
 
 .meta {

@@ -53,7 +53,7 @@
   background: transparent;
   text-align: left;
   cursor: pointer;
-  transition: background var(--dur-fast) var(--ease-out);
+  transition: background var(--transition-fast);
 }
 
 .row:hover {
@@ -61,7 +61,7 @@
 }
 
 .row:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-primary);
   outline-offset: -2px;
 }
 
@@ -121,7 +121,7 @@
   flex-shrink: 0;
   color: var(--text-quaternary, var(--text-tertiary));
   opacity: 0;
-  transition: opacity var(--dur-fast) var(--ease-out);
+  transition: opacity var(--transition-fast);
 }
 
 .row:hover .chevron,

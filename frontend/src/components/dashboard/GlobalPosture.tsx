@@ -45,7 +45,7 @@ export function GlobalPosture() {
             ? RISK_COLORS.Critical
             : region.elevated_count >= 1
               ? RISK_COLORS.High
-              : "var(--accent)";
+              : "var(--accent-primary)";
         return (
           <li key={region.region}>
             <Link href={`/map?region=${encodeURIComponent(region.region)}`} className={styles.row}>

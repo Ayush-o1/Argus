@@ -18,7 +18,7 @@
 
 .selection {
   fill: none;
-  stroke: var(--accent);
+  stroke: var(--accent-primary);
   stroke-width: 1.5;
 }
 
