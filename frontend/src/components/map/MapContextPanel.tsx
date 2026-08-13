@@ -4,7 +4,7 @@ import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { RISK_COLORS } from "@/lib/theme";
 import { withinBounds, type MapBounds, type MapScale } from "@/components/map/ArgusMap";
-import type { CountryRollup, RegionRollup } from "@/hooks/useMap";
+import type { Corridor, CountryRollup, RegionRollup } from "@/hooks/useMap";
 import styles from "./MapContextPanel.module.css";
 
 /**
@@ -32,10 +32,46 @@ interface MapContextPanelProps {
   regions: RegionRollup[];
   countries: CountryRollup[];
   bounds: MapBounds | null;
+  corridors: Corridor[];
   onFlyTo: (lng: number, lat: number, zoom: number) => void;
 }
 
-export function MapContextPanel({ scale, regions, countries, bounds, onFlyTo }: MapContextPanelProps) {
+/**
+ * The one thing worth saying about the current view, in a sentence.
+ *
+ * The map rendered its data faithfully but never stated a finding, so reading
+ * it depended entirely on the analyst spotting the pattern themselves. Each
+ * reading below is a direct comparison over values already on screen — the
+ * region with the most off-lane routing, the busiest corridor — not a score or
+ * a model output.
+ */
+function readingFor(scale: MapScale, regions: RegionRollup[], corridors: Corridor[]): string | null {
+  if (scale === "world") {
+    const byAnomaly = [...regions].sort((a, b) => b.anomalous_routes - a.anomalous_routes)[0];
+    const byElevated = [...regions].sort((a, b) => b.elevated_count - a.elevated_count)[0];
+    if (byElevated && byAnomaly && byElevated.elevated_count > 0 && byAnomaly.anomalous_routes > 0) {
+      // The interesting case is when escalation and routing anomalies sit in
+      // different places — that mismatch is itself the finding.
+      if (byAnomaly.region !== byElevated.region) {
+        return `Elevated entities concentrate in ${byElevated.region}, but off-lane routing peaks on ${byAnomaly.region} (${byAnomaly.anomalous_routes} flagged).`;
+      }
+      return `${byElevated.region} leads on both elevated entities (${byElevated.elevated_count}) and flagged routes (${byAnomaly.anomalous_routes}).`;
+    }
+    const busiest = [...corridors].sort((a, b) => b.shipment_count - a.shipment_count)[0];
+    if (busiest) {
+      return `Heaviest corridor: ${busiest.from_region} to ${busiest.to_region} (${busiest.shipment_count} shipments).`;
+    }
+    return null;
+  }
+
+  const active = regions.filter((r) => r.elevated_count > 0);
+  if (active.length === 0) return null;
+  const top = [...active].sort((a, b) => b.elevated_count - a.elevated_count)[0];
+  const total = active.reduce((n, r) => n + r.elevated_count, 0);
+  return `${top.region} holds ${top.elevated_count} of the ${total} elevated entities tracked.`;
+}
+
+export function MapContextPanel({ scale, regions, countries, bounds, corridors, onFlyTo }: MapContextPanelProps) {
   if (scale === "local") return null;
 
   // Scoped to what is actually on screen. Listing every country in the world
@@ -44,6 +80,7 @@ export function MapContextPanel({ scale, regions, countries, bounds, onFlyTo }: 
   // viewport rather than on a remembered "active region" also stays correct
   // when the analyst pans or zooms freely instead of clicking through.
   const visibleCountries = countries.filter((c) => withinBounds(c.lng, c.lat, bounds));
+  const reading = readingFor(scale, regions, corridors);
 
   const rows =
     scale === "world"
@@ -88,6 +125,7 @@ export function MapContextPanel({ scale, regions, countries, bounds, onFlyTo }: 
         <span className={styles.title}>{scale === "world" ? "Regions" : "Countries"}</span>
         <span className={styles.subtitle}>by elevated entities</span>
       </header>
+      {reading ? <p className={styles.reading}>{reading}</p> : null}
       <ul className={styles.list}>
         {rows.map((row) => (
           <li key={row.key}>

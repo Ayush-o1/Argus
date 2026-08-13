@@ -157,6 +157,7 @@ function MapPageInner() {
               scale={scale}
               regions={regions ?? []}
               countries={countries ?? []}
+              corridors={corridors ?? []}
               bounds={bounds}
               onFlyTo={(lng, lat, z) => mapRef.current?.flyToView(lng, lat, z)}
             />

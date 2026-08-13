@@ -136,3 +136,14 @@
     display: none;
   }
 }
+
+/* The finding, stated. Sits between the header and the ranked list because it
+   is what the list is evidence for. */
+.reading {
+  margin: 0;
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--surface-border);
+  font-size: var(--text-xs);
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
