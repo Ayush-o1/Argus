@@ -335,11 +335,14 @@ export const ArgusMap = forwardRef<ArgusMapHandle, ArgusMapProps>(function Argus
           getTargetPosition: (d) => d.to,
           getSourceColor: ANOMALY_ARC,
           getTargetColor: ANOMALY_ARC,
-          getWidth: 2.5,
+          getWidth: 2,
           widthUnits: "pixels",
-          widthMinPixels: 1.5,
-          widthMaxPixels: 3,
-          opacity: 0.92,
+          widthMinPixels: 1.25,
+          widthMaxPixels: 2.5,
+          // Saturated red at near-full opacity dominated the canvas at regional
+          // zoom, where several long routes cross the whole viewport. Still
+          // clearly the loudest thing on the map, without being the only thing.
+          opacity: 0.78,
           greatCircle: false,
           pickable: true,
           autoHighlight: true,

@@ -33,6 +33,7 @@ export default function MapPage() {
 function MapPageInner() {
   const searchParams = useSearchParams();
   const focusId = searchParams.get("focus");
+  const regionParam = searchParams.get("region");
 
   const [entityType, setEntityType] = useState<EntityTypeFilter>("all");
   const [riskFilter, setRiskFilter] = useState(0);
@@ -71,6 +72,22 @@ function MapPageInner() {
   useEffect(() => {
     if (focusedEntity) mapRef.current?.flyTo(focusedEntity.properties.lng, focusedEntity.properties.lat);
   }, [focusedEntity]);
+
+  // Arriving from the dashboard's Global posture panel. This needs three
+  // things to line up: the region rollup (for the target centre and zoom), a
+  // mounted map, and a map that has finished loading its style — MapLibre
+  // ignores flyTo before then. `bounds` is only set from the map's own load
+  // and moveend events, so a non-null value is the readiness signal, and it is
+  // in the dependency list so this re-runs once the map appears. Marking the
+  // region as flown before the map existed made the link silently do nothing.
+  const flownToRegion = useRef<string | null>(null);
+  useEffect(() => {
+    if (!regionParam || !regions || !bounds || flownToRegion.current === regionParam) return;
+    const match = regions.find((r) => r.region === regionParam);
+    if (!match || !mapRef.current) return;
+    flownToRegion.current = regionParam;
+    mapRef.current.flyToView(match.lng, match.lat, match.zoom);
+  }, [regionParam, regions, bounds]);
 
   function handleSelectEntity(node: GraphNode) {
     setSelectedShipment(null);

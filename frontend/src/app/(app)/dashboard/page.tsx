@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { Card } from "@/components/ui/Card";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { CaseList } from "@/components/dashboard/CaseList";
+import { GlobalPosture } from "@/components/dashboard/GlobalPosture";
 import { IncidentFeed } from "@/components/dashboard/IncidentFeed";
 import { MetricStrip } from "@/components/dashboard/MetricStrip";
 import { PriorityQueue } from "@/components/dashboard/PriorityQueue";
@@ -73,6 +74,15 @@ export default function DashboardPage() {
             </div>
 
             <div className={styles.column}>
+              <Panel
+                title="Global posture"
+                hint="Regions by escalation — open on the map"
+                href="/map"
+                linkLabel="Open map"
+                flush
+              >
+                <GlobalPosture />
+              </Panel>
               <Panel title="Risk distribution" hint="Population by severity band" flush>
                 <RiskDonut data={data.risk_distribution} />
               </Panel>
