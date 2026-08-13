@@ -14,17 +14,11 @@ import { Table, type TableColumn } from "@/components/ui/Table";
 import { useToast } from "@/components/ui/Toast";
 import { useCases, useCreateCase } from "@/hooks/useCases";
 import { formatDate, formatRelativeTime } from "@/lib/formatters";
+import { CASE_STATUS_LABEL, CASE_STATUS_TONE } from "@/lib/caseLabels";
 import type { CaseSummary } from "@/lib/types";
 import styles from "./page.module.css";
 
 type StatusFilter = "All" | "Draft" | "Open" | "UnderReview" | "Closed";
-
-const STATUS_TONE: Record<CaseSummary["status"], "neutral" | "accent" | "high" | "ok"> = {
-  Draft: "neutral",
-  Open: "accent",
-  UnderReview: "high",
-  Closed: "ok",
-};
 
 const PRIORITY_TONE: Record<CaseSummary["priority"], "critical" | "high" | "medium" | "low"> = {
   Critical: "critical",
@@ -113,7 +107,7 @@ function CasesPageInner() {
   const statusSegments: Segment<StatusFilter>[] = [
     { value: "All", label: "All" },
     { value: "Open", label: "Open", count: status === "All" ? counts.open : undefined },
-    { value: "UnderReview", label: "Under review", count: status === "All" ? counts.review : undefined },
+    { value: "UnderReview", label: CASE_STATUS_LABEL.UnderReview, count: status === "All" ? counts.review : undefined },
     { value: "Draft", label: "Draft" },
     { value: "Closed", label: "Closed" },
   ];
@@ -137,7 +131,7 @@ function CasesPageInner() {
     {
       key: "status",
       header: "Status",
-      render: (c) => <Badge tone={STATUS_TONE[c.status]}>{c.status === "UnderReview" ? "Under review" : c.status}</Badge>,
+      render: (c) => <Badge tone={CASE_STATUS_TONE[c.status]}>{CASE_STATUS_LABEL[c.status]}</Badge>,
     },
     {
       key: "opened",

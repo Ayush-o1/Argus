@@ -1,6 +1,6 @@
 "use client";
 
-import { ShieldHalf, Sparkles, X } from "lucide-react";
+import { Flag, ShieldHalf, Sparkles, X } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
@@ -9,28 +9,21 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { SelectControl } from "@/components/ui/SelectControl";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Spinner } from "@/components/ui/Spinner";
 import { useAddCaseEntity, useCase, useRemoveCaseEntity, useUpdateCase } from "@/hooks/useCases";
 import { useCaseSummary } from "@/hooks/useAssistant";
+import {
+  CASE_PRIORITIES,
+  CASE_PRIORITY_TONE,
+  CASE_STATUS_LABEL,
+  CASE_STATUS_TONE,
+  CASE_STATUSES,
+} from "@/lib/caseLabels";
 import { entityId, entityName } from "@/lib/entityDisplay";
 import { formatRelativeTime } from "@/lib/formatters";
-import type { CaseSummary } from "@/lib/types";
 import styles from "./page.module.css";
-
-const STATUS_TONE: Record<CaseSummary["status"], "neutral" | "accent" | "high" | "low"> = {
-  Draft: "neutral",
-  Open: "accent",
-  UnderReview: "high",
-  Closed: "low",
-};
-
-const PRIORITY_TONE: Record<CaseSummary["priority"], "critical" | "high" | "medium" | "low"> = {
-  Critical: "critical",
-  High: "high",
-  Medium: "medium",
-  Low: "low",
-};
 
 export default function CaseWorkspacePage() {
   const params = useParams<{ id: string }>();
@@ -72,33 +65,25 @@ export default function CaseWorkspacePage() {
           <span className={styles.subtitle}>{caseDetail.case_id}</span>
           <span className={styles.title}>{caseDetail.title}</span>
           <div className={styles.badgeRow}>
-            <Badge tone={STATUS_TONE[caseDetail.status]}>{caseDetail.status}</Badge>
-            <Badge tone={PRIORITY_TONE[caseDetail.priority]}>{caseDetail.priority}</Badge>
+            <Badge tone={CASE_STATUS_TONE[caseDetail.status]}>{CASE_STATUS_LABEL[caseDetail.status]}</Badge>
+            <Badge tone={CASE_PRIORITY_TONE[caseDetail.priority]}>{caseDetail.priority}</Badge>
           </div>
         </div>
         <div className={styles.controlsRow}>
-          <select
-            className={styles.select}
+          <SelectControl
+            icon={ShieldHalf}
             value={caseDetail.status}
             onChange={(e) => updateCase.mutate({ status: e.target.value })}
-          >
-            {["Draft", "Open", "UnderReview", "Closed"].map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-          <select
-            className={styles.select}
+            aria-label="Case status"
+            options={CASE_STATUSES.map((v) => ({ value: v, label: CASE_STATUS_LABEL[v] }))}
+          />
+          <SelectControl
+            icon={Flag}
             value={caseDetail.priority}
             onChange={(e) => updateCase.mutate({ priority: e.target.value })}
-          >
-            {["Low", "Medium", "High", "Critical"].map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
+            aria-label="Case priority"
+            options={CASE_PRIORITIES.map((v) => ({ value: v, label: v }))}
+          />
         </div>
       </div>
 
