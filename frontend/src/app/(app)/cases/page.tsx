@@ -1,7 +1,7 @@
 "use client";
 
 import { Plus, ShieldHalf } from "lucide-react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Suspense, useMemo, useState } from "react";
 import { PageShell } from "@/components/layout/PageShell";
 import { Badge } from "@/components/ui/Badge";
@@ -52,7 +52,6 @@ export default function CasesPage() {
 }
 
 function CasesPageInner() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [status, setStatus] = useState<StatusFilter>(() => (searchParams.get("status") as StatusFilter) ?? "All");
   const [showForm, setShowForm] = useState(false);
@@ -203,7 +202,7 @@ function CasesPageInner() {
           columns={columns}
           rows={cases}
           getRowKey={(c) => c.case_id}
-          onRowClick={(c) => router.push(`/cases/${c.case_id}`)}
+          getRowHref={(c) => `/cases/${c.case_id}`}
         />
       )}
     </PageShell>
