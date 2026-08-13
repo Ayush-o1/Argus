@@ -1,86 +1,80 @@
-.mainGrid {
+/* A single reading order down the page — situation, where, who, what changed —
+   rather than a grid of parallel cards with no relationship between them. */
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.workspace {
   display: grid;
-  grid-template-columns: 1.35fr 1fr;
-  gap: var(--space-5);
-  align-items: start;
-}
-
-@media (max-width: 1100px) {
-  .mainGrid {
-    grid-template-columns: 1fr;
-  }
-}
-
-.column {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-5);
-  min-width: 0;
-}
-
-.panel {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding: 0;
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  border: 1px solid var(--surface-border);
+  border-radius: 12px;
+  background: var(--surface-raised);
   overflow: hidden;
 }
 
-/* Panel chrome is a header rule rather than a floating title, so several
-   stacked panels read as one instrument cluster instead of separate cards. */
-.panelHead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding: var(--space-4) var(--space-4) var(--space-3);
-  border-bottom: 1px solid var(--surface-border-faint);
-}
-
-.panelTitleGroup {
+.queueColumn {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  min-width: 0;
+  border-right: 1px solid var(--surface-border);
+}
+
+.contextColumn {
   min-width: 0;
 }
 
-.panelTitle {
-  font-size: var(--text-base);
-  font-weight: var(--font-semibold);
+.activity {
+  border: 1px solid var(--surface-border);
+  border-radius: 12px;
+  background: var(--surface-raised);
+  overflow: hidden;
+}
+
+.columnHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--surface-border);
+}
+
+.columnTitle {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: var(--text-primary);
 }
 
-.panelHint {
+.columnMeta {
+  font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--text-tertiary);
 }
 
-.panelBody {
-  padding: var(--space-2) var(--space-2) var(--space-3);
-}
-
-.panelBodyFlush {
-  padding: var(--space-3) var(--space-4) var(--space-4);
-}
-
-.panelLink {
+.columnLink {
   font-size: var(--text-xs);
-  color: var(--text-secondary);
-  white-space: nowrap;
-  padding: 4px 8px;
-  border-radius: 6px;
-  transition:
-    background-color var(--transition-fast),
-    color var(--transition-fast);
+  color: var(--accent-primary);
+  text-decoration: none;
 }
 
-.panelLink:hover {
-  background: var(--surface-hover);
-  color: var(--text-primary);
+.columnLink:hover {
+  text-decoration: underline;
 }
 
-.skeletonGrid {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
+/* Below this the two columns would each be too narrow to read; stacking keeps
+   the same order — pick a lead, then read its context. */
+@media (max-width: 1080px) {
+  .workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .queueColumn {
+    border-right: 0;
+    border-bottom: 1px solid var(--surface-border);
+  }
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronsLeft, ChevronsRight, ShieldHalf } from "lucide-react";
+import { ChevronsLeft, ChevronsRight, ShieldHalf, SquareArrowOutUpRight } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
@@ -21,12 +21,18 @@ export function Sidebar() {
 
   return (
     <aside className={cn(styles.sidebar, collapsed && styles.collapsed)}>
-      <div className={styles.brand}>
-        <div className={styles.brandMark}>
+      {/* The brand returns to the application home, not the marketing page.
+          That is the convention in every comparable product, and the inverse
+          would eject an analyst out of the workspace mid-investigation from
+          the one control they are most likely to click by reflex. The route
+          back to the product overview is an explicit, labelled item in the
+          footer instead — see below. */}
+      <Link href="/dashboard" className={styles.brand} aria-label="ARGUS — go to Command Center">
+        <span className={styles.brandMark}>
           <ShieldHalf size={16} strokeWidth={2} />
-        </div>
+        </span>
         {!collapsed && <span className={styles.brandName}>ARGUS</span>}
-      </div>
+      </Link>
 
       <nav className={styles.nav}>
         {NAV_GROUPS.map((group, i) => (
@@ -66,6 +72,19 @@ export function Sidebar() {
       </nav>
 
       <div className={styles.footer}>
+        {/* Deliberately separated from the investigation nav above: this leaves
+            the workspace rather than moving within it, so it must not read as
+            another destination in the same list. */}
+        <Link
+          href="/"
+          className={styles.exitLink}
+          title="Product overview — leaves the workspace"
+        >
+          <span className={styles.itemIcon}>
+            <SquareArrowOutUpRight size={15} strokeWidth={1.75} />
+          </span>
+          {!collapsed && <span className={styles.itemLabel}>Product overview</span>}
+        </Link>
         <button
           type="button"
           className={styles.collapseButton}

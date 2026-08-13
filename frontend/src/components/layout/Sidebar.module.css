@@ -23,6 +23,17 @@
   padding: 0 var(--space-4);
   flex-shrink: 0;
   border-bottom: 1px solid var(--surface-border-faint);
+  text-decoration: none;
+  transition: background-color var(--transition-fast);
+}
+
+.brand:hover {
+  background: var(--surface-hover);
+}
+
+.brand:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: -2px;
 }
 
 .brandMark {
@@ -150,6 +161,34 @@
 .footer {
   padding: var(--space-2);
   border-top: 1px solid var(--surface-border-faint);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Styled as a quieter sibling of the nav items: recognisably the same kind of
+   control, but not competing with the investigation surfaces above it. */
+.exitLink {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  height: 32px;
+  padding: 0 var(--space-2);
+  border-radius: 7px;
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+  text-decoration: none;
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+
+.exitLink:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.exitLink:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: -2px;
 }
 
 .collapseButton {

@@ -1,110 +1,106 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
-import { Card } from "@/components/ui/Card";
+import { useMemo, useState } from "react";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { CaseList } from "@/components/dashboard/CaseList";
-import { GlobalPosture } from "@/components/dashboard/GlobalPosture";
 import { IncidentFeed } from "@/components/dashboard/IncidentFeed";
-import { MetricStrip } from "@/components/dashboard/MetricStrip";
-import { PriorityQueue } from "@/components/dashboard/PriorityQueue";
-import { RiskDonut } from "@/components/dashboard/RiskDonut";
+import { LeadContext } from "@/components/dashboard/LeadContext";
+import { LeadQueue } from "@/components/dashboard/LeadQueue";
+import { RegionStrip } from "@/components/dashboard/RegionStrip";
+import { SituationBrief } from "@/components/dashboard/SituationBrief";
 import { PageShell } from "@/components/layout/PageShell";
 import { useDashboardSummary } from "@/hooks/useDashboard";
+import { useBrowseEntities } from "@/hooks/useEntities";
+import { useMapRegions } from "@/hooks/useMap";
+import type { GraphNode } from "@/lib/types";
 import styles from "./page.module.css";
 
-interface PanelProps {
-  title: string;
-  hint?: string;
-  href?: string;
-  linkLabel?: string;
-  flush?: boolean;
-  children: ReactNode;
-}
-
-function Panel({ title, hint, href, linkLabel = "View all", flush, children }: PanelProps) {
-  return (
-    <Card className={styles.panel}>
-      <div className={styles.panelHead}>
-        <div className={styles.panelTitleGroup}>
-          <span className={styles.panelTitle}>{title}</span>
-          {hint ? <span className={styles.panelHint}>{hint}</span> : null}
-        </div>
-        {href ? (
-          <Link href={href} className={styles.panelLink}>
-            {linkLabel} →
-          </Link>
-        ) : null}
-      </div>
-      <div className={flush ? styles.panelBodyFlush : styles.panelBody}>{children}</div>
-    </Card>
-  );
-}
+// Leads are drawn from both labels. The previous queue asked only for Persons,
+// which silently excluded every elevated Organization — the label carrying the
+// shell-company and corporate-network findings.
+const LEAD_TYPES = ["Person", "Organization"];
+const LEAD_RISK_FLOOR = 1;
+const MAX_LEADS = 25;
 
 export default function DashboardPage() {
-  const { data, isLoading } = useDashboardSummary();
+  const { data: summary, isLoading } = useDashboardSummary();
+  const { data: regions } = useMapRegions();
+  const { data: allLeads, isFetching: loadingLeads } = useBrowseEntities(LEAD_TYPES, LEAD_RISK_FLOOR);
 
-  return (
-    <PageShell title="Command Center" subtitle="What needs attention across the synthetic world right now">
-      {isLoading || !data ? (
-        <DashboardSkeleton />
-      ) : (
-        <>
-          <MetricStrip summary={data} />
+  const [region, setRegion] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
-          <div className={styles.mainGrid}>
-            <div className={styles.column}>
-              <Panel
-                title="Priority queue"
-                hint="Highest-risk entities — start here"
-                href="/search"
-                linkLabel="Browse all"
-              >
-                <PriorityQueue />
-              </Panel>
-              <Panel
-                title="Recent incidents"
-                hint="System-detected activity, newest first"
-                href="/alerts"
-                flush
-              >
-                <IncidentFeed incidents={data.recent_incidents} />
-              </Panel>
-            </div>
-
-            <div className={styles.column}>
-              <Panel
-                title="Global posture"
-                hint="Regions by escalation — open on the map"
-                href="/map"
-                linkLabel="Open map"
-                flush
-              >
-                <GlobalPosture />
-              </Panel>
-              <Panel title="Risk distribution" hint="Population by severity band" flush>
-                <RiskDonut data={data.risk_distribution} />
-              </Panel>
-              <Panel title="Active cases" hint="Open investigations" href="/cases" flush>
-                <CaseList cases={data.recent_cases} />
-              </Panel>
-            </div>
-          </div>
-        </>
-      )}
-    </PageShell>
+  const leads = useMemo(
+    () => (region ? allLeads.filter((l) => l.properties.region === region) : allLeads).slice(0, MAX_LEADS),
+    [allLeads, region],
   );
-}
 
-function DashboardSkeleton() {
+  // The context panel is never an empty column: the selection falls back to the
+  // top of the queue. Derived rather than synced in an effect — a region filter
+  // that drops the current selection resolves on the same render, with no
+  // intermediate frame showing a stale or absent lead.
+  const selected: GraphNode | null =
+    leads.find((l) => l.id === selectedId) ?? leads[0] ?? null;
+
+  if (isLoading || !summary) {
+    return (
+      <PageShell title="Command Center" subtitle="Global situation and what to investigate next">
+        <div className={styles.stack}>
+          <Skeleton height={168} />
+          <Skeleton height={92} />
+          <Skeleton height={420} />
+        </div>
+      </PageShell>
+    );
+  }
+
   return (
-    <div>
-      <Skeleton height={92} />
-      <div className={styles.skeletonGrid} style={{ marginTop: "var(--space-5)" }}>
-        <Skeleton height={260} />
-        <Skeleton height={200} />
+    <PageShell title="Command Center" subtitle="Global situation and what to investigate next">
+      <div className={styles.stack}>
+        <SituationBrief summary={summary} regions={regions} />
+
+        {regions && regions.length > 0 ? (
+          <RegionStrip regions={regions} selected={region} onSelect={setRegion} />
+        ) : null}
+
+        {/* Queue and context are one workspace, not two panels: the list is the
+            selector, the panel is the argument for acting on the selection. */}
+        <section className={styles.workspace} aria-label="Investigation leads">
+          <div className={styles.queueColumn}>
+            <header className={styles.columnHead}>
+              <span className={styles.columnTitle}>Leads</span>
+              <span className={styles.columnMeta}>
+                {region ? `${leads.length} in ${region}` : `${leads.length} ranked`}
+              </span>
+            </header>
+            <LeadQueue
+              leads={leads}
+              isLoading={loadingLeads && allLeads.length === 0}
+              selectedId={selected?.id ?? null}
+              onSelect={(lead) => setSelectedId(lead.id)}
+              emptyLabel={
+                region
+                  ? `No entity in ${region} currently carries an elevated risk score.`
+                  : "No entities currently carry an elevated risk score."
+              }
+            />
+          </div>
+
+          <div className={styles.contextColumn}>
+            <LeadContext lead={selected} />
+          </div>
+        </section>
+
+        <section className={styles.activity} aria-label="Recent activity">
+          <header className={styles.columnHead}>
+            <span className={styles.columnTitle}>Recent incidents</span>
+            <Link href="/alerts" className={styles.columnLink}>
+              Triage queue →
+            </Link>
+          </header>
+          <IncidentFeed incidents={summary.recent_incidents} />
+        </section>
       </div>
-    </div>
+    </PageShell>
   );
 }
