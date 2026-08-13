@@ -12,11 +12,18 @@ export function SelectedEntityPopup({ node, onClose }: { node: GraphNode; onClos
         {node.label} · {node.properties.city ?? node.properties.registered_city}
       </div>
       {node.risk_score > 0 ? <RiskBadge level={riskLevelFromScore(node.risk_score)} /> : null}
-      <Link href={`/entities/${node.id}`}>
-        <Button variant="primary" size="sm" style={{ width: "100%" }}>
-          View Profile
-        </Button>
-      </Link>
+      <div style={{ display: "flex", gap: "var(--space-2)" }}>
+        <Link href={`/entities/${node.id}`} style={{ flex: 1 }}>
+          <Button variant="primary" size="sm" style={{ width: "100%" }}>
+            View Profile
+          </Button>
+        </Link>
+        <Link href={`/graph?seed=${node.id}`} style={{ flex: 1 }}>
+          <Button variant="secondary" size="sm" style={{ width: "100%" }}>
+            View on Graph
+          </Button>
+        </Link>
+      </div>
       <Button variant="ghost" size="sm" onClick={onClose}>
         Close
       </Button>

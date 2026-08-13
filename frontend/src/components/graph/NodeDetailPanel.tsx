@@ -1,12 +1,13 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Waypoints } from "lucide-react";
+import { Crosshair, Waypoints, X } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { RiskBadge, riskLevelFromScore } from "@/components/ui/RiskBadge";
 import { EntityTypeIcon } from "@/components/entity/EntityTypeIcon";
 import { useEntity } from "@/hooks/useEntities";
+import type { NeighborConnection } from "./GraphCanvas";
 import styles from "./NodeDetailPanel.module.css";
 
 const DISPLAY_KEYS: Record<string, string[]> = {
@@ -17,18 +18,37 @@ const DISPLAY_KEYS: Record<string, string[]> = {
   Device: ["type", "carrier"],
 };
 
+function formatRelType(type: string): string {
+  return type.replace(/_/g, " ").toLowerCase();
+}
+
 interface NodeDetailPanelProps {
   entityId: string;
+  connections: NeighborConnection[];
+  isFocused: boolean;
   onExpand: (entityId: string) => void;
+  onFocus: (entityId: string) => void;
+  onClearFocus: () => void;
+  onSelectConnection: (entityId: string) => void;
   onClose: () => void;
 }
 
-export function NodeDetailPanel({ entityId, onExpand, onClose }: NodeDetailPanelProps) {
+export function NodeDetailPanel({
+  entityId,
+  connections,
+  isFocused,
+  onExpand,
+  onFocus,
+  onClearFocus,
+  onSelectConnection,
+  onClose,
+}: NodeDetailPanelProps) {
   const { data: entity } = useEntity(entityId);
 
   if (!entity) return null;
 
   const keys = DISPLAY_KEYS[entity.label] ?? [];
+  const shown = connections.slice(0, 12);
 
   return (
     <motion.div
@@ -47,6 +67,9 @@ export function NodeDetailPanel({ entityId, onExpand, onClose }: NodeDetailPanel
             {entity.label} · {entity.id}
           </div>
         </div>
+        <Button variant="ghost" size="sm" onClick={onClose} aria-label="Close">
+          <X size={14} />
+        </Button>
       </div>
 
       {entity.risk_score > 0 && (
@@ -68,25 +91,58 @@ export function NodeDetailPanel({ entityId, onExpand, onClose }: NodeDetailPanel
         </div>
       )}
 
-      {entity.degree !== undefined && (
+      {connections.length > 0 && (
         <div className={styles.section}>
-          <span className={styles.sectionTitle}>Connections</span>
-          <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>{entity.degree} total relationships</span>
+          <span className={styles.sectionTitle}>
+            Connections on canvas ({connections.length})
+          </span>
+          <div className={styles.connectionsList}>
+            {shown.map((c) => (
+              <button
+                key={c.edge.id}
+                type="button"
+                className={styles.connectionRow}
+                onClick={() => onSelectConnection(c.other.id)}
+                title={`${entity.name} ${c.direction === "outgoing" ? formatRelType(c.edge.type) : `← ${formatRelType(c.edge.type)}`} ${c.other.name}`}
+              >
+                <span className={styles.connectionIcon}>
+                  <EntityTypeIcon label={c.other.label} size={13} />
+                </span>
+                <span className={styles.connectionBody}>
+                  <div className={styles.connectionName}>{c.other.name}</div>
+                  <div className={styles.connectionRel}>
+                    {c.direction === "outgoing" ? "→" : "←"} {formatRelType(c.edge.type)}
+                  </div>
+                </span>
+              </button>
+            ))}
+          </div>
+          {connections.length > shown.length && (
+            <div className={styles.connectionsMore}>+{connections.length - shown.length} more — expand to load</div>
+          )}
         </div>
       )}
 
       <div className={styles.actions}>
-        <Button variant="secondary" size="sm" onClick={() => onExpand(entityId)}>
-          <Waypoints size={14} /> Expand Neighbors
-        </Button>
+        <div className={styles.actionRow}>
+          <Button variant="secondary" size="sm" onClick={() => onExpand(entityId)}>
+            <Waypoints size={14} /> Expand
+          </Button>
+          {isFocused ? (
+            <Button variant="secondary" size="sm" onClick={onClearFocus}>
+              <Crosshair size={14} /> Unfocus
+            </Button>
+          ) : (
+            <Button variant="secondary" size="sm" onClick={() => onFocus(entityId)}>
+              <Crosshair size={14} /> Focus
+            </Button>
+          )}
+        </div>
         <Link href={`/entities/${entityId}`}>
           <Button variant="primary" size="sm" style={{ width: "100%" }}>
             View Full Profile
           </Button>
         </Link>
-        <Button variant="ghost" size="sm" onClick={onClose}>
-          Close
-        </Button>
       </div>
     </motion.div>
   );

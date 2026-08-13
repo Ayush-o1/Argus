@@ -6,12 +6,13 @@ import { Suspense, useRef, useState } from "react";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Spinner } from "@/components/ui/Spinner";
 import { PageShell } from "@/components/layout/PageShell";
-import { GraphCanvas, type GraphCanvasHandle, type LayoutName } from "@/components/graph/GraphCanvas";
+import { GraphCanvas, type EdgeDetail, type GraphCanvasHandle, type LayoutName, type NeighborConnection } from "@/components/graph/GraphCanvas";
 import { GraphControls, GraphLegend } from "@/components/graph/GraphControls";
 import { NodeDetailPanel } from "@/components/graph/NodeDetailPanel";
+import { RelationshipPanel } from "@/components/graph/RelationshipPanel";
 import { useGraphOverview, useSubgraph } from "@/hooks/useGraph";
 import { apiFetch } from "@/lib/api";
-import type { Subgraph } from "@/lib/types";
+import type { GraphNode, Subgraph } from "@/lib/types";
 import styles from "./page.module.css";
 
 export default function GraphPage() {
@@ -69,11 +70,15 @@ function GraphExplorerView({ data, isSeeded }: { data: Subgraph; isSeeded: boole
   const router = useRouter();
   const canvasRef = useRef<GraphCanvasHandle>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [layout, setLayout] = useState<LayoutName>("cose");
+  const [connections, setConnections] = useState<NeighborConnection[]>([]);
+  const [selectedEdge, setSelectedEdge] = useState<EdgeDetail | null>(null);
+  const [layout, setLayout] = useState<LayoutName>("fcose");
   const [counts, setCounts] = useState({ nodes: data.nodes.length, edges: data.edges.length });
   const [pathMode, setPathMode] = useState(false);
   const [pathFrom, setPathFrom] = useState<string | null>(null);
   const [hiddenTypes, setHiddenTypes] = useState<string[]>([]);
+  const [riskFilter, setRiskFilter] = useState(0);
+  const [focusedId, setFocusedId] = useState<string | null>(null);
 
   function toggleType(label: string) {
     setHiddenTypes((prev) => {
@@ -81,6 +86,11 @@ function GraphExplorerView({ data, isSeeded }: { data: Subgraph; isSeeded: boole
       canvasRef.current?.setTypeVisibility(next);
       return next;
     });
+  }
+
+  function handleRiskFilterChange(minRisk: number) {
+    setRiskFilter(minRisk);
+    canvasRef.current?.setRiskFilter(minRisk);
   }
 
   function handleSelect(nodeId: string | null) {
@@ -93,8 +103,31 @@ function GraphExplorerView({ data, isSeeded }: { data: Subgraph; isSeeded: boole
       void findPath(pathFrom, nodeId);
       return;
     }
+    setSelectedEdge(null);
     setSelectedId(nodeId);
     canvasRef.current?.highlightNeighborhood(nodeId);
+    setConnections(nodeId ? (canvasRef.current?.getNeighborConnections(nodeId) ?? []) : []);
+  }
+
+  function handleSelectEdge(edgeId: string | null) {
+    if (!edgeId) {
+      setSelectedEdge(null);
+      return;
+    }
+    setSelectedId(null);
+    canvasRef.current?.highlightNeighborhood(null);
+    const detail = canvasRef.current?.getEdgeDetail(edgeId) ?? null;
+    setSelectedEdge(detail);
+  }
+
+  function handleFocus(nodeId: string) {
+    setFocusedId(nodeId);
+    canvasRef.current?.isolateNeighborhood(nodeId);
+  }
+
+  function handleClearFocus() {
+    setFocusedId(null);
+    canvasRef.current?.isolateNeighborhood(null);
   }
 
   async function findPath(fromId: string, toId: string) {
@@ -124,6 +157,19 @@ function GraphExplorerView({ data, isSeeded }: { data: Subgraph; isSeeded: boole
     if (added) {
       setCounts((prev) => ({ nodes: prev.nodes + added.addedNodes, edges: prev.edges + added.addedEdges }));
     }
+    if (selectedId === nodeId) {
+      setConnections(canvasRef.current?.getNeighborConnections(nodeId) ?? []);
+    }
+  }
+
+  async function handleSearchSelect(node: GraphNode) {
+    const result = await apiFetch<Subgraph>(`/api/entities/${node.id}/graph?depth=1`);
+    const added = canvasRef.current?.addElements(result.data.nodes, result.data.edges);
+    if (added) {
+      setCounts((prev) => ({ nodes: prev.nodes + added.addedNodes, edges: prev.edges + added.addedEdges }));
+    }
+    handleSelect(node.id);
+    canvasRef.current?.centerOn(node.id);
   }
 
   function handleLayoutChange(name: LayoutName) {
@@ -142,6 +188,11 @@ function GraphExplorerView({ data, isSeeded }: { data: Subgraph; isSeeded: boole
         pathMode={pathMode}
         onTogglePathMode={togglePathMode}
         pathModeHint={pathFrom ? `From ${pathFrom} — click an end entity` : "Click a start entity"}
+        riskFilter={riskFilter}
+        onRiskFilterChange={handleRiskFilterChange}
+        isFocused={focusedId !== null}
+        onClearFocus={handleClearFocus}
+        onSearchSelect={handleSearchSelect}
         onResetView={isSeeded ? () => router.push("/graph") : undefined}
       />
       <GraphCanvas
@@ -149,11 +200,24 @@ function GraphExplorerView({ data, isSeeded }: { data: Subgraph; isSeeded: boole
         initialNodes={data.nodes}
         initialEdges={data.edges}
         onSelectNode={handleSelect}
+        onSelectEdge={handleSelectEdge}
         onExpandNode={handleExpand}
       />
       <GraphLegend hiddenTypes={hiddenTypes} onToggleType={toggleType} />
       {selectedId && !pathMode ? (
-        <NodeDetailPanel entityId={selectedId} onExpand={handleExpand} onClose={() => handleSelect(null)} />
+        <NodeDetailPanel
+          entityId={selectedId}
+          connections={connections}
+          isFocused={focusedId === selectedId}
+          onExpand={handleExpand}
+          onFocus={handleFocus}
+          onClearFocus={handleClearFocus}
+          onSelectConnection={handleSelect}
+          onClose={() => handleSelect(null)}
+        />
+      ) : null}
+      {selectedEdge && !pathMode ? (
+        <RelationshipPanel detail={selectedEdge} onSelectEntity={handleSelect} onClose={() => handleSelectEdge(null)} />
       ) : null}
     </>
   );

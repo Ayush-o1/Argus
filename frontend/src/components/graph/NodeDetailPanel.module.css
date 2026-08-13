@@ -87,3 +87,69 @@
   gap: var(--space-2);
   margin-top: auto;
 }
+
+.actionRow {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.actionRow > * {
+  flex: 1;
+}
+
+.connectionsList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.connectionRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2);
+  border-radius: 7px;
+  text-align: left;
+  transition: background-color var(--transition-fast);
+}
+
+.connectionRow:hover {
+  background: var(--surface-hover);
+}
+
+.connectionIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: var(--surface-inset);
+  flex-shrink: 0;
+}
+
+.connectionBody {
+  min-width: 0;
+  flex: 1;
+}
+
+.connectionName {
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.connectionRel {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+}
+
+.connectionsMore {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  padding: var(--space-1) var(--space-2);
+}

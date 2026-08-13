@@ -75,6 +75,41 @@ p {
   font-size: var(--text-lg);
 }
 
+.text-xl {
+  font-size: var(--text-xl);
+}
+
+/* Marketing display sizes — tighter tracking and leading at large scale */
+.text-display-sm {
+  font-size: var(--text-4xl);
+  font-weight: var(--font-semibold);
+  letter-spacing: -0.03em;
+  line-height: 1.08;
+}
+
+.text-display-md {
+  font-size: var(--text-5xl);
+  font-weight: var(--font-semibold);
+  letter-spacing: -0.035em;
+  line-height: 1.04;
+}
+
+.text-display-lg {
+  font-size: var(--text-6xl);
+  font-weight: var(--font-semibold);
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+
+@media (max-width: 860px) {
+  .text-display-lg {
+    font-size: var(--text-4xl);
+  }
+  .text-display-md {
+    font-size: var(--text-3xl);
+  }
+}
+
 ::selection {
   background: var(--accent-glow);
   color: var(--text-primary);

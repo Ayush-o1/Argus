@@ -58,6 +58,10 @@
   --text-xl: 24px;
   --text-2xl: 30px;
   --text-3xl: 36px;
+  /* Display sizes — marketing/landing headlines only, never inside the app shell */
+  --text-4xl: 48px;
+  --text-5xl: 64px;
+  --text-6xl: 80px;
 
   /* === WEIGHT === */
   --font-regular: 400;
@@ -98,6 +102,12 @@
   --transition-base: 220ms ease;
   --transition-slow: 350ms ease;
   --transition-spring: 400ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  /* Shared easing for marketing entrance/scroll motion — decelerate, never bounce */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* === RISK EMPHASIS (graph/map halos — independent of entity-type fill) === */
+  --risk-critical-glow: rgba(255, 59, 71, 0.35);
+  --risk-high-glow: rgba(255, 125, 26, 0.28);
 
   /* === GRID === */
   --grid-cols: 12;

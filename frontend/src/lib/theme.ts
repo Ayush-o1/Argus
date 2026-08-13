@@ -28,3 +28,17 @@ export const ENTITY_COLORS = {
 } as const;
 
 export type EntityColorKey = keyof typeof ENTITY_COLORS;
+
+export type RiskTier = "critical" | "high" | "medium" | "low" | "none";
+
+/** Independent of entity-type fill color, so risk reads as its own visual
+ * channel — a critical Person and a critical Organization should look
+ * equally alarming without their type color competing for attention. Shared
+ * between the Graph Explorer and the Map, which both encode risk this way. */
+export function riskTier(riskScore: number): RiskTier {
+  if (riskScore >= 80) return "critical";
+  if (riskScore >= 60) return "high";
+  if (riskScore >= 35) return "medium";
+  if (riskScore > 0) return "low";
+  return "none";
+}

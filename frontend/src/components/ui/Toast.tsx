@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertCircle, CheckCircle2, Info, X } from "lucide-react";
-import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import styles from "./Toast.module.css";
 
@@ -27,11 +27,30 @@ const TONE_ICON: Record<ToastTone, typeof Info> = {
   error: AlertCircle,
 };
 
+function subscribeNoop() {
+  return () => {};
+}
+
+/** Portals render nothing during SSR; reporting "not mounted yet" for the
+ * server snapshot (and the client's very first synchronous render) keeps
+ * that first render identical to the server's, so hydration never has to
+ * reconcile a mismatch — the standard useSyncExternalStore idiom for
+ * client-only rendering, without the cascading re-render an effect-driven
+ * setState would cause. */
+function useMounted(): boolean {
+  return useSyncExternalStore(
+    subscribeNoop,
+    () => true,
+    () => false,
+  );
+}
+
 /** App-wide toast notifications. Mounted once in Providers; call
  * `useToast().showToast(...)` from anywhere instead of each page building
  * its own inline confirmation banner. */
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const mounted = useMounted();
   const idRef = useRef(0);
 
   const dismiss = useCallback((id: string) => {
@@ -52,7 +71,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={value}>
       {children}
-      {typeof document !== "undefined"
+      {mounted
         ? createPortal(
             <div className={styles.viewport} role="status" aria-live="polite">
               {toasts.map((t) => {

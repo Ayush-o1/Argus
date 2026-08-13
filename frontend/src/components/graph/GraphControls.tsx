@@ -1,14 +1,23 @@
-import { Maximize2, RotateCcw, Waypoints } from "lucide-react";
+import { Crosshair, Maximize2, RotateCcw, Waypoints } from "lucide-react";
+import { EntitySearchBox } from "@/components/entity/EntitySearchBox";
 import { cn } from "@/lib/cn";
 import { ENTITY_COLORS } from "@/lib/theme";
+import type { GraphNode } from "@/lib/types";
 import type { LayoutName } from "./GraphCanvas";
 import styles from "./GraphControls.module.css";
 
 const LAYOUTS: { value: LayoutName; label: string }[] = [
-  { value: "cose", label: "Force-directed" },
+  { value: "fcose", label: "Force-directed" },
   { value: "breadthfirst", label: "Hierarchical" },
   { value: "concentric", label: "Radial" },
   { value: "grid", label: "Grid" },
+];
+
+const RISK_FILTERS = [
+  { value: 0, label: "All risk levels" },
+  { value: 35, label: "Medium and above" },
+  { value: 60, label: "High and above" },
+  { value: 80, label: "Critical only" },
 ];
 
 interface GraphControlsProps {
@@ -20,6 +29,11 @@ interface GraphControlsProps {
   pathMode: boolean;
   onTogglePathMode: () => void;
   pathModeHint?: string;
+  riskFilter: number;
+  onRiskFilterChange: (minRisk: number) => void;
+  isFocused: boolean;
+  onClearFocus: () => void;
+  onSearchSelect: (node: GraphNode) => void;
   /** Shown only when viewing a seeded subgraph (e.g. arrived via ?seed=), so
    * there's always a way back to the full overview without editing the URL. */
   onResetView?: () => void;
@@ -34,10 +48,17 @@ export function GraphControls({
   pathMode,
   onTogglePathMode,
   pathModeHint,
+  riskFilter,
+  onRiskFilterChange,
+  isFocused,
+  onClearFocus,
+  onSearchSelect,
   onResetView,
 }: GraphControlsProps) {
   return (
     <div className={styles.bar}>
+      <EntitySearchBox onSelect={onSearchSelect} />
+
       <select className={styles.select} value={layout} onChange={(e) => onLayoutChange(e.target.value as LayoutName)}>
         {LAYOUTS.map((l) => (
           <option key={l.value} value={l.value}>
@@ -45,6 +66,19 @@ export function GraphControls({
           </option>
         ))}
       </select>
+
+      <select
+        className={styles.select}
+        value={riskFilter}
+        onChange={(e) => onRiskFilterChange(Number(e.target.value))}
+      >
+        {RISK_FILTERS.map((f) => (
+          <option key={f.value} value={f.value}>
+            {f.label}
+          </option>
+        ))}
+      </select>
+
       <button type="button" className={styles.iconButton} onClick={onFit} title="Fit to screen">
         <Maximize2 size={15} />
       </button>
@@ -62,6 +96,11 @@ export function GraphControls({
         </button>
       ) : null}
       {pathMode && <span className={styles.countBadge}>{pathModeHint ?? "Click a start entity"}</span>}
+      {isFocused && (
+        <button type="button" className={cn(styles.countBadge, styles.focusBadge)} onClick={onClearFocus}>
+          <Crosshair size={12} /> Focused — click to clear
+        </button>
+      )}
       <div className={styles.spacer} />
       <span className={styles.countBadge}>
         {nodeCount} nodes · {edgeCount} edges

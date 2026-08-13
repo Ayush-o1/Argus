@@ -18,10 +18,11 @@ export interface ShipmentRoute {
   dest_lng: number;
 }
 
-export function useMapEntities() {
+export function useMapEntities(entityType?: "Person" | "Organization") {
   return useQuery({
-    queryKey: ["map", "entities"],
-    queryFn: async () => (await apiFetch<GraphNode[]>("/api/map/entities")).data,
+    queryKey: ["map", "entities", entityType ?? "all"],
+    queryFn: async () =>
+      (await apiFetch<GraphNode[]>(`/api/map/entities${entityType ? `?type=${entityType}` : ""}`)).data,
   });
 }
 

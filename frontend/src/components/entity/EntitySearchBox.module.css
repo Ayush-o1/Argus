@@ -1,0 +1,113 @@
+.wrap {
+  position: relative;
+  width: 240px;
+}
+
+.inputRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 34px;
+  padding: 0 var(--space-3);
+  border-radius: 8px;
+  background: var(--surface-overlay);
+  border: 1px solid var(--surface-border);
+  backdrop-filter: blur(8px);
+  color: var(--text-tertiary);
+}
+
+.inputRow:focus-within {
+  border-color: var(--accent-primary);
+  color: var(--text-primary);
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+}
+
+.input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.clearButton {
+  display: flex;
+  color: var(--text-tertiary);
+  transition: color var(--transition-fast);
+}
+
+.clearButton:hover {
+  color: var(--text-primary);
+}
+
+.results {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  width: 320px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--surface-overlay);
+  border: 1px solid var(--surface-border);
+  border-radius: 10px;
+  box-shadow: var(--card-shadow-hover);
+  backdrop-filter: blur(12px);
+  padding: var(--space-2);
+  z-index: 20;
+}
+
+.resultItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border-radius: 7px;
+  text-align: left;
+  transition: background-color var(--transition-fast);
+}
+
+.resultItem:hover {
+  background: var(--surface-hover);
+}
+
+.resultIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: var(--surface-inset);
+  flex-shrink: 0;
+}
+
+.resultBody {
+  min-width: 0;
+  flex: 1;
+}
+
+.resultName {
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.resultMeta {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.empty {
+  padding: var(--space-4);
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+}
