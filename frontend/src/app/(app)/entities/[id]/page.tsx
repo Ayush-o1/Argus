@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeftRight, Calendar, Map as MapIcon, Phone, ShieldHalf, Sparkles, Waypoints } from "lucide-react";
+import { ArrowLeftRight, Calendar, Clock, Map as MapIcon, Phone, ShieldHalf, Sparkles, Waypoints } from "lucide-react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useState } from "react";
@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Spinner } from "@/components/ui/Spinner";
+import { RiskBadge, riskLevelFromScore } from "@/components/ui/RiskBadge";
 import { RiskScoreWidget } from "@/components/entity/RiskScoreWidget";
 import { EntityTypeIcon } from "@/components/entity/EntityTypeIcon";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -27,7 +28,9 @@ const DISPLAY_FIELDS: Record<string, { key: string; label: string }[]> = {
     { key: "gender", label: "Gender" },
     { key: "nationality", label: "Nationality" },
     { key: "city", label: "City" },
-    { key: "state", label: "State" },
+    { key: "state", label: "State/Province" },
+    { key: "country", label: "Country" },
+    { key: "region", label: "Region" },
     { key: "phone", label: "Phone" },
     { key: "status", label: "Status" },
   ],
@@ -35,9 +38,18 @@ const DISPLAY_FIELDS: Record<string, { key: string; label: string }[]> = {
     { key: "type", label: "Type" },
     { key: "industry", label: "Industry" },
     { key: "registered_city", label: "Registered City" },
-    { key: "state", label: "State" },
+    { key: "state", label: "State/Province" },
+    { key: "country", label: "Country" },
+    { key: "region", label: "Region" },
     { key: "registration_date", label: "Registration Date" },
     { key: "status", label: "Status" },
+  ],
+  Location: [
+    { key: "type", label: "Type" },
+    { key: "city", label: "City" },
+    { key: "state", label: "State/Province" },
+    { key: "country", label: "Country" },
+    { key: "region", label: "Region" },
   ],
   Vehicle: [
     { key: "type", label: "Type" },
@@ -105,6 +117,8 @@ export default function EntityProfilePage() {
   const fields = DISPLAY_FIELDS[entity.label] ?? [];
   const riskFactors: string[] = entity.properties.risk_factors ?? [];
   const connections = entity.connections ?? {};
+  const p = entity.properties;
+  const place = [p.city ?? p.registered_city, p.country].filter(Boolean).join(", ");
 
   return (
     <PageShell>
@@ -117,8 +131,10 @@ export default function EntityProfilePage() {
             <div className={styles.name}>{entity.name}</div>
             <div className={styles.subtitle}>
               {entity.label} · {entity.id}
+              {place ? ` · ${place}` : ""}
             </div>
           </div>
+          {entity.risk_score > 0 ? <RiskBadge level={riskLevelFromScore(entity.risk_score)} /> : null}
         </div>
         <div className={styles.actions}>
           <Link href={`/graph?seed=${entity.id}`}>
@@ -133,26 +149,68 @@ export default function EntityProfilePage() {
               </Button>
             </Link>
           ) : null}
+          {timeline && timeline.length > 0 ? (
+            <Link href="/timeline">
+              <Button variant="secondary" size="sm">
+                <Clock size={14} /> Timeline
+              </Button>
+            </Link>
+          ) : null}
         </div>
       </div>
 
+      {/* Whether an entity is already under investigation changes what the
+          analyst should do next, so it belongs on arrival rather than three
+          clicks into a tab. Only rendered when there is something to say. */}
+      {(relatedCases?.length ?? 0) > 0 || (relatedAlerts?.length ?? 0) > 0 ? (
+        <button type="button" className={styles.investigationBanner} onClick={() => setTab("Cases & Alerts")}>
+          <ShieldHalf size={15} />
+          <span>
+            Already referenced in{" "}
+            {relatedCases && relatedCases.length > 0 ? (
+              <strong>
+                {relatedCases.length} case{relatedCases.length === 1 ? "" : "s"}
+              </strong>
+            ) : null}
+            {relatedCases?.length && relatedAlerts?.length ? " and " : null}
+            {relatedAlerts && relatedAlerts.length > 0 ? (
+              <strong>
+                {relatedAlerts.length} alert{relatedAlerts.length === 1 ? "" : "s"}
+              </strong>
+            ) : null}
+          </span>
+          <span className={styles.bannerAction}>Review →</span>
+        </button>
+      ) : null}
+
       <div className={styles.layout}>
         <aside className={styles.sidebar}>
+          {/* Risk lived behind a tab, so the one attribute that decides whether
+              this entity is worth pursuing was invisible on arrival. It is the
+              first thing in the sidebar now, and permanently on screen while
+              the analyst moves between tabs. */}
+          <div className={styles.sidebarBlock}>
+            <span className={styles.sidebarTitle}>Risk</span>
+            <RiskScoreWidget score={entity.risk_score} factors={riskFactors} />
+          </div>
+
           <span className={styles.sidebarTitle}>Connections</span>
           {Object.keys(connections).length === 0 ? (
             <span style={{ fontSize: 13, color: "var(--text-tertiary)" }}>No connections yet.</span>
           ) : (
+            // Each count is a route into the graph rather than a statistic —
+            // "9 Persons" is only useful if the analyst can go and see them.
             Object.entries(connections).map(([label, count]) => (
-              <div key={label} className={styles.connectionRow}>
+              <Link key={label} href={`/graph?seed=${entity.id}`} className={styles.connectionRow}>
                 <span>{label}</span>
                 <span className={styles.connectionCount}>{count}</span>
-              </div>
+              </Link>
             ))
           )}
         </aside>
 
         <div>
-          <Tabs tabs={["Properties", "Risk", "Activity", "Cases & Alerts", "Summary"]} active={tab} onChange={setTab} />
+          <Tabs tabs={["Properties", "Activity", "Cases & Alerts", "Summary"]} active={tab} onChange={setTab} />
 
           {tab === "Properties" && (
             <Card>
@@ -164,12 +222,6 @@ export default function EntityProfilePage() {
                   </div>
                 ))}
               </div>
-            </Card>
-          )}
-
-          {tab === "Risk" && (
-            <Card>
-              <RiskScoreWidget score={entity.risk_score} factors={riskFactors} />
             </Card>
           )}
 
