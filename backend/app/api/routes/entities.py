@@ -17,7 +17,10 @@ async def list_entities(
     page_size: int = 50,
     driver: AsyncDriver = Depends(get_db),
 ) -> Envelope[list]:
-    nodes, total = await graph_repo.list_entities(driver, type, risk_min, city, page, page_size)
+    try:
+        nodes, total = await graph_repo.list_entities(driver, type, risk_min, city, page, page_size)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return Envelope(data=nodes, meta=Meta(total=total, page=page, page_size=page_size))
 
 

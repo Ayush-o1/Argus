@@ -10,6 +10,11 @@ from app.repositories.entity_labels import ENTITY_LABELS, resolve_label
 
 MAX_NEIGHBORHOOD_NODES = 500
 
+# Labels `list_entities` can page over. Location is included so the Search
+# page's Location facet browses actual Locations (the fulltext index already
+# covers it); Device is browse-only, since it carries no name to match on.
+BROWSABLE_LABELS = ("Person", "Organization", "Location", "Vehicle", "Device")
+
 
 async def get_node_by_human_id(driver: AsyncDriver, human_id: str) -> dict | None:
     """Returns a fully-shaped GraphNode dict (see to_graph_node), plus `degree`."""
@@ -140,9 +145,12 @@ async def list_entities(
     page: int = 1,
     page_size: int = 50,
 ) -> tuple[list[dict], int]:
-    label = {"Person": "Person", "Organization": "Organization", "Vehicle": "Vehicle", "Device": "Device"}.get(
-        entity_type, "Person"
-    )
+    if entity_type not in BROWSABLE_LABELS:
+        # Previously this silently fell back to "Person" for anything
+        # unrecognised, so a UI facet for a non-browsable type returned a list
+        # of people labelled as that type — wrong data presented as correct.
+        raise ValueError(f"Unsupported entity type: {entity_type}")
+    label = entity_type
     city_filter = "AND n.city = $city" if city and label in ("Person", "Organization") else ""
     risk_filter = "AND n.risk_score >= $risk_min" if label in ("Person", "Organization") else ""
 
