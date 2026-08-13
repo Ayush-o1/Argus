@@ -14,6 +14,8 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { Spinner } from "@/components/ui/Spinner";
 import { useAddCaseEntity, useCase, useRemoveCaseEntity, useUpdateCase } from "@/hooks/useCases";
 import { useCaseSummary } from "@/hooks/useAssistant";
+import { useAlerts } from "@/hooks/useAlerts";
+import { CaseFootprint } from "@/components/cases/CaseFootprint";
 import {
   CASE_PRIORITIES,
   CASE_PRIORITY_TONE,
@@ -34,6 +36,9 @@ export default function CaseWorkspacePage() {
   const addEntity = useAddCaseEntity(caseId);
   const removeEntity = useRemoveCaseEntity(caseId);
   const summary = useCaseSummary();
+  // One request for the whole alert set; related alerts are matched locally by
+  // intersecting involved_entity_ids with the evidence board.
+  const { data: alertsPage } = useAlerts();
 
   const [newEntityId, setNewEntityId] = useState("");
 
@@ -89,6 +94,14 @@ export default function CaseWorkspacePage() {
 
       <div className={styles.layout}>
         <div className={styles.column}>
+          <Card>
+            <CaseFootprint
+              entities={caseDetail.linked_entities ?? []}
+              alerts={alertsPage?.data}
+              caseId={caseDetail.case_id}
+            />
+          </Card>
+
           <NotesPanel
             key={caseDetail.case_id}
             initialNotes={caseDetail.notes}

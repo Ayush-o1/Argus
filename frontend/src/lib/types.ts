@@ -37,6 +37,9 @@ export interface Incident {
    * genuinely part of the same activity, which is what makes "related alerts"
    * a real link rather than a similarity heuristic. */
   storyline_id?: string | null;
+  /** Human IDs of the entities this incident involves — used to relate an
+   * alert to a case by intersecting with that case's evidence board. */
+  involved_entity_ids?: string[];
   involved_entities?: { label: string; properties: Record<string, unknown> }[];
 }
 
