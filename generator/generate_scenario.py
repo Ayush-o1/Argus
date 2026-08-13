@@ -33,7 +33,7 @@ from generators.document_generator import generate_documents
 from generators.neo4j_writer import write_scenario
 from generators.organization_generator import generate_organizations
 from generators.risk_scorer import index_by_human_id, score_world
-from generators.shipment_generator import generate_shipments
+from generators.shipment_generator import ANOMALY_RISK, MANIFEST_GOODS, generate_shipments
 from generators.storyline_generator import (
     StorylineResult,
     _communication_cluster,
@@ -186,9 +186,17 @@ def build_scenario(scenario_type: str, complexity: str, seed: int, driver) -> di
         if len(locations) < 2:
             raise RuntimeError("Not enough existing locations in the graph to build this scenario.")
         world["shipments"] = generate_shipments(rng, locations, scale["shipments"], id_offset=offsets["SHP"])
+        # Force a couple of the storyline's shipments to diverge. anomaly_kind
+        # has to be set alongside route_anomaly: the map explains *why* a route
+        # was flagged by looking that field up, so flipping the boolean alone
+        # produced flagged arcs that could offer no reasoning for the flag.
         for shipment in rng.sample(world["shipments"], k=min(2, len(world["shipments"]))):
             shipment["route_anomaly"] = True
-            shipment["risk_score"] = 15.0
+            shipment["anomaly_kind"] = "manifest_shift"
+            shipment["declared_manifest"] = [
+                good for good in MANIFEST_GOODS if good not in shipment["manifest"]
+            ][: len(shipment["manifest"])]
+            shipment["risk_score"] = ANOMALY_RISK["manifest_shift"]
         log_stage(f"Shipments created ({len(world['shipments'])})")
 
     log_stage("Building graph relationships...")

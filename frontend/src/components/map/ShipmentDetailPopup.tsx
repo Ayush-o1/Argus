@@ -27,8 +27,20 @@ const ANOMALY_EXPLANATION: Record<AnomalyKind, { title: string; detail: string }
   },
 };
 
+// A route flagged without a recorded kind still has to say something; silently
+// rendering nothing would put the analyst back to reading a red line with no
+// reasoning attached.
+const UNSPECIFIED_ANOMALY = {
+  title: "Route flagged",
+  detail: "This route was flagged as anomalous, but no specific finding was recorded against it.",
+};
+
 export function ShipmentDetailPopup({ shipment, onClose }: { shipment: ShipmentRoute; onClose: () => void }) {
-  const explanation = shipment.anomaly_kind ? ANOMALY_EXPLANATION[shipment.anomaly_kind] : null;
+  const explanation = shipment.anomaly_kind
+    ? ANOMALY_EXPLANATION[shipment.anomaly_kind]
+    : shipment.route_anomaly
+      ? UNSPECIFIED_ANOMALY
+      : null;
 
   return (
     <div className={styles.popup}>
