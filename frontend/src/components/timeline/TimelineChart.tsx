@@ -86,6 +86,12 @@ export function TimelineChart({ data }: { data: GlobalTimeline }) {
 
 function TimelineChartInner({ data, width, height }: { data: GlobalTimeline; width: number; height: number }) {
   const points = useMemo(() => buildPoints(data), [data]);
+  // Draw baseline first so flagged records are never occluded by an ordinary
+  // one that happens to come later in the payload.
+  const orderedPoints = useMemo(
+    () => [...points].sort((a, b) => Number(a.flagged) - Number(b.flagged)),
+    [points],
+  );
   const { tooltipData, tooltipLeft, tooltipTop, showTooltip, hideTooltip } = useTooltip<Point>();
   // Incident tooltips contain a real link (View in Alerts); a bare onMouseLeave
   // hides the tooltip the instant the cursor leaves the 3px circle, which fires
@@ -141,14 +147,14 @@ function TimelineChartInner({ data, width, height }: { data: GlobalTimeline; wid
               </text>
             </g>
           ))}
-          {points.map((p) => (
+          {orderedPoints.map((p) => (
             <circle
               key={p.id}
               cx={xScale(p.timestamp)}
               cy={(yScale(p.lane) ?? 0) + yScale.bandwidth() / 2}
-              r={p.flagged ? 4.5 : 3}
+              r={p.flagged ? 4.5 : 1.6}
               fill={p.color}
-              opacity={p.flagged ? 0.95 : 0.55}
+              opacity={p.flagged ? 0.95 : 0.3}
               onMouseEnter={() => {
                 cancelHide();
                 showTooltip({

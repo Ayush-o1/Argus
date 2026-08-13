@@ -1,0 +1,32 @@
+.wrap {
+  width: 100%;
+  height: 148px;
+}
+
+.bar {
+  cursor: pointer;
+}
+
+.bar:focus-visible {
+  outline: none;
+}
+
+.bar:focus-visible .selection,
+.bar:hover .selection {
+  opacity: 1;
+}
+
+.selection {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+}
+
+.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+}
