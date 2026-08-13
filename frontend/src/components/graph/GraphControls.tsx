@@ -1,7 +1,8 @@
-import { Crosshair, Maximize2, RotateCcw, Waypoints } from "lucide-react";
+import { Crosshair, Maximize2, Network, RotateCcw, ShieldAlert, Waypoints } from "lucide-react";
 import { EntitySearchBox } from "@/components/entity/EntitySearchBox";
+import { SelectControl } from "@/components/ui/SelectControl";
 import { cn } from "@/lib/cn";
-import { ENTITY_COLORS } from "@/lib/theme";
+import { ENTITY_COLORS, RISK_COLORS } from "@/lib/theme";
 import type { GraphNode } from "@/lib/types";
 import type { LayoutName } from "./GraphCanvas";
 import styles from "./GraphControls.module.css";
@@ -59,25 +60,22 @@ export function GraphControls({
     <div className={styles.bar}>
       <EntitySearchBox onSelect={onSearchSelect} />
 
-      <select className={styles.select} value={layout} onChange={(e) => onLayoutChange(e.target.value as LayoutName)}>
-        {LAYOUTS.map((l) => (
-          <option key={l.value} value={l.value}>
-            {l.label}
-          </option>
-        ))}
-      </select>
+      <SelectControl
+        icon={Network}
+        options={LAYOUTS}
+        value={layout}
+        onChange={(e) => onLayoutChange(e.target.value as LayoutName)}
+        aria-label="Graph layout"
+      />
 
-      <select
-        className={styles.select}
+      <SelectControl
+        icon={ShieldAlert}
+        options={RISK_FILTERS}
         value={riskFilter}
+        active={riskFilter > 0}
         onChange={(e) => onRiskFilterChange(Number(e.target.value))}
-      >
-        {RISK_FILTERS.map((f) => (
-          <option key={f.value} value={f.value}>
-            {f.label}
-          </option>
-        ))}
-      </select>
+        aria-label="Minimum risk level"
+      />
 
       <button type="button" className={styles.iconButton} onClick={onFit} title="Fit to screen">
         <Maximize2 size={15} />
@@ -120,25 +118,51 @@ interface GraphLegendProps {
 
 /** Doubles as a complexity-management control: click a type to hide/show it
  * on the canvas, rather than always rendering every node the graph returns. */
+const RISK_KEY = [
+  { label: "Critical", color: RISK_COLORS.Critical },
+  { label: "High", color: RISK_COLORS.High },
+  { label: "Medium", color: RISK_COLORS.Medium },
+];
+
 export function GraphLegend({ hiddenTypes, onToggleType }: GraphLegendProps) {
   return (
     <div className={styles.legend}>
-      {LEGEND_ITEMS.map((item) => {
-        const hidden = hiddenTypes.includes(item.label);
-        return (
-          <button
-            key={item.label}
-            type="button"
-            className={cn(styles.legendItem, hidden && styles.legendItemHidden)}
-            onClick={() => onToggleType(item.label)}
-            title={hidden ? `Show ${item.label} nodes` : `Hide ${item.label} nodes`}
-            aria-pressed={!hidden}
-          >
-            <span className={styles.legendDot} style={{ background: item.color }} />
-            {item.label}
-          </button>
-        );
-      })}
+      <div className={styles.legendSection}>
+        <span className={styles.legendTitle}>Entity type — click to filter</span>
+        <div className={styles.legendRow}>
+          {LEGEND_ITEMS.map((item) => {
+            const hidden = hiddenTypes.includes(item.label);
+            return (
+              <button
+                key={item.label}
+                type="button"
+                className={cn(styles.legendItem, hidden && styles.legendItemHidden)}
+                onClick={() => onToggleType(item.label)}
+                title={hidden ? `Show ${item.label} nodes` : `Hide ${item.label} nodes`}
+                aria-pressed={!hidden}
+              >
+                <span className={styles.legendDot} style={{ background: item.color }} />
+                {item.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Risk is encoded as a ring around each node, independent of the fill
+          colour above. Without this key that second channel is invisible —
+          an analyst has no way to know the outline means anything. */}
+      <div className={styles.legendSection}>
+        <span className={styles.legendTitle}>Risk ring</span>
+        <div className={styles.legendRow}>
+          {RISK_KEY.map((item) => (
+            <span key={item.label} className={styles.legendItem}>
+              <span className={styles.legendRing} style={{ borderColor: item.color }} />
+              {item.label}
+            </span>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
