@@ -120,4 +120,4 @@ class GeneratorConfig:
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_user: str = "neo4j"
     neo4j_password: str = "argus_dev_password"
-    wipe_existing: bool = True
+    wipe_existing: bool = False  # opt-in; wiping destroys analyst-created cases (audit B-24)

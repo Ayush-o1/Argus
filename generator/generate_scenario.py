@@ -18,7 +18,9 @@ progress) and a final `RESULT_JSON: {...}` line with the scenario summary.
 """
 
 import argparse
+import getpass
 import json
+import os
 import random
 import sys
 
@@ -249,14 +251,24 @@ def main() -> None:
     parser.add_argument("--type", required=True, choices=list(HANDLERS))
     parser.add_argument("--complexity", default="Medium", choices=list(COMPLEXITY_SCALE))
     parser.add_argument("--seed", type=int, default=None)
-    parser.add_argument("--neo4j-uri", default="bolt://localhost:7687")
-    parser.add_argument("--neo4j-user", default="neo4j")
-    parser.add_argument("--neo4j-password", default="argus_dev_password")
+    # Connection settings default to the environment so the backend can pass
+    # credentials without putting them in argv, where /proc and `ps` expose them
+    # to every local user (audit B-08). The flags remain for direct CLI use;
+    # --neo4j-password is deliberately absent, since supplying a password on a
+    # command line is the practice being removed.
+    parser.add_argument("--neo4j-uri", default=os.environ.get("NEO4J_URI", "bolt://localhost:7687"))
+    parser.add_argument("--neo4j-user", default=os.environ.get("NEO4J_USER", "neo4j"))
     args = parser.parse_args()
+
+    password = os.environ.get("NEO4J_PASSWORD")
+    if not password:
+        # Prompting keeps the password off the command line even for interactive
+        # use. Non-interactive callers should set NEO4J_PASSWORD.
+        password = getpass.getpass("Neo4j password: ")
 
     seed = args.seed if args.seed is not None else random.randint(1, 1_000_000)
 
-    driver = GraphDatabase.driver(args.neo4j_uri, auth=(args.neo4j_user, args.neo4j_password))
+    driver = GraphDatabase.driver(args.neo4j_uri, auth=(args.neo4j_user, password))
     try:
         driver.verify_connectivity()
         summary = build_scenario(args.type, args.complexity, seed, driver)

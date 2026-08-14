@@ -7,6 +7,20 @@ from neo4j import AsyncDriver
 
 from app.repositories.entity_labels import resolve_label
 
+# Neo4j does not store null properties: `SET c.closed_at = null` removes the key
+# rather than storing a null, so a reopened case came back with no `closed_at`
+# key at all while a never-closed one had it only because it was written at
+# creation. The API contract should not depend on that storage detail, so every
+# case is normalised to carry the full field set on the way out.
+_NULLABLE_CASE_FIELDS = ("closed_at", "storyline_id", "notes", "assigned_analyst")
+
+
+def _shape_case(props: dict) -> dict:
+    case = dict(props)
+    for field in _NULLABLE_CASE_FIELDS:
+        case.setdefault(field, None)
+    return case
+
 
 async def list_cases(driver: AsyncDriver, status: str | None, page: int, page_size: int) -> tuple[list[dict], int]:
     status_filter = "WHERE c.status = $status" if status else ""
@@ -21,7 +35,7 @@ async def list_cases(driver: AsyncDriver, status: str | None, page: int, page_si
             f"MATCH (c:Case) {status_filter} RETURN c ORDER BY c.opened_at DESC SKIP $skip LIMIT $limit",
             params,
         )
-        cases = [dict(record["c"]) async for record in result]
+        cases = [_shape_case(record["c"]) async for record in result]
 
     return cases, total
 
@@ -39,7 +53,7 @@ async def get_case(driver: AsyncDriver, case_id: str) -> dict | None:
         record = await result.single()
         if record is None:
             return None
-        case = dict(record["c"])
+        case = _shape_case(record["c"])
         case["linked_entities"] = [
             {"label": item["label"], "properties": dict(item["properties"])}
             for item in record["linked_entities"]
@@ -99,7 +113,7 @@ async def create_case(driver: AsyncDriver, title: str, priority: str, notes: str
         record = await result.single()
         if record is None:  # pragma: no cover - CREATE always returns a row
             raise RuntimeError("Case creation returned no row")
-        return dict(record["c"])
+        return _shape_case(record["c"])
 
 
 async def _sequence_seed(session) -> int:
@@ -123,15 +137,46 @@ async def _sequence_seed(session) -> int:
     return (record["max_seq"] or 0) if record else 0
 
 
+# Fields an update request may change. `SET c += $map` with a caller-supplied
+# map is one widened request model away from mass assignment — it would happily
+# overwrite case_id, opened_at, or the uuid. Enumerating the writable fields
+# means a new field has to be added deliberately in two places.
+UPDATABLE_FIELDS = frozenset({"status", "priority", "notes", "assigned_analyst"})
+
+
 async def update_case(driver: AsyncDriver, case_id: str, updates: dict) -> dict | None:
+    """Applies a whitelisted set of field updates.
+
+    Also maintains `closed_at`, which was declared in create_case and typed in
+    the frontend but never written by any code path — a case could be Closed and
+    still carry closed_at: null, so "when was this closed" had no answer.
+    """
+    rejected = set(updates) - UPDATABLE_FIELDS
+    if rejected:
+        raise ValueError(f"Fields are not updatable: {', '.join(sorted(rejected))}")
+    if not updates:
+        return await get_case(driver, case_id)
+
+    # Only the whitelisted keys reach the query, and each is set by name.
+    assignments = ", ".join(f"c.{field} = ${field}" for field in sorted(updates))
+
+    closed_at_clause = ""
+    if updates.get("status") == "Closed":
+        closed_at_clause = ", c.closed_at = coalesce(c.closed_at, $now)"
+    elif "status" in updates:
+        # Reopening clears the closure timestamp; leaving a stale one would
+        # claim the case was closed at a moment it demonstrably was not.
+        closed_at_clause = ", c.closed_at = null"
+
     async with driver.session() as session:
         result = await session.run(
-            "MATCH (c:Case {case_id: $case_id}) SET c += $updates RETURN c",
+            f"MATCH (c:Case {{case_id: $case_id}}) SET {assignments}{closed_at_clause} RETURN c",
             case_id=case_id,
-            updates=updates,
+            now=datetime.now(UTC).isoformat(),
+            **updates,
         )
         record = await result.single()
-        return dict(record["c"]) if record else None
+        return _shape_case(record["c"]) if record else None
 
 
 async def add_entity_to_case(driver: AsyncDriver, case_id: str, entity_human_id: str, reason: str) -> bool:

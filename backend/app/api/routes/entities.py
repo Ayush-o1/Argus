@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from neo4j import AsyncDriver
 
 from app.api.dependencies import get_db, require_api_token
+from app.api.routes.graph import DepthParam
 from app.models.envelope import Envelope, Meta
 from app.repositories import entity_repo, graph_repo
 
@@ -11,10 +12,10 @@ router = APIRouter(prefix="/api/entities", tags=["entities"], dependencies=[Depe
 @router.get("")
 async def list_entities(
     type: str = "Person",
-    risk_min: float = 0,
+    risk_min: float = Query(0, ge=0, le=100),
     city: str | None = None,
-    page: int = 1,
-    page_size: int = 50,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
     driver: AsyncDriver = Depends(get_db),
 ) -> Envelope[list]:
     try:
@@ -34,14 +35,20 @@ async def get_entity(entity_id: str, driver: AsyncDriver = Depends(get_db)) -> E
 
 
 @router.get("/{entity_id}/graph")
-async def get_entity_graph(entity_id: str, depth: int = 1, driver: AsyncDriver = Depends(get_db)) -> Envelope[dict]:
+async def get_entity_graph(
+    entity_id: str, depth: int = DepthParam, driver: AsyncDriver = Depends(get_db)
+) -> Envelope[dict]:
     subgraph = await graph_repo.get_neighborhood(driver, entity_id, depth=depth)
     return Envelope(data=subgraph)
 
 
 @router.get("/{entity_id}/timeline")
-async def get_entity_timeline(entity_id: str, driver: AsyncDriver = Depends(get_db)) -> Envelope[list]:
-    timeline = await entity_repo.get_entity_timeline(driver, entity_id)
+async def get_entity_timeline(
+    entity_id: str,
+    limit: int = Query(200, ge=1, le=1000),
+    driver: AsyncDriver = Depends(get_db),
+) -> Envelope[list]:
+    timeline = await entity_repo.get_entity_timeline(driver, entity_id, limit=limit)
     return Envelope(data=timeline)
 
 
@@ -52,6 +59,10 @@ async def get_entity_cases(entity_id: str, driver: AsyncDriver = Depends(get_db)
 
 
 @router.get("/{entity_id}/alerts")
-async def get_entity_alerts(entity_id: str, driver: AsyncDriver = Depends(get_db)) -> Envelope[list]:
-    alerts = await entity_repo.get_related_alerts(driver, entity_id)
+async def get_entity_alerts(
+    entity_id: str,
+    limit: int = Query(20, ge=1, le=200),
+    driver: AsyncDriver = Depends(get_db),
+) -> Envelope[list]:
+    alerts = await entity_repo.get_related_alerts(driver, entity_id, limit=limit)
     return Envelope(data=alerts)

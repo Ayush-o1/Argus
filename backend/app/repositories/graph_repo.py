@@ -1,12 +1,22 @@
-"""Raw Cypher access to the graph. Every query here is index-backed (see
-generator/generators/neo4j_writer.py for the constraints/indexes created at
-generation time) — no full graph scans in user-facing paths, per
-ARGUS_PLAN.md Phase 15.
+"""Raw Cypher access to the graph.
+
+Every lookup here resolves by human-readable ID (person_id, org_id, ...), each
+of which is backed by a uniqueness constraint created in migration 001 (see
+app/database/migrations/runner.py). Before that migration only the uuid was
+constrained, so these were full label scans — while this docstring claimed they
+were index-backed (audit B-09). Verified by EXPLAIN: NodeUniqueIndexSeek.
+
+Keep it that way. If you add a lookup on a new property, add its index in a
+migration in the same change.
 """
+
+import logging
 
 from neo4j import AsyncDriver
 
 from app.repositories.entity_labels import ENTITY_LABELS, resolve_label
+
+logger = logging.getLogger(__name__)
 
 MAX_NEIGHBORHOOD_NODES = 500
 
@@ -191,17 +201,76 @@ async def list_entities(
     return nodes, total
 
 
+# Characters that carry meaning in the Lucene query grammar the fulltext index
+# parses. Left unescaped, a search for a name containing an apostrophe-adjacent
+# quote or a bracket raised a ParseException that surfaced as an unhandled 500,
+# and input like `a* OR b*` was executed as operators rather than matched as
+# text — the caller controlled the query grammar, not just the terms (audit B-11).
+_LUCENE_SPECIAL = r'+-&|!(){}[]^"~*?:\/'
+
+
+def escape_lucene(text: str) -> str:
+    """Escape Lucene syntax so user input is matched as literal text.
+
+    Backslash is escaped by the same pass because it is itself the escape
+    character — handling it separately would double-escape everything after it.
+    """
+    out: list[str] = []
+    for char in text:
+        if char in _LUCENE_SPECIAL:
+            out.append("\\")
+        out.append(char)
+    return "".join(out)
+
+
+# Lucene's boolean keywords are reserved as bare uppercase words, not as
+# characters, so character escaping does not neutralise them: searching for the
+# literal text "AND" still raised a parse error. Lowercasing removes the
+# operator meaning while preserving matching, because the index analyser
+# lowercases tokens on both sides anyway.
+_LUCENE_KEYWORDS = frozenset({"AND", "OR", "NOT", "TO"})
+
+# Below this length, edit-distance matching matches almost anything, so short
+# terms are matched exactly.
+_MIN_FUZZY_LENGTH = 3
+
+
+def build_fulltext_query(query_text: str) -> str:
+    """Build a Lucene query that matches the input as literal text.
+
+    The fuzzy operator is applied per term rather than to the whole string: it
+    binds to a single term in Lucene, so `foo bar~` made only the last word
+    fuzzy while appearing to apply to both.
+    """
+    parts: list[str] = []
+    for raw in query_text.split():
+        if not raw:
+            continue
+        term = raw.lower() if raw in _LUCENE_KEYWORDS else raw
+        escaped = escape_lucene(term)
+        # Length is measured on the original term: escaping inflates the string
+        # with backslashes, which would otherwise push a two-character input
+        # past the fuzzy threshold and match half the graph.
+        parts.append(f"{escaped}~" if len(term) >= _MIN_FUZZY_LENGTH else escaped)
+    return " ".join(parts)
+
+
 async def search_entities(driver: AsyncDriver, query_text: str, limit: int = 20) -> list[dict]:
     if not query_text.strip():
         return []
+
+    lucene_query = build_fulltext_query(query_text)
+    if not lucene_query:
+        return []
+
     cypher = """
-    CALL db.index.fulltext.queryNodes('entity_name', $query_text + '~') YIELD node, score
+    CALL db.index.fulltext.queryNodes('entity_name', $query_text) YIELD node, score
     RETURN node, labels(node)[0] AS label, score
     ORDER BY score DESC
     LIMIT $limit
     """
     async with driver.session() as session:
-        result = await session.run(cypher, query_text=query_text, limit=limit)
+        result = await session.run(cypher, query_text=lucene_query, limit=limit)
         return [to_graph_node(dict(record["node"]), record["label"]) async for record in result]
 
 
@@ -257,6 +326,19 @@ async def get_overview_subgraph(driver: AsyncDriver, seed_limit: int = 25, edge_
         async for record in result:
             seed_node = to_graph_node(dict(record["seed"]), record["seed_label"])
             other_node = to_graph_node(dict(record["m"]), record["other_label"])
+
+            # `to_graph_node` yields id=None for any label absent from
+            # ENTITY_LABELS. Keying on that collapsed every such node into one
+            # entry and left edges pointing at a node id that does not exist
+            # (audit B-28). Unreachable with today's labels; a trap for the next
+            # one added.
+            if seed_node["id"] is None or other_node["id"] is None:
+                logger.warning(
+                    "skipping node with unmapped label in overview subgraph",
+                    extra={"seed_label": record["seed_label"], "other_label": record["other_label"]},
+                )
+                continue
+
             nodes_by_id.setdefault(seed_node["id"], seed_node)
             nodes_by_id.setdefault(other_node["id"], other_node)
 

@@ -8,23 +8,38 @@ Account is denormalized with `owner_id`/`owner_type`, so results are joined
 back to the owning Person/Organization for display without extra traversal.
 """
 
+import logging
+import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any
 
 from neo4j import AsyncDriver
 
-PROJECTION_NAME = "entityGraph"
+logger = logging.getLogger(__name__)
+
+PROJECTION_PREFIX = "entityGraph"
 
 
-async def ensure_projection(driver: AsyncDriver) -> None:
-    """(Re)creates the in-memory GDS graph projection. Idempotent — cheap enough
-    (single machine, ~2.8K accounts / 40K transactions) to just drop and redo
-    rather than tracking staleness."""
+@asynccontextmanager
+async def projection(driver: AsyncDriver) -> AsyncIterator[str]:
+    """Creates a private GDS projection for the duration of one job, and drops it
+    afterwards. Yields the projection name.
+
+    Every analytics entry point previously shared a single projection named
+    `entityGraph` and began by dropping it if it existed (audit B-06). Because
+    these run as concurrent background jobs, triggering PageRank and Louvain
+    together — trivially done from the Analytics page — meant one job dropped the
+    projection out from under the other mid-stream, and the second failed with an
+    opaque GDS error surfaced as a generic job failure.
+
+    A per-job name removes the shared mutable resource entirely, which is
+    simpler and more robust than locking around it. The cost is one projection
+    build per job; at this scale (~2.8K accounts, ~40K transactions) that is
+    a fraction of a second.
+    """
+    name = f"{PROJECTION_PREFIX}_{uuid.uuid4().hex[:12]}"
     async with driver.session() as session:
-        exists_result = await session.run("CALL gds.graph.exists($name) YIELD exists", name=PROJECTION_NAME)
-        record = await exists_result.single()
-        if record and record["exists"]:
-            await session.run("CALL gds.graph.drop($name)", name=PROJECTION_NAME)
-
         await session.run(
             """
             CALL gds.graph.project(
@@ -38,8 +53,19 @@ async def ensure_projection(driver: AsyncDriver) -> None:
                 }
             )
             """,
-            name=PROJECTION_NAME,
+            name=name,
         )
+    try:
+        yield name
+    finally:
+        # In a finally block so a failed or cancelled job cannot leak a
+        # projection, which would otherwise hold heap until the database
+        # restarts. Best-effort: a drop failure must not mask the original error.
+        try:
+            async with driver.session() as session:
+                await session.run("CALL gds.graph.drop($name, false) YIELD graphName RETURN graphName", name=name)
+        except Exception:
+            logger.warning("failed to drop GDS projection %s", name, exc_info=True)
 
 
 async def owner_lookup(driver: AsyncDriver, account_ids: list[str]) -> dict[str, dict]:
@@ -64,8 +90,7 @@ async def owner_lookup(driver: AsyncDriver, account_ids: list[str]) -> dict[str,
 
 
 async def run_pagerank(driver: AsyncDriver, top_k: int = 50) -> list[dict]:
-    await ensure_projection(driver)
-    async with driver.session() as session:
+    async with projection(driver) as name, driver.session() as session:
         result = await session.run(
             """
             CALL gds.pageRank.stream($name, { relationshipWeightProperty: 'amount' })
@@ -73,7 +98,7 @@ async def run_pagerank(driver: AsyncDriver, top_k: int = 50) -> list[dict]:
             RETURN gds.util.asNode(nodeId).id AS uuid, score
             ORDER BY score DESC LIMIT $top_k
             """,
-            name=PROJECTION_NAME,
+            name=name,
             top_k=top_k,
         )
         rows = [dict(record) async for record in result]
@@ -83,8 +108,7 @@ async def run_pagerank(driver: AsyncDriver, top_k: int = 50) -> list[dict]:
 
 
 async def run_betweenness(driver: AsyncDriver, top_k: int = 50) -> list[dict]:
-    await ensure_projection(driver)
-    async with driver.session() as session:
+    async with projection(driver) as name, driver.session() as session:
         result = await session.run(
             """
             CALL gds.betweenness.stream($name)
@@ -92,7 +116,7 @@ async def run_betweenness(driver: AsyncDriver, top_k: int = 50) -> list[dict]:
             RETURN gds.util.asNode(nodeId).id AS uuid, score
             ORDER BY score DESC LIMIT $top_k
             """,
-            name=PROJECTION_NAME,
+            name=name,
             top_k=top_k,
         )
         rows = [dict(record) async for record in result]
@@ -102,15 +126,14 @@ async def run_betweenness(driver: AsyncDriver, top_k: int = 50) -> list[dict]:
 
 
 async def run_louvain(driver: AsyncDriver) -> dict:
-    await ensure_projection(driver)
-    async with driver.session() as session:
+    async with projection(driver) as name, driver.session() as session:
         result = await session.run(
             """
             CALL gds.louvain.stream($name)
             YIELD nodeId, communityId
             RETURN gds.util.asNode(nodeId).id AS uuid, communityId
             """,
-            name=PROJECTION_NAME,
+            name=name,
         )
         rows = [dict(record) async for record in result]
 
@@ -143,16 +166,30 @@ async def run_louvain(driver: AsyncDriver) -> dict:
     return {"communities": summary, "total_communities": len(summary)}
 
 
+# node2vec walks the graph randomly, so without a fixed seed the same request
+# returned a different "similar entities" list every time, against an unchanged
+# graph, with nothing in the UI indicating non-determinism (audit B-14). An
+# analyst comparing two runs would have seen a real difference where none
+# existed. `concurrency: 1` is required alongside the seed: parallel walk
+# threads interleave non-deterministically regardless of seeding.
+NODE2VEC_SEED = 42
+
+
 async def run_node2vec_similarity(driver: AsyncDriver, seed_human_id: str, top_k: int = 10) -> list[dict]:
-    await ensure_projection(driver)
-    async with driver.session() as session:
+    async with projection(driver) as name, driver.session() as session:
         result = await session.run(
             """
-            CALL gds.node2vec.stream($name, { embeddingDimension: 64, iterations: 5 })
+            CALL gds.node2vec.stream($name, {
+                embeddingDimension: 64,
+                iterations: 5,
+                randomSeed: $seed,
+                concurrency: 1
+            })
             YIELD nodeId, embedding
             RETURN gds.util.asNode(nodeId).id AS uuid, embedding
             """,
-            name=PROJECTION_NAME,
+            name=name,
+            seed=NODE2VEC_SEED,
         )
         rows = [dict(record) async for record in result]
 
@@ -176,17 +213,17 @@ async def run_node2vec_similarity(driver: AsyncDriver, seed_human_id: str, top_k
         return []
 
     similarities = []
-    for uuid, vector in embeddings.items():
-        if uuid == seed_uuid:
+    for node_uuid, vector in embeddings.items():
+        if node_uuid == seed_uuid:
             continue
-        similarities.append((uuid, _cosine_similarity(seed_vector, vector)))
+        similarities.append((node_uuid, _cosine_similarity(seed_vector, vector)))
     similarities.sort(key=lambda pair: pair[1], reverse=True)
     top = similarities[:top_k]
 
-    owners = await owner_lookup(driver, [uuid for uuid, _ in top])
+    owners = await owner_lookup(driver, [node_uuid for node_uuid, _ in top])
     shaped = []
-    for uuid, sim in top:
-        owner = owners.get(uuid)
+    for node_uuid, sim in top:
+        owner = owners.get(node_uuid)
         if owner is None:
             continue
         shaped.append(
@@ -227,7 +264,6 @@ def _shape_rows(rows: list[dict], owners: dict[str, dict], score_field: str) -> 
     return shaped
 
 
-HOP_DECAY = 1.0
 EDGE_CONFIDENCE = 0.6
 
 

@@ -6,12 +6,14 @@ ARGUS_PLAN.md Phase 8 for the full pipeline design and Phase 4 for the
 world this produces (real Indian geography, entirely synthetic subjects).
 
 Usage:
-    python generate_world.py --seed 42
-    python generate_world.py --seed 42 --no-wipe
+    python generate_world.py --seed 42          # refuses if the graph is populated
+    python generate_world.py --seed 42 --wipe  # destructive: replaces the graph
 """
 
 import argparse
+import getpass
 import logging
+import os
 import random
 import time
 
@@ -44,18 +46,25 @@ logger = logging.getLogger("argus.generator")
 def parse_args() -> GeneratorConfig:
     parser = argparse.ArgumentParser(description="Generate the ARGUS synthetic world.")
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--neo4j-uri", default="bolt://localhost:7687")
-    parser.add_argument("--neo4j-user", default="neo4j")
-    parser.add_argument("--neo4j-password", default="argus_dev_password")
-    parser.add_argument("--no-wipe", action="store_true", help="Don't clear the existing graph before writing.")
+    # Credentials come from the environment rather than argv, which /proc and
+    # `ps` expose to every local user (audit B-08).
+    parser.add_argument("--neo4j-uri", default=os.environ.get("NEO4J_URI", "bolt://localhost:7687"))
+    parser.add_argument("--neo4j-user", default=os.environ.get("NEO4J_USER", "neo4j"))
+    parser.add_argument(
+        "--wipe",
+        action="store_true",
+        help="Delete the entire existing graph before writing. Destroys analyst-created cases.",
+    )
     args = parser.parse_args()
+
+    password = os.environ.get("NEO4J_PASSWORD") or getpass.getpass("Neo4j password: ")
 
     return GeneratorConfig(
         seed=args.seed,
         neo4j_uri=args.neo4j_uri,
         neo4j_user=args.neo4j_user,
-        neo4j_password=args.neo4j_password,
-        wipe_existing=not args.no_wipe,
+        neo4j_password=password,
+        wipe_existing=args.wipe,
     )
 
 
@@ -166,17 +175,66 @@ def print_summary(world: dict) -> None:
     logger.info("  %-16s %d", "shares_device_edges", len(world["shares_device_edges"]))
 
 
+def _guard_existing_graph(driver, wipe_requested: bool) -> None:
+    """Refuse to write into a populated graph unless --wipe was passed explicitly.
+
+    Wiping used to be the default, so the documented command for populating a
+    world also silently deleted every analyst-created Case, with no confirmation
+    and no backup (audit B-24). Inverting the default alone would trade that for
+    a wall of uniqueness-constraint violations on the second run, so this states
+    the situation and the two ways out instead.
+    """
+    with driver.session() as session:
+        record = session.run("MATCH (n) RETURN count(n) AS total").single()
+        existing = record["total"] if record else 0
+
+    if existing == 0 or wipe_requested:
+        return
+
+    analyst_cases = 0
+    with driver.session() as session:
+        record = session.run(
+            "MATCH (c:Case) WHERE c.storyline_id IS NULL RETURN count(c) AS total"
+        ).single()
+        analyst_cases = record["total"] if record else 0
+
+    raise SystemExit(
+        f"\nRefusing to write: the graph already contains {existing:,} nodes"
+        + (f", including {analyst_cases} analyst-created case(s)" if analyst_cases else "")
+        + ".\n\n"
+        "  To replace it entirely (destructive, and it will delete those cases):\n"
+        "      python3 generate_world.py --seed 42 --wipe\n\n"
+        "  To add a storyline to the existing world instead (non-destructive):\n"
+        "      python3 generate_scenario.py --type shell_company_ring\n\n"
+        "  Back up first with:\n"
+        "      docker compose stop neo4j && docker run --rm \\\n"
+        "        -v argus_neo4j_data:/data -v \"$PWD/backups\":/backups neo4j:5-community \\\n"
+        "        neo4j-admin database dump neo4j --to-path=/backups\n"
+    )
+
+
 def main() -> None:
     cfg = parse_args()
+
+    # Connect and check *before* spending ~15s generating a world we may refuse
+    # to write.
+    driver = GraphDatabase.driver(cfg.neo4j_uri, auth=(cfg.neo4j_user, cfg.neo4j_password))
+    try:
+        driver.verify_connectivity()
+        _guard_existing_graph(driver, cfg.wipe_existing)
+    except Exception:
+        driver.close()
+        raise
+
     world = build_world(cfg)
     print_summary(world)
 
     logger.info("")
     logger.info("STAGE 11: Writing to Neo4j (%s)", cfg.neo4j_uri)
-    driver = GraphDatabase.driver(cfg.neo4j_uri, auth=(cfg.neo4j_user, cfg.neo4j_password))
     try:
-        driver.verify_connectivity()
         start = time.time()
+        if cfg.wipe_existing:
+            logger.warning("  --wipe given: deleting the existing graph before writing")
         write_world(driver, world, wipe_existing=cfg.wipe_existing)
         logger.info("  ✓ Write complete (%.2fs)", time.time() - start)
     finally:

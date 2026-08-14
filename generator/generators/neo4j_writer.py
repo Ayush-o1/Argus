@@ -324,11 +324,16 @@ def _write_entity_reference_edges(session, from_label: str, rel_type: str, rows:
         id_field = id_field_by_label[label]
         for batch in _chunks(edge_rows):
             session.run(
+                # MERGE, not CREATE: `write_scenario` calls this additively
+                # against the live graph, so re-running a scenario that touches
+                # an entity already referenced produced a second parallel edge
+                # (audit B-23). get_case masked it with collect(DISTINCT ...),
+                # but entity_repo.get_related_alerts returned the duplicates.
                 f"""
                 UNWIND $rows AS row
                 MATCH (a:{from_label} {{id: row.from_id}})
                 MATCH (b:{label} {{{id_field}: row.target_human_id}})
-                CREATE (a)-[:{rel_type}]->(b)
+                MERGE (a)-[:{rel_type}]->(b)
                 """,
                 rows=batch,
             )

@@ -32,13 +32,13 @@ export function useAskAssistant() {
 export function useEntitySummary() {
   return useMutation({
     mutationFn: async (entityId: string) =>
-      (await apiFetch<{ summary: string }>(`/api/ai/entity-summary/${entityId}`, { method: "POST" })).data,
+      (await apiFetch<{ summary: string }>(`/api/ai/entity-summary/${encodeURIComponent(entityId)}`, { method: "POST" })).data,
   });
 }
 
 export function useCaseSummary() {
   return useMutation({
     mutationFn: async (caseId: string) =>
-      (await apiFetch<{ summary: string }>(`/api/ai/case-summary/${caseId}`, { method: "POST" })).data,
+      (await apiFetch<{ summary: string }>(`/api/ai/case-summary/${encodeURIComponent(caseId)}`, { method: "POST" })).data,
   });
 }
