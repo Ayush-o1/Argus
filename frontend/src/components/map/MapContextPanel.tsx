@@ -45,7 +45,12 @@ interface MapContextPanelProps {
  * region with the most off-lane routing, the busiest corridor — not a score or
  * a model output.
  */
-function readingFor(scale: MapScale, regions: RegionRollup[], corridors: Corridor[]): string | null {
+function readingFor(
+  scale: MapScale,
+  regions: RegionRollup[],
+  corridors: Corridor[],
+  visibleCountries: CountryRollup[],
+): string | null {
   if (scale === "world") {
     const byAnomaly = [...regions].sort((a, b) => b.anomalous_routes - a.anomalous_routes)[0];
     const byElevated = [...regions].sort((a, b) => b.elevated_count - a.elevated_count)[0];
@@ -64,11 +69,23 @@ function readingFor(scale: MapScale, regions: RegionRollup[], corridors: Corrido
     return null;
   }
 
-  const active = regions.filter((r) => r.elevated_count > 0);
-  if (active.length === 0) return null;
+  // Scoped to what is on screen, matching the list beside it. Computing this
+  // from the global region rollup meant that after drilling into South Asia the
+  // panel listed South Asian countries under a sentence about the world's
+  // leading region — the drill-down moved, the finding did not (audit B-16).
+  const active = visibleCountries.filter((c) => c.elevated_count > 0);
+  if (active.length === 0) {
+    return visibleCountries.length > 0
+      ? `No elevated entities among the ${visibleCountries.length} ${
+          visibleCountries.length === 1 ? "country" : "countries"
+        } in view.`
+      : null;
+  }
   const top = [...active].sort((a, b) => b.elevated_count - a.elevated_count)[0];
-  const total = active.reduce((n, r) => n + r.elevated_count, 0);
-  return `${top.region} holds ${top.elevated_count} of the ${total} elevated entities tracked.`;
+  const total = active.reduce((n, c) => n + c.elevated_count, 0);
+  return active.length === 1
+    ? `${top.country} carries all ${total} elevated ${total === 1 ? "entity" : "entities"} in view.`
+    : `${top.country} holds ${top.elevated_count} of the ${total} elevated entities in view, across ${active.length} countries.`;
 }
 
 export function MapContextPanel({ scale, regions, countries, bounds, corridors, onFlyTo }: MapContextPanelProps) {
@@ -80,7 +97,7 @@ export function MapContextPanel({ scale, regions, countries, bounds, corridors, 
   // viewport rather than on a remembered "active region" also stays correct
   // when the analyst pans or zooms freely instead of clicking through.
   const visibleCountries = countries.filter((c) => withinBounds(c.lng, c.lat, bounds));
-  const reading = readingFor(scale, regions, corridors);
+  const reading = readingFor(scale, regions, corridors, visibleCountries);
 
   const rows =
     scale === "world"

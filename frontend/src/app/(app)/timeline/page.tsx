@@ -2,6 +2,7 @@
 
 import { Clock } from "lucide-react";
 import { useMemo, useState } from "react";
+import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -12,14 +13,17 @@ import { ActivityHistogram } from "@/components/timeline/ActivityHistogram";
 import { NotableMoments } from "@/components/timeline/NotableMoments";
 import { TimelineChart } from "@/components/timeline/TimelineChart";
 import {
-  applyFilters,
-  bucketByDay,
+  analyseDays,
+  BURST_SIGMA,
   DEFAULT_FILTERS,
+  filterDetail,
   LANE_LABEL,
+  LANES,
   type LaneKey,
   type TimelineFilters,
 } from "@/components/timeline/timelineModel";
 import { useGlobalTimeline } from "@/hooks/useTimeline";
+import { coverageLabel } from "@/lib/aggregate";
 import { ENTITY_COLORS, RISK_COLORS } from "@/lib/theme";
 import styles from "./page.module.css";
 
@@ -30,8 +34,6 @@ const RANGE_OPTIONS = [
   { value: "all", label: "All" },
 ];
 
-const LANES: LaneKey[] = ["incidents", "transactions", "communications", "events"];
-
 const LEGEND = [
   { label: "Flagged activity", color: RISK_COLORS.Critical },
   { label: "Baseline transactions", color: ENTITY_COLORS.Account },
@@ -40,15 +42,14 @@ const LEGEND = [
 ];
 
 export default function TimelinePage() {
-  const { data, isLoading } = useGlobalTimeline();
+  const { data, isLoading, isError, refetch } = useGlobalTimeline();
   const [filters, setFilters] = useState<TimelineFilters>(DEFAULT_FILTERS);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
 
-  const buckets = useMemo(() => (data ? bucketByDay(data, filters) : []), [data, filters]);
-  const filtered = useMemo(() => (data ? applyFilters(data, filters) : null), [data, filters]);
+  const analysis = useMemo(() => (data ? analyseDays(data, filters) : null), [data, filters]);
+  const detail = useMemo(() => (data ? filterDetail(data, filters) : null), [data, filters]);
 
-  const burstDays = buckets.filter((b) => b.burst).length;
-  const flaggedTotal = buckets.reduce((sum, b) => sum + b.flagged, 0);
+  const flaggedTotal = analysis?.days.reduce((sum, d) => sum + d.flagged, 0) ?? 0;
 
   function setLane(lane: LaneKey, on: boolean) {
     setFilters((f) => ({ ...f, lanes: { ...f.lanes, [lane]: on } }));
@@ -56,24 +57,50 @@ export default function TimelinePage() {
   }
 
   const isEmpty =
-    filtered &&
-    filtered.transactions.length === 0 &&
-    filtered.communications.length === 0 &&
-    filtered.events.length === 0 &&
-    filtered.incidents.length === 0;
+    detail &&
+    detail.transactions.length === 0 &&
+    detail.communications.length === 0 &&
+    detail.events.length === 0 &&
+    detail.incidents.length === 0;
+
+  // The scatter renders a bounded preview per lane, while every figure above it
+  // is a complete count. Saying so prevents the reader inferring the chart is
+  // the whole picture.
+  const previewNote = data
+    ? [
+        coverageLabel(data.detail.transactions.coverage) && "transactions",
+        coverageLabel(data.detail.communications.coverage) && "communications",
+        coverageLabel(data.detail.events.coverage) && "events",
+      ].filter(Boolean)
+    : [];
 
   return (
     <PageShell
       title="Timeline"
       subtitle={
-        data
-          ? `${flaggedTotal.toLocaleString()} flagged record${flaggedTotal === 1 ? "" : "s"}${
-              burstDays > 0 ? ` across ${burstDays} burst day${burstDays === 1 ? "" : "s"}` : ""
+        analysis
+          ? `${flaggedTotal.toLocaleString()} flagged record${flaggedTotal === 1 ? "" : "s"} across ${
+              analysis.stats.dayCount
+            } day${analysis.stats.dayCount === 1 ? "" : "s"}${
+              analysis.stats.burstDays > 0
+                ? ` · ${analysis.stats.burstDays} burst day${analysis.stats.burstDays === 1 ? "" : "s"}`
+                : ""
             } — select a day to narrow the sequence`
           : "Reconstruct what happened, and when"
       }
     >
-      {isLoading || !data || !filtered ? (
+      {isError ? (
+        <EmptyState
+          icon={Clock}
+          title="Could not load the timeline"
+          description="The activity data could not be retrieved. This is a loading failure, not an empty result — the graph may still contain activity."
+          actions={
+            <Button variant="secondary" size="sm" onClick={() => void refetch()}>
+              Retry
+            </Button>
+          }
+        />
+      ) : isLoading || !data || !analysis || !detail ? (
         <Skeleton height={520} />
       ) : (
         <div className={styles.layout}>
@@ -112,13 +139,21 @@ export default function TimelinePage() {
 
               <div className={styles.histogramHead}>
                 <span className={styles.sectionTitle}>Daily volume</span>
-                <span className={styles.sectionHint}>
-                  {burstDays > 0
-                    ? `${burstDays} day${burstDays === 1 ? "" : "s"} above 2σ of flagged volume`
-                    : "No days exceed 2σ of flagged volume"}
+                {/* States the basis of the claim, not just the claim. A reader
+                    can check the threshold against the bars rather than taking
+                    "2σ" on trust. */}
+                <span
+                  className={styles.sectionHint}
+                  title={`Counted across all ${data.totals.records.population?.toLocaleString() ?? "—"} records in the graph`}
+                >
+                  {analysis.stats.sigma === 0
+                    ? "No variation in flagged volume across this range"
+                    : analysis.stats.burstDays > 0
+                      ? `${analysis.stats.burstDays} day${analysis.stats.burstDays === 1 ? "" : "s"} above ${BURST_SIGMA}σ (>${analysis.stats.threshold.toFixed(1)} flagged/day vs mean ${analysis.stats.mean.toFixed(1)})`
+                      : `No day exceeds ${BURST_SIGMA}σ (>${analysis.stats.threshold.toFixed(1)} flagged/day vs mean ${analysis.stats.mean.toFixed(1)})`}
                 </span>
               </div>
-              <ActivityHistogram buckets={buckets} selectedDay={selectedDay} onSelectDay={setSelectedDay} />
+              <ActivityHistogram days={analysis.days} selectedDay={selectedDay} onSelectDay={setSelectedDay} />
             </Card>
 
             <Card>
@@ -133,6 +168,12 @@ export default function TimelinePage() {
                   ))}
                 </div>
               </div>
+              {previewNote.length > 0 ? (
+                <p className={styles.previewNote}>
+                  Showing the most recent and flagged records for {previewNote.join(", ")}; the volume chart above
+                  counts every record.
+                </p>
+              ) : null}
               {isEmpty ? (
                 <EmptyState
                   icon={Clock}
@@ -140,12 +181,12 @@ export default function TimelinePage() {
                   description="Widen the time range or re-enable an activity type."
                 />
               ) : (
-                <TimelineChart data={filtered} />
+                <TimelineChart data={detail} />
               )}
             </Card>
           </div>
 
-          <NotableMoments data={filtered} selectedDay={selectedDay} />
+          <NotableMoments data={detail} selectedDay={selectedDay} />
         </div>
       )}
     </PageShell>

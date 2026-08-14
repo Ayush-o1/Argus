@@ -1,60 +1,208 @@
-"""Global temporal activity for the Timeline page (ARGUS_PLAN.md Phase 6, Page 5).
+"""Global temporal activity for the Timeline page.
 
-Plots flagged activity (the "signal") against a bounded baseline sample
-(the "noise") rather than all ~60K generated events/transactions/
-communications, which would be unrenderable and uninformative at once —
-the point of this page is spotting bursts, not exhaustive enumeration.
+Previously this returned a random sample — `ORDER BY flagged DESC, rand() LIMIT
+800` — and the frontend computed "N days above 2σ of flagged volume" from it.
+That was wrong three ways (audit B-03):
+
+  1. `rand()` re-drew per request, so refreshing the page changed which days
+     were bursts. Two analysts comparing notes saw different findings from the
+     same query.
+  2. `ORDER BY flagged DESC` took every flagged record first and filled the
+     remainder randomly, so the flagged-to-baseline ratio in the sample bore no
+     relation to the real one. The chart was labelled "Daily volume"; it was not
+     volume.
+  3. The frontend's mean was computed only over days that appeared in the
+     payload. Days with no activity produced no row, so they were omitted rather
+     than counted as zero, inflating the mean and suppressing real bursts
+     (audit B-18).
+
+The fix is to aggregate server-side over the whole population. Daily counts are
+cheap to compute in Cypher and small to transmit — 180 days of buckets is a few
+kilobytes, far less than 800 individual records were — so the sampling was never
+buying anything.
+
+Individual records are still returned for the scatter lane, but they are now
+explicitly a bounded, ordered preview (`Basis.TRUNCATED`) rather than something
+statistics are computed from.
 """
+
+from __future__ import annotations
+
+from datetime import date, timedelta
 
 from neo4j import AsyncDriver
 
+from app.models.aggregate import Aggregate
 
-async def get_global_timeline(driver: AsyncDriver, baseline_sample: int = 300, flagged_limit: int = 500) -> dict:
+# Upper bound on individual records returned for the scatter lane. These drive a
+# visual only — every number on the page comes from the day buckets.
+DETAIL_LIMIT = 400
+
+
+async def _daily_counts(driver: AsyncDriver) -> tuple[list[dict], dict[str, int]]:
+    """Per-day totals across every transaction, communication, event and
+    incident in the graph. Returns (buckets, population_totals).
+
+    `substring(x.timestamp, 0, 10)` extracts the date from the stored ISO string
+    rather than parsing it into a temporal type. The generator writes naive local
+    timestamps (audit B-17), so there is no offset to honour — parsing would
+    invent a timezone the data does not carry. The day key is therefore the day
+    as written, which is the only interpretation the data actually supports.
+    """
+    query = """
+    CALL () {
+        MATCH ()-[t:TRANSACTED_WITH]->()
+        WHERE t.timestamp IS NOT NULL
+        RETURN substring(t.timestamp, 0, 10) AS day,
+               'transactions' AS lane,
+               CASE WHEN t.flagged THEN 1 ELSE 0 END AS flagged
+        UNION ALL
+        MATCH ()-[c:COMMUNICATED_WITH]->()
+        WHERE c.timestamp IS NOT NULL
+        RETURN substring(c.timestamp, 0, 10) AS day,
+               'communications' AS lane,
+               CASE WHEN c.flagged THEN 1 ELSE 0 END AS flagged
+        UNION ALL
+        MATCH (e:Event)
+        WHERE e.timestamp IS NOT NULL
+        RETURN substring(e.timestamp, 0, 10) AS day,
+               'events' AS lane,
+               0 AS flagged
+        UNION ALL
+        MATCH (i:Incident)
+        WHERE i.timestamp IS NOT NULL
+        RETURN substring(i.timestamp, 0, 10) AS day,
+               'incidents' AS lane,
+               1 AS flagged
+    }
+    RETURN day, lane, count(*) AS total, sum(flagged) AS flagged
+    ORDER BY day
+    """
+    async with driver.session() as session:
+        result = await session.run(query)
+        rows = [dict(record) async for record in result]
+
+    by_day: dict[str, dict] = {}
+    population: dict[str, int] = {"transactions": 0, "communications": 0, "events": 0, "incidents": 0}
+
+    for row in rows:
+        day = row["day"]
+        bucket = by_day.setdefault(
+            day,
+            {
+                "day": day,
+                "total": 0,
+                "flagged": 0,
+                "transactions": 0,
+                "communications": 0,
+                "events": 0,
+                "incidents": 0,
+            },
+        )
+        bucket["total"] += row["total"]
+        bucket["flagged"] += row["flagged"]
+        bucket[row["lane"]] += row["total"]
+        population[row["lane"]] += row["total"]
+
+    return list(by_day.values()), population
+
+
+def _zero_fill(buckets: list[dict]) -> list[dict]:
+    """Insert explicit zero buckets for days with no activity.
+
+    A day with nothing in it is a real observation about the timeline, and
+    omitting it is what let the previous implementation compute its mean over
+    only the non-empty days (audit B-18). Statistics downstream depend on this
+    series being contiguous.
+    """
+    if not buckets:
+        return []
+
+    ordered = sorted(buckets, key=lambda b: b["day"])
+    start = date.fromisoformat(ordered[0]["day"])
+    end = date.fromisoformat(ordered[-1]["day"])
+    existing = {b["day"]: b for b in ordered}
+
+    filled: list[dict] = []
+    cursor = start
+    while cursor <= end:
+        key = cursor.isoformat()
+        filled.append(
+            existing.get(
+                key,
+                {
+                    "day": key,
+                    "total": 0,
+                    "flagged": 0,
+                    "transactions": 0,
+                    "communications": 0,
+                    "events": 0,
+                    "incidents": 0,
+                },
+            )
+        )
+        cursor += timedelta(days=1)
+    return filled
+
+
+async def _detail_records(driver: AsyncDriver) -> dict[str, list[dict]]:
+    """A bounded, deterministically-ordered preview for the scatter lane.
+
+    Ordered by timestamp rather than `rand()` so the same request returns the
+    same records. These are explicitly a preview: nothing on the page computes a
+    statistic from them.
+    """
     async with driver.session() as session:
         tx_result = await session.run(
             """
             MATCH ()-[t:TRANSACTED_WITH]->()
-            WITH t, t.flagged AS flagged
-            ORDER BY flagged DESC, rand()
-            LIMIT $limit
+            WHERE t.timestamp IS NOT NULL
             RETURN t.tx_id AS id, t.timestamp AS timestamp, t.amount AS amount,
-                   t.type AS subtype, flagged AS flagged, t.storyline_id AS storyline_id
+                   t.type AS subtype, coalesce(t.flagged, false) AS flagged,
+                   t.storyline_id AS storyline_id
+            ORDER BY t.flagged DESC, t.timestamp DESC
+            LIMIT $limit
             """,
-            limit=flagged_limit + baseline_sample,
+            limit=DETAIL_LIMIT,
         )
         transactions = [dict(record) async for record in tx_result]
 
         comm_result = await session.run(
             """
             MATCH ()-[c:COMMUNICATED_WITH]->()
-            WITH c, c.flagged AS flagged
-            ORDER BY flagged DESC, rand()
+            WHERE c.timestamp IS NOT NULL
+            RETURN c.comm_id AS id, c.timestamp AS timestamp,
+                   c.duration_seconds AS duration_seconds, c.type AS subtype,
+                   coalesce(c.flagged, false) AS flagged, c.storyline_id AS storyline_id
+            ORDER BY c.flagged DESC, c.timestamp DESC
             LIMIT $limit
-            RETURN c.comm_id AS id, c.timestamp AS timestamp, c.duration_seconds AS duration_seconds,
-                   c.type AS subtype, flagged AS flagged, c.storyline_id AS storyline_id
             """,
-            limit=flagged_limit + baseline_sample,
+            limit=DETAIL_LIMIT,
         )
         communications = [dict(record) async for record in comm_result]
 
         event_result = await session.run(
             """
             MATCH (e:Event)
-            WITH e, rand() AS r
-            ORDER BY r
-            LIMIT $limit
+            WHERE e.timestamp IS NOT NULL
             RETURN e.event_id AS id, e.timestamp AS timestamp, e.type AS subtype,
                    false AS flagged, e.storyline_id AS storyline_id
+            ORDER BY e.timestamp DESC
+            LIMIT $limit
             """,
-            limit=baseline_sample,
+            limit=DETAIL_LIMIT,
         )
         events = [dict(record) async for record in event_result]
 
+        # Incidents are returned in full: there are tens of them, not thousands,
+        # and they are the page's primary signal rather than background volume.
         incident_result = await session.run(
             """
             MATCH (i:Incident)
+            WHERE i.timestamp IS NOT NULL
             RETURN i.incident_id AS id, i.timestamp AS timestamp, i.type AS subtype,
-                   i.severity AS severity, i.description AS description
+                   i.severity AS severity, i.description AS description,
+                   i.storyline_id AS storyline_id
             ORDER BY i.timestamp DESC
             """
         )
@@ -65,4 +213,43 @@ async def get_global_timeline(driver: AsyncDriver, baseline_sample: int = 300, f
         "communications": communications,
         "events": events,
         "incidents": incidents,
+    }
+
+
+async def get_global_timeline(driver: AsyncDriver) -> dict:
+    buckets, population = await _daily_counts(driver)
+    filled = _zero_fill(buckets)
+    details = await _detail_records(driver)
+
+    total_records = sum(population.values())
+    total_flagged = sum(b["flagged"] for b in filled)
+
+    def preview(lane: str) -> dict:
+        records = details[lane]
+        pop = population[lane]
+        # Incidents are complete; the other lanes are a bounded head of an
+        # ordered list, which is a truncation and not a sample.
+        agg = (
+            Aggregate.complete(len(records), population=pop, method="all")
+            if lane == "incidents" or len(records) >= pop
+            else Aggregate.truncated(len(records), population=pop, examined=len(records), method="top-by-time")
+        )
+        return {"records": records, "coverage": agg.model_dump(mode="json")}
+
+    return {
+        # Every figure the UI renders comes from here, and every one covers the
+        # whole population.
+        "buckets": filled,
+        "day_count": len(filled),
+        "totals": {
+            "records": Aggregate.complete(total_records, population=total_records, method="count").model_dump(
+                mode="json"
+            ),
+            "flagged": Aggregate.complete(total_flagged, population=total_records, method="count").model_dump(
+                mode="json"
+            ),
+            "by_lane": {lane: population[lane] for lane in population},
+        },
+        # Individual records, for the scatter visual only.
+        "detail": {lane: preview(lane) for lane in ("transactions", "communications", "events", "incidents")},
     }

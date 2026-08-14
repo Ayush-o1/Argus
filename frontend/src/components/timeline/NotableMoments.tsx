@@ -5,7 +5,7 @@ import { ArrowUpRight } from "lucide-react";
 import { useMemo } from "react";
 import { RISK_COLORS } from "@/lib/theme";
 import { formatRelativeTime } from "@/lib/formatters";
-import type { GlobalTimeline } from "@/hooks/useTimeline";
+import type { TimelineDetail } from "./timelineModel";
 import styles from "./NotableMoments.module.css";
 
 /**
@@ -31,7 +31,7 @@ interface Moment {
   rank: number;
 }
 
-function buildMoments(data: GlobalTimeline): Moment[] {
+function buildMoments(data: TimelineDetail): Moment[] {
   const moments: Moment[] = [
     ...data.incidents.map((i) => ({
       id: i.id,
@@ -74,7 +74,7 @@ function buildMoments(data: GlobalTimeline): Moment[] {
 
 const MAX_ROWS = 60;
 
-export function NotableMoments({ data, selectedDay }: { data: GlobalTimeline; selectedDay: string | null }) {
+export function NotableMoments({ data, selectedDay }: { data: TimelineDetail; selectedDay: string | null }) {
   const moments = useMemo(() => {
     const all = buildMoments(data);
     const scoped = selectedDay ? all.filter((m) => m.timestamp.slice(0, 10) === selectedDay) : all;

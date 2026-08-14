@@ -6,6 +6,8 @@ import { useMemo } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { EntityTypeIcon } from "@/components/entity/EntityTypeIcon";
+import { useRelatedAlerts } from "@/hooks/useAlerts";
+import { coverageLabel } from "@/lib/aggregate";
 import { entityId, entityName } from "@/lib/entityDisplay";
 import { formatRelativeTime } from "@/lib/formatters";
 import { RISK_COLORS, riskTier } from "@/lib/theme";
@@ -44,39 +46,27 @@ const STATUS_LABEL: Record<string, string> = {
 
 interface AlertDetailProps {
   alert: Incident;
-  allAlerts: Incident[];
   onSelect: (alert: Incident) => void;
   onReview: (status: "UnderInvestigation" | "Closed") => void;
   isReviewing: boolean;
 }
 
-export function AlertDetail({ alert, allAlerts, onSelect, onReview, isReviewing }: AlertDetailProps) {
-  // Memoised so the `??` default doesn't produce a new array identity on every
-  // render and re-run the spread calculation below.
+export function AlertDetail({ alert, onSelect, onReview, isReviewing }: AlertDetailProps) {
+  // A bounded preview for the list below — never the basis for a count.
   const entities = useMemo(() => alert.involved_entities ?? [], [alert]);
 
-  const spread = useMemo(() => {
-    const countries = new Set<string>();
-    const regions = new Set<string>();
-    let peakRisk = 0;
-    for (const e of entities) {
-      const p = e.properties as Record<string, unknown>;
-      if (typeof p.country === "string") countries.add(p.country);
-      if (typeof p.region === "string") regions.add(p.region);
-      if (typeof p.risk_score === "number") peakRisk = Math.max(peakRisk, p.risk_score);
-    }
-    return { countries: [...countries], regions: [...regions], peakRisk };
-  }, [entities]);
+  // Computed by the backend across every involved entity. Deriving it here from
+  // `entities` understated the reach of any alert involving more than five
+  // (audit B-04): on this dataset that misreported 2 of 9 alerts, one of them
+  // as 4 countries when the truth was 6.
+  const spread = alert.spread;
+  const coverage = alert.involved_coverage;
+  const previewLabel = coverage ? coverageLabel(coverage) : null;
 
   // Two alerts are related when they were planted by the same storyline, which
-  // is a real link in the graph — not a heuristic over matching text.
-  const related = useMemo(
-    () =>
-      alert.storyline_id
-        ? allAlerts.filter((a) => a.storyline_id === alert.storyline_id && a.incident_id !== alert.incident_id)
-        : [],
-    [allAlerts, alert],
-  );
+  // is a real link in the graph — not a heuristic over matching text. Resolved
+  // server-side so the answer does not depend on which page is loaded.
+  const { data: related = [] } = useRelatedAlerts(alert.incident_id);
 
   const firstEntityId = entities.map((e) => entityId(e.label, e.properties)).find(Boolean);
   const mappable = entities.find(
@@ -107,25 +97,33 @@ export function AlertDetail({ alert, allAlerts, onSelect, onReview, isReviewing 
           the incident actually involves. In a dataset spanning 50 countries,
           an alert touching several is a materially different finding from one
           confined to a single city. */}
-      {spread.countries.length > 0 ? (
+      {spread && spread.country_count > 0 ? (
         <section className={styles.section}>
           <h4 className={styles.sectionTitle}>Spread</h4>
           <div className={styles.spread}>
             <span className={styles.spreadItem}>
               <Globe2 size={13} />
-              {spread.countries.length === 1
+              {spread.country_count === 1
                 ? spread.countries[0]
-                : `${spread.countries.length} countries · ${spread.countries.join(", ")}`}
+                : `${spread.country_count} countries · ${spread.countries.join(", ")}${
+                    spread.country_count > spread.countries.length ? ", …" : ""
+                  }`}
             </span>
-            {spread.regions.length > 1 ? (
-              <span className={styles.crossRegion}>Crosses {spread.regions.length} regions</span>
+            {spread.region_count > 1 ? (
+              <span className={styles.crossRegion}>Crosses {spread.region_count} regions</span>
             ) : null}
           </div>
         </section>
       ) : null}
 
       <section className={styles.section}>
-        <h4 className={styles.sectionTitle}>Affected ({entities.length})</h4>
+        {/* The heading counts every involved entity; the list below shows as
+            many as fit. Previously both were the preview length, so an alert
+            involving thirty entities read "Affected (5)". */}
+        <h4 className={styles.sectionTitle}>
+          Affected ({spread?.involved_total ?? entities.length})
+          {previewLabel ? <span className={styles.sectionNote}> showing {previewLabel}</span> : null}
+        </h4>
         <ul className={styles.entities}>
           {entities.map((e, i) => {
             const id = entityId(e.label, e.properties);

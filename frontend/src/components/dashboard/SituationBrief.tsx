@@ -15,12 +15,6 @@ import styles from "./SituationBrief.module.css";
  * asserted that the summary and region rollup don't contain.
  */
 
-const RECENT_WINDOW_DAYS = 7;
-
-function daysAgo(iso: string): number {
-  return (Date.now() - Date.parse(iso)) / 86_400_000;
-}
-
 interface SituationBriefProps {
   summary: DashboardSummary;
   regions: RegionRollup[] | undefined;
@@ -32,18 +26,24 @@ export function SituationBrief({ summary, regions }: SituationBriefProps) {
     const high = summary.risk_distribution.find((b) => b.level === "High")?.count ?? 0;
     const elevated = critical + high;
 
-    const recentIncidents = summary.recent_incidents.filter((i) => daysAgo(i.timestamp) <= RECENT_WINDOW_DAYS);
-    const criticalIncidents = summary.recent_incidents.filter((i) => i.severity === "Critical").length;
-
     const active = (regions ?? []).filter((r) => r.elevated_count > 0);
     const ranked = [...active].sort((a, b) => b.elevated_count - a.elevated_count);
     const lead = ranked[0];
     const anomalyLead = [...(regions ?? [])].sort((a, b) => b.anomalous_routes - a.anomalous_routes)[0];
 
-    return { critical, high, elevated, recentIncidents, criticalIncidents, active, lead, anomalyLead };
+    // A leader by a single entity is not a concentration. Stating "concentrated
+    // in X" for a one-entity margin reads as a finding when it is noise, so the
+    // claim is only made when the margin is material.
+    const runnerUp = ranked[1];
+    const isConcentrated =
+      lead !== undefined &&
+      (runnerUp === undefined || lead.elevated_count >= runnerUp.elevated_count * 1.5) &&
+      lead.elevated_count > 1;
+
+    return { critical, high, elevated, active, lead, runnerUp, isConcentrated, anomalyLead };
   }, [summary, regions]);
 
-  const { critical, elevated, recentIncidents, criticalIncidents, active, lead, anomalyLead } = model;
+  const { critical, elevated, active, lead, isConcentrated, anomalyLead } = model;
 
   return (
     <section className={styles.brief} aria-label="Situation">
@@ -57,9 +57,13 @@ export function SituationBrief({ summary, regions }: SituationBriefProps) {
                 across <strong>{active.length}</strong> {active.length === 1 ? "region" : "regions"}
               </>
             ) : null}
-            {lead ? (
+            {lead && isConcentrated ? (
               <>
                 , concentrated in <strong>{lead.region}</strong>
+              </>
+            ) : lead ? (
+              <>
+                , led by <strong>{lead.region}</strong>
               </>
             ) : null}
             .
@@ -67,10 +71,13 @@ export function SituationBrief({ summary, regions }: SituationBriefProps) {
         ) : (
           <>No entity currently exceeds the elevated-risk threshold.</>
         )}{" "}
+        {/* Both figures are full-population counts, so they can be stated as
+            parts of one whole. The critical count previously came from a
+            six-row display list and understated itself (audit B-05). */}
         <strong>{summary.open_alerts}</strong> {summary.open_alerts === 1 ? "alert is" : "alerts are"} open
-        {criticalIncidents > 0 ? (
+        {summary.critical_open_alerts > 0 ? (
           <>
-            , <strong>{criticalIncidents}</strong> of them critical
+            , <strong>{summary.critical_open_alerts}</strong> of them critical
           </>
         ) : null}
         .
@@ -86,9 +93,9 @@ export function SituationBrief({ summary, regions }: SituationBriefProps) {
       <dl className={styles.figures}>
         <Figure label="Critical entities" value={critical} tone={critical > 0 ? "critical" : undefined} />
         <Figure
-          label={`Incidents · ${RECENT_WINDOW_DAYS}d`}
-          value={recentIncidents.length}
-          tone={recentIncidents.length > 0 ? "high" : undefined}
+          label={`Incidents · ${summary.window_days}d`}
+          value={summary.incidents_in_window}
+          tone={summary.incidents_in_window > 0 ? "high" : undefined}
         />
         <Figure label="Open alerts" value={summary.open_alerts} />
         <Figure label="Active cases" value={summary.active_cases} />

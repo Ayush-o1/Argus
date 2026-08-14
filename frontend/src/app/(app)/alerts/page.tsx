@@ -165,7 +165,6 @@ function AlertsPageInner() {
             {selected ? (
               <AlertDetail
                 alert={selected}
-                allAlerts={alerts}
                 onSelect={(a) => setSelectedId(a.incident_id)}
                 onReview={(next) => reviewAlert.mutate({ alertId: selected.incident_id, status: next })}
                 isReviewing={reviewAlert.isPending}

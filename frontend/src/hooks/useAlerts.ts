@@ -14,6 +14,21 @@ export function useAlerts(status?: string, priority?: string) {
   });
 }
 
+/**
+ * Alerts sharing this one's storyline, resolved server-side across the whole
+ * graph. The UI used to filter the currently-loaded page for this, so anything
+ * beyond the first 100 alerts was invisible while the panel claimed to identify
+ * a single investigation (audit B-29).
+ */
+export function useRelatedAlerts(alertId: string | undefined) {
+  return useQuery({
+    queryKey: ["alerts", "related", alertId],
+    enabled: !!alertId,
+    queryFn: async () =>
+      (await apiFetch<Incident[]>(`/api/alerts/${encodeURIComponent(alertId!)}/related`)).data,
+  });
+}
+
 export function useReviewAlert() {
   const queryClient = useQueryClient();
   return useMutation({

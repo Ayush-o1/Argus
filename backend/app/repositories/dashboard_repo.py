@@ -5,7 +5,17 @@ command-center dashboard needs a handful of cheap aggregate reads rather
 than the frontend fanning out N separate list calls just to compute totals.
 """
 
+from datetime import UTC, datetime, timedelta
+
 from neo4j import AsyncDriver
+
+# Window for the dashboard's "recent activity" figure. Must match the label the
+# UI renders, which reads it from the response rather than hardcoding it.
+RECENT_WINDOW_DAYS = 7
+
+# How many incidents to return for display. Deliberately separate from any
+# counting query — this list is never a source for aggregates.
+RECENT_INCIDENT_PREVIEW = 6
 
 # Half-open [low, high) so adjacent bands can't double-count — except the top
 # band, which must include the 100 endpoint. Storyline-injected entities are
@@ -65,13 +75,39 @@ async def get_dashboard_summary(driver: AsyncDriver) -> dict:
             assert record is not None, "aggregate query always returns exactly one row"
             risk_distribution.append({"level": label, "count": record["count"]})
 
+        # Counted over every incident, not over the six-row display list below.
+        #
+        # SituationBrief previously derived "N alerts are open, M of them
+        # critical" by filtering `recent_incidents` — a LIMIT 6 list — while N
+        # came from a full count. The two numbers were joined in one sentence as
+        # though they shared a denominator, so M could never exceed 6 no matter
+        # what the graph contained (audit B-05). The figure labelled
+        # "Incidents · 7d" was capped the same way.
+        period_result = await (
+            await session.run(
+                """
+                OPTIONAL MATCH (i:Incident)
+                WHERE i.severity IN ['High', 'Critical'] AND i.status = 'Open'
+                WITH count(i) AS open_alerts,
+                     sum(CASE WHEN i.severity = 'Critical' THEN 1 ELSE 0 END) AS critical_open
+                OPTIONAL MATCH (r:Incident) WHERE r.timestamp >= $since
+                RETURN open_alerts, critical_open,
+                       count(r) AS incidents_in_window,
+                       sum(CASE WHEN r.severity = 'Critical' THEN 1 ELSE 0 END) AS critical_in_window
+                """,
+                since=(datetime.now(UTC) - timedelta(days=RECENT_WINDOW_DAYS)).isoformat(),
+            )
+        ).single()
+        assert period_result is not None, "aggregate query always returns exactly one row"
+
         recent_incidents_result = await session.run(
             """
             MATCH (i:Incident)
             RETURN i.incident_id AS incident_id, i.type AS type, i.severity AS severity,
                    i.timestamp AS timestamp, i.description AS description
-            ORDER BY i.timestamp DESC LIMIT 6
-            """
+            ORDER BY i.timestamp DESC LIMIT $limit
+            """,
+            limit=RECENT_INCIDENT_PREVIEW,
         )
         recent_incidents = [dict(record) async for record in recent_incidents_result]
 
@@ -92,8 +128,15 @@ async def get_dashboard_summary(driver: AsyncDriver) -> dict:
         "flagged_entities": counts["flagged"],
         "active_cases": counts["active_cases"],
         "open_alerts": counts["open_alerts"],
+        # Full-population figures the UI can safely put in one sentence with
+        # open_alerts, because they share its denominator.
+        "critical_open_alerts": period_result["critical_open"] or 0,
+        "incidents_in_window": period_result["incidents_in_window"] or 0,
+        "critical_incidents_in_window": period_result["critical_in_window"] or 0,
+        "window_days": RECENT_WINDOW_DAYS,
         "avg_risk_score": round(avg_risk_record["avg_risk"] or 0.0, 1),
         "risk_distribution": risk_distribution,
+        # A display list only. Nothing derives a count from this.
         "recent_incidents": recent_incidents,
         "recent_cases": recent_cases,
     }

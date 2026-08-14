@@ -6,7 +6,7 @@ import { AxisBottom } from "@visx/axis";
 import { Group } from "@visx/group";
 import { useMemo } from "react";
 import { RISK_COLORS } from "@/lib/theme";
-import type { DayBucket } from "./timelineModel";
+import type { AnalysedDay } from "./timelineModel";
 import styles from "./ActivityHistogram.module.css";
 
 /**
@@ -22,7 +22,7 @@ const MARGIN = { top: 10, right: 12, bottom: 26, left: 40 };
 const BASELINE_COLOR = "#3A4152";
 
 interface ActivityHistogramProps {
-  buckets: DayBucket[];
+  days: AnalysedDay[];
   selectedDay: string | null;
   onSelectDay: (day: string | null) => void;
 }
@@ -36,7 +36,7 @@ export function ActivityHistogram(props: ActivityHistogramProps) {
 }
 
 function Inner({
-  buckets,
+  days,
   selectedDay,
   onSelectDay,
   width,
@@ -46,33 +46,33 @@ function Inner({
   const innerHeight = Math.max(height - MARGIN.top - MARGIN.bottom, 10);
 
   const xScale = useMemo(() => {
-    const times = buckets.map((b) => b.date.getTime());
+    const times = days.map((b) => b.date.getTime());
     const domain: [Date, Date] = times.length
       ? [new Date(Math.min(...times)), new Date(Math.max(...times))]
       : [new Date(), new Date()];
     return scaleTime({ domain, range: [0, innerWidth] });
-  }, [buckets, innerWidth]);
+  }, [days, innerWidth]);
 
   const yScale = useMemo(
     () =>
       scaleLinear({
-        domain: [0, Math.max(1, ...buckets.map((b) => b.total))],
+        domain: [0, Math.max(1, ...days.map((b) => b.total))],
         range: [innerHeight, 0],
         nice: true,
       }),
-    [buckets, innerHeight],
+    [days, innerHeight],
   );
 
   // One bar per day, minus a hairline gap. Bars narrower than a pixel render as
   // gaps, so the width is floored.
-  const barWidth = Math.max(1.5, innerWidth / Math.max(buckets.length, 1) - 1);
+  const barWidth = Math.max(1.5, innerWidth / Math.max(days.length, 1) - 1);
 
-  if (!buckets.length) return <div className={styles.empty}>No activity in this range.</div>;
+  if (!days.length) return <div className={styles.empty}>No activity in this range.</div>;
 
   return (
     <svg width={width} height={height} role="img" aria-label="Daily activity volume">
       <Group left={MARGIN.left} top={MARGIN.top}>
-        {buckets.map((b) => {
+        {days.map((b) => {
           const x = xScale(b.date) - barWidth / 2;
           const totalY = yScale(b.total);
           const flaggedY = yScale(b.flagged);

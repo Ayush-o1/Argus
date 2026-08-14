@@ -192,3 +192,12 @@
   padding-top: var(--space-4);
   border-top: 1px solid var(--surface-border-faint);
 }
+
+/* Qualifier on a section heading, e.g. "showing 5 of 30" — deliberately quiet:
+   it should be readable without competing with the count it qualifies. */
+.sectionNote {
+  font-weight: 400;
+  color: var(--text-tertiary);
+  text-transform: none;
+  letter-spacing: 0;
+}

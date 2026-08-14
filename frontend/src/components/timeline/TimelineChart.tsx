@@ -7,7 +7,7 @@ import { scaleBand, scaleTime } from "@visx/scale";
 import { defaultStyles, useTooltip, TooltipWithBounds } from "@visx/tooltip";
 import Link from "next/link";
 import { useMemo, useRef } from "react";
-import type { GlobalTimeline } from "@/hooks/useTimeline";
+import type { TimelineDetail } from "./timelineModel";
 import { ENTITY_COLORS, RISK_COLOR_UNKNOWN, RISK_COLORS } from "@/lib/theme";
 
 interface Point {
@@ -25,7 +25,7 @@ const MARGIN = { top: 20, right: 24, bottom: 40, left: 110 };
 
 const SEVERITY_COLOR: Record<string, string> = RISK_COLORS;
 
-function buildPoints(data: GlobalTimeline): Point[] {
+function buildPoints(data: TimelineDetail): Point[] {
   const points: Point[] = [];
 
   for (const t of data.transactions) {
@@ -76,7 +76,7 @@ function buildPoints(data: GlobalTimeline): Point[] {
   return points;
 }
 
-export function TimelineChart({ data }: { data: GlobalTimeline }) {
+export function TimelineChart({ data }: { data: TimelineDetail }) {
   return (
     <div style={{ width: "100%", height: 420 }}>
       <ParentSize>{({ width, height }) => <TimelineChartInner data={data} width={width} height={height} />}</ParentSize>
@@ -84,7 +84,7 @@ export function TimelineChart({ data }: { data: GlobalTimeline }) {
   );
 }
 
-function TimelineChartInner({ data, width, height }: { data: GlobalTimeline; width: number; height: number }) {
+function TimelineChartInner({ data, width, height }: { data: TimelineDetail; width: number; height: number }) {
   const points = useMemo(() => buildPoints(data), [data]);
   // Draw baseline first so flagged records are never occluded by an ordinary
   // one that happens to come later in the payload.
