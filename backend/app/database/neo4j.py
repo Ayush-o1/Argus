@@ -1,4 +1,4 @@
-from neo4j import AsyncDriver, AsyncGraphDatabase
+from neo4j import AsyncDriver, AsyncGraphDatabase, NotificationDisabledClassification
 
 from app.config import get_settings
 
@@ -13,6 +13,17 @@ async def connect_neo4j() -> AsyncDriver:
         settings.neo4j_uri,
         auth=(settings.neo4j_user, settings.neo4j_password),
         max_connection_pool_size=50,
+        # A query that times out is a bounded failure the caller can report; one
+        # that hangs holds a pool connection until the client disconnects, and
+        # fifty of those take the service down. Applies to every query unless a
+        # call site overrides it.
+        max_transaction_retry_time=settings.neo4j_transaction_retry_seconds,
+        # UNRECOGNIZED fires for "label does not exist" / "property does not
+        # exist", which is the normal state on a fresh graph and during
+        # migrations — several lines of warning per startup query, all benign.
+        # Every other classification (PERFORMANCE, DEPRECATION, SECURITY) still
+        # surfaces, which is where the real signal is.
+        notifications_disabled_classifications=[NotificationDisabledClassification.UNRECOGNIZED],
     )
     await _driver.verify_connectivity()
     return _driver

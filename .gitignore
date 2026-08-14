@@ -38,3 +38,6 @@ data/redis/
 # Logs
 *.log
 npm-debug.log*
+
+# Database backups (never commit)
+backups/

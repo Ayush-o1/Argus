@@ -2,8 +2,10 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, status
+from fastapi import Response as FastAPIResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.api.routes import (
     ai,
@@ -21,25 +23,48 @@ from app.api.routes import (
     map as map_routes,
 )
 from app.config import get_settings
+from app.database.migrations import run_migrations
 from app.database.neo4j import close_neo4j, connect_neo4j
 from app.database.redis import close_redis, connect_redis
+from app.middleware.request_context import RequestContextMiddleware
+from app.observability.logging import configure_logging
+from app.services.jobs import JobRejected, cancel_active_jobs, reap_stale_jobs
 
-# Configure root logger from settings so every module in the app honours LOG_LEVEL.
-# Uvicorn controls its own access-log format separately; this covers app-level messages.
+# Structured logging is installed before anything else so startup itself — including
+# a migration failure, which is the most important thing to be able to read — is
+# captured in the configured format.
 _settings = get_settings()
-logging.basicConfig(
-    level=getattr(logging, _settings.log_level.upper(), logging.INFO),
-    format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
-    datefmt="%Y-%m-%dT%H:%M:%S",
-)
+configure_logging(level=_settings.log_level, json_output=_settings.log_json)
 logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    await connect_neo4j()
-    await connect_redis()
+    driver = await connect_neo4j()
+    redis = await connect_redis()
+
+    # Schema is applied here rather than as a side effect of running the data
+    # generator, so a deployed backend can acquire an index without anyone
+    # re-running a tool whose default path wipes the graph. A failure raises and
+    # aborts startup deliberately — serving requests against a half-migrated
+    # schema risks wrong answers, which is worse than being unavailable.
+    applied = await run_migrations(driver)
+    if applied:
+        logger.info("applied %d migration(s): %s", len(applied), applied)
+
+    # Any job still marked "running" belongs to a previous process: in-process
+    # asyncio tasks do not survive a restart, so without this the frontend polls
+    # a job that will never complete until its TTL expires (audit B-07).
+    reaped = await reap_stale_jobs(redis)
+    if reaped:
+        logger.warning("marked %d orphaned job(s) as failed after restart", reaped)
+
     yield
+
+    # Cancel in-flight jobs and give them a moment to record terminal state, so
+    # a clean shutdown does not manufacture the orphans reap_stale_jobs exists
+    # to clean up after an unclean one.
+    await cancel_active_jobs()
     await close_neo4j()
     await close_redis()
 
@@ -52,13 +77,31 @@ app = FastAPI(
 )
 
 settings = get_settings()
+
+# Enumerated rather than wildcarded (audit B-26). `allow_credentials` is False
+# because authentication is a bearer header, not a cookie — enabling it granted
+# a capability nothing uses. This must be revisited when cookie sessions land,
+# at which point CSRF protection becomes mandatory alongside it.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+    expose_headers=["X-Request-ID"],
 )
+app.add_middleware(RequestContextMiddleware)
+
+
+@app.exception_handler(JobRejected)
+async def job_rejected_handler(request: Request, exc: JobRejected) -> JSONResponse:
+    """429 rather than 500: the request was well-formed and the system is simply
+    saturated, so the client should retry rather than treat it as a defect."""
+    return JSONResponse(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        content={"data": None, "error": str(exc)},
+        headers={"Retry-After": "5"},
+    )
 
 app.include_router(dashboard.router)
 app.include_router(entities.router)
@@ -73,9 +116,9 @@ app.include_router(search.router)
 app.include_router(scenario.router)
 
 
-@app.get("/api/health")
-async def health() -> dict:
-    """Verifies the process is up and both datastore connections are live."""
+async def _dependency_status() -> tuple[bool, bool]:
+    """(neo4j_ok, redis_ok). Never raises — a health check that throws is useless
+    to the orchestrator polling it."""
     from app.database.neo4j import get_driver
     from app.database.redis import get_redis
 
@@ -85,13 +128,42 @@ async def health() -> dict:
         await get_driver().verify_connectivity()
         neo4j_ok = True
     except Exception:
-        pass
+        logger.warning("readiness: neo4j unreachable", exc_info=True)
     try:
         await get_redis().ping()
         redis_ok = True
     except Exception:
-        pass
+        logger.warning("readiness: redis unreachable", exc_info=True)
+    return neo4j_ok, redis_ok
 
+
+@app.get("/livez")
+async def livez() -> dict:
+    """Liveness: is the process running. Deliberately checks no dependency —
+    conflating the two (as the previous single /api/health did) means a
+    transient database blip gets the container killed and restarted, which
+    cannot fix a database problem and removes capacity during one."""
+    return {"status": "alive"}
+
+
+@app.get("/readyz")
+async def readyz(response: FastAPIResponse) -> dict:
+    """Readiness: should this instance receive traffic. Returns 503 when a
+    dependency is down so a load balancer drains it rather than sending requests
+    that are certain to fail."""
+    neo4j_ok, redis_ok = await _dependency_status()
+    ready = neo4j_ok and redis_ok
+    if not ready:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    return {"status": "ready" if ready else "not_ready", "neo4j": neo4j_ok, "redis": redis_ok}
+
+
+@app.get("/api/health")
+async def health() -> dict:
+    """Retained for the existing frontend and docs. Equivalent to /readyz but
+    always 200, since callers treat a non-200 as "ARGUS is gone" rather than
+    reading the body."""
+    neo4j_ok, redis_ok = await _dependency_status()
     return {
         "status": "ok" if (neo4j_ok and redis_ok) else "degraded",
         "neo4j": neo4j_ok,

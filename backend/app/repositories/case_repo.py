@@ -48,23 +48,79 @@ async def get_case(driver: AsyncDriver, case_id: str) -> dict | None:
         return case
 
 
-async def create_case(driver: AsyncDriver, title: str, priority: str, notes: str, next_seq: int) -> dict:
+async def create_case(driver: AsyncDriver, title: str, priority: str, notes: str) -> dict:
+    """Allocates the next case_id and creates the case in one transaction.
+
+    The previous implementation read `count(c) + 1` in one query and wrote in
+    another (audit B-02). Two concurrent creates both read N and both wrote
+    CASE-000(N+1); with no uniqueness constraint Neo4j accepted both, and
+    `get_case`'s `.single()` then raised forever for that id — the case detail
+    page was permanently broken. Counting was also simply wrong after any
+    deletion.
+
+    `MERGE` on the :IdSequence node takes a lock on it for the duration of the
+    transaction, so concurrent allocations serialise on that lock and each
+    observes the previous one's increment. The uniqueness constraint on
+    Case.case_id (migration 001) is the backstop if this is ever bypassed.
+    """
     now = datetime.now(UTC).isoformat()
-    case = {
-        "id": str(uuid.uuid4()),
-        "case_id": f"CASE-{next_seq:04d}",
-        "title": title,
-        "status": "Draft",
-        "priority": priority,
-        "assigned_analyst": "Unassigned",
-        "opened_at": now,
-        "closed_at": None,
-        "notes": notes,
-        "storyline_id": None,
-    }
     async with driver.session() as session:
-        await session.run("CREATE (c:Case) SET c = $case", case=case)
-    return case
+        result = await session.run(
+            # Zero-padded to 4 digits for display, but only while that is
+            # lossless: past 9999 the number is emitted in full rather than
+            # truncated to its last four digits, which would reintroduce
+            # collisions at exactly the point they become likely.
+            """
+            MERGE (seq:IdSequence {prefix: 'CASE'})
+            ON CREATE SET seq.value = $seed
+            SET seq.value = seq.value + 1
+            WITH seq.value AS next_seq
+            CREATE (c:Case)
+            SET c = $case,
+                c.case_id = 'CASE-' + CASE
+                    WHEN next_seq < 10000 THEN right('0000' + toString(next_seq), 4)
+                    ELSE toString(next_seq)
+                END
+            RETURN c
+            """,
+            seed=await _sequence_seed(session),
+            case={
+                "id": str(uuid.uuid4()),
+                "title": title,
+                "status": "Draft",
+                "priority": priority,
+                "assigned_analyst": "Unassigned",
+                "opened_at": now,
+                "closed_at": None,
+                "notes": notes,
+                "storyline_id": None,
+            },
+        )
+        record = await result.single()
+        if record is None:  # pragma: no cover - CREATE always returns a row
+            raise RuntimeError("Case creation returned no row")
+        return dict(record["c"])
+
+
+async def _sequence_seed(session) -> int:
+    """Initial counter value, used only when the :IdSequence node does not yet
+    exist. Seeded from the highest existing case number so a graph populated by
+    the generator (which writes CASE-0001..N directly) does not immediately
+    collide with the constraint.
+
+    Parses the numeric suffix rather than taking a string max: `max()` over
+    strings is lexicographic, which breaks the moment the zero-padding width
+    changes (audit B-22).
+    """
+    result = await session.run(
+        """
+        MATCH (c:Case)
+        WHERE c.case_id STARTS WITH 'CASE-'
+        RETURN max(toInteger(split(c.case_id, '-')[-1])) AS max_seq
+        """
+    )
+    record = await result.single()
+    return (record["max_seq"] or 0) if record else 0
 
 
 async def update_case(driver: AsyncDriver, case_id: str, updates: dict) -> dict | None:
@@ -114,8 +170,3 @@ async def remove_entity_from_case(driver: AsyncDriver, case_id: str, entity_huma
         )
 
 
-async def next_case_sequence(driver: AsyncDriver) -> int:
-    async with driver.session() as session:
-        result = await session.run("MATCH (c:Case) RETURN count(c) AS total")
-        record = await result.single()
-        return (record["total"] if record else 0) + 1

@@ -37,8 +37,7 @@ async def list_cases(
 
 @router.post("")
 async def create_case(payload: CreateCaseRequest, driver: AsyncDriver = Depends(get_db)) -> Envelope[dict]:
-    next_seq = await case_repo.next_case_sequence(driver)
-    case = await case_repo.create_case(driver, payload.title, payload.priority, payload.notes, next_seq)
+    case = await case_repo.create_case(driver, payload.title, payload.priority, payload.notes)
     return Envelope(data=case)
 
 
