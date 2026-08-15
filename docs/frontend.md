@@ -29,7 +29,11 @@ frontend/src/
 │   ├── timeline/                 # TimelineChart
 │   ├── dashboard/                 # MetricStrip, PriorityQueue, RiskDonut, CaseList, IncidentFeed
 │   ├── entity/                     # EntityCard, EntitySearchBox, EntityTypeIcon, RiskScoreWidget
-│   ├── assistant/                   # AskArgusPanel
+│   ├── auth/                        # LoginForm, AuthGate, RouteGuard, UserMenu
+│   ├── provenance/                   # RatingBadge, KindBadge, AttributeProvenance,
+│   │                                   ConflictPanel, ProvenancePanel, AssertionForm,
+│   │                                   SyntheticNotice
+│   ├── assistant/                     # AskArgusPanel
 │   └── ui/                           # Badge, Button, Card, Checkbox, EmptyState, Input/Select/
 │                                       Textarea, Modal, RangeSlider, RiskBadge, SegmentedControl,
 │                                       SelectControl, Skeleton, Spinner, Table, Tabs, Toast
@@ -54,7 +58,7 @@ frontend/src/
 | `/search` | Full-text search + browse, with type/risk facets | `useSearch`, `useBrowseEntities` |
 | `/map` | Global geospatial workspace (MapLibre + deck.gl), three scale tiers | `useMapEntities`, `useMapShipments`, `useMapRegions`, `useMapCountries`, `useMapCorridors` |
 | `/timeline` | Volume histogram + burst detection + swimlane chart + ranked moments | `useGlobalTimeline` |
-| `/entities/[id]` | Entity hub — risk and contributing factors always visible in the sidebar; Properties/Activity/Cases & Alerts/Summary tabs | `useEntity`, `useEntityTimeline`, `useEntityCases`, `useEntityAlerts`, `useEntitySummary` |
+| `/entities/[id]` | Entity hub — risk and contributing factors always visible in the sidebar; Properties/Activity/Cases & Alerts/Provenance/Summary tabs | `useEntity`, `useEntityTimeline`, `useEntityCases`, `useEntityAlerts`, `useEntityProvenance`, `useEntitySummary` |
 | `/cases`, `/cases/[id]` | Case list + workspace (evidence board, notes, summary) | `useCases`, `useCase`, `useCaseSummary` |
 | `/alerts` | Alert review queue | `useAlerts`, `useReviewAlert` |
 | `/analytics` | Algorithm picker + result renderer | `useAnalyticsJob` |
@@ -305,6 +309,35 @@ The single most load-bearing rule in the palette. Risk colours are ordered by ho
 `--row-height` (44px), `--row-height-compact` (36px) and `--control-height` (34px) drive list/table/toolbar rhythm so every surface scans at the same cadence. ARGUS is a data-dense product: list screens (Alerts, Cases, Search) target ~15–20 rows per screen rather than oversized cards.
 
 `lib/cn.ts` is the one shared helper for conditional class names (`cn(styles.item, active && styles.itemActive)`), used everywhere instead of each component re-implementing `[a, b && c].filter(Boolean).join(" ")`. `lib/theme.ts` is the single source for colors that must be readable from plain JS/TS — Cytoscape stylesheets, recharts/deck.gl props — where a CSS custom property can't be used directly; its values are kept in sync with `styles/tokens.css` by convention, not by import (CSS can't be imported into JS here).
+
+## Provenance components
+
+`components/provenance/` is the surface for "why do you believe this". Its design is mostly a list of
+things it refuses to do, because each one is a way of over-claiming:
+
+- **`RatingBadge`** renders an Admiralty rating as **two cells**, not one — `B` and `2` with a visible
+  seam. Source reliability and information credibility answer different questions, and drawing them
+  as a single chip invites reading them as one score. There is no bar, no percentage, and no colour
+  ramp from good to bad, because there is no scale: A→B is not the same distance as E→F. Nothing in
+  `lib/provenance.ts` converts a rating to a number.
+- **`KindBadge`** shows how ARGUS knows a value — observed, reported, inferred, assessed — plus two
+  outcomes that are not epistemic kinds at all: `modified` (the stored value no longer matches what
+  the source reported) and `unattributed` (nothing accounts for it). `unattributed` is styled as an
+  absence, dashed and uncoloured, so it cannot pass as one more category.
+- **`ConflictPanel`** renders contradictory claims in **equal columns ordered by assertion time**. It
+  does not sort by rating, does not highlight a side, and offers no "resolve" button that picks one.
+  A system that silently chooses is more dangerous than one that shows the disagreement, because it
+  removes the conflict from the view of the only person who can settle it.
+- **`AttributeProvenance`** is the per-value affordance: collapsed by default, because provenance
+  that shouts at every row gets ignored, but never more than one click from the source, its
+  reliability, and the three timestamps. Absent timestamps print **"not recorded"** rather than a
+  plausible-looking date.
+- **`SyntheticNotice`** is driven by the source registry, not a build flag, so it appears wherever
+  fabricated data does and disappears on its own when real sources replace it.
+
+`RiskScoreWidget` reads the risk value's assertion and renders whatever it says — kind, rating,
+method and stated basis — rather than a hardcoded caveat. When the generator's score is replaced by a
+derived one, the same component shows the new provenance without being edited.
 
 `components/ui/` holds the shared primitives every page builds on: `Badge`, `Button`, `Card`, `EmptyState`, `Input`/`Select`/`Textarea`, `Modal` (portal-based, Escape/backdrop-close, returns focus on close), `RiskBadge`, `Skeleton`, `Spinner`, `Table` (generic `columns`/`rows`/`getRowKey` — used by the Cases queue and Analytics' result tables instead of each hand-rolling its own `<table>`), `Tabs`, and `Toast` (`ToastProvider` mounted once in `app/providers.tsx`; call `useToast().showToast(message, tone)` from anywhere — Cases and Scenario both use it for create/generate feedback).
 

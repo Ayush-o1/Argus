@@ -8,29 +8,47 @@ Python 3.12, FastAPI, async Neo4j driver, async Redis client. Dependency manifes
 
 ```
 backend/app/
-├── main.py                 # FastAPI app, lifespan, router registration, /api/health
+├── main.py                 # FastAPI app, lifespan, middleware order, routers, health
+├── cli.py                   # out-of-band ops: create-user, verify-audit, backfill-provenance
 ├── config.py                # Settings (pydantic-settings, env-driven)
 ├── api/
-│   ├── dependencies.py      # require_api_token, get_db
+│   ├── dependencies.py      # current_user, require_permission, get_db, get_pg
 │   └── routes/               # one router module per resource
+│       ├── admin.py           # user management + audit-log reads
 │       ├── ai.py
 │       ├── alerts.py
 │       ├── analytics.py
+│       ├── auth.py            # login, logout, session check
 │       ├── cases.py
 │       ├── dashboard.py
 │       ├── entities.py
 │       ├── graph.py
 │       ├── map.py
+│       ├── provenance.py      # sources, observations, assertions, conflicts
 │       ├── scenario.py
 │       ├── search.py
 │       └── timeline.py
 ├── database/
 │   ├── neo4j.py              # process-wide AsyncDriver singleton
-│   └── redis.py              # process-wide Redis client singleton
+│   ├── postgres.py           # process-wide asyncpg pool
+│   ├── redis.py              # process-wide Redis client singleton
+│   ├── migrations/           # Neo4j migrations, forward-only, applied at startup
+│   └── pg_migrations/        # PostgreSQL migrations, ditto
+├── middleware/
+│   ├── request_context.py    # request IDs, correlation
+│   └── security.py           # rate limiting, security headers
+├── security/
+│   ├── passwords.py          # Argon2id hashing, strength rules
+│   ├── roles.py              # Role / Permission enums, the authorization matrix
+│   └── sessions.py           # session issue, resolve, revoke; CSRF tokens
+├── observability/
+│   └── logging.py            # structured JSON logging, actor context
 ├── models/
+│   ├── aggregate.py          # Aggregate[T] — a value that cannot omit its denominator
 │   ├── envelope.py           # Envelope[T] / Meta response wrapper
-│   └── graph.py              # GraphNode / GraphEdge / Subgraph / PathResult
-├── repositories/             # Cypher access, one module per read-domain
+│   ├── graph.py              # GraphNode / GraphEdge / Subgraph / PathResult
+│   └── provenance.py         # EpistemicKind, Reliability, Credibility, Assertion, Conflict
+├── repositories/             # datastore access, one module per read-domain
 │   ├── entity_labels.py      # human-ID prefix -> Neo4j label/id-field map
 │   ├── graph_repo.py         # generic node/subgraph/search/path traversal
 │   ├── entity_repo.py        # entity profile: connections, timeline, related cases/alerts
@@ -38,13 +56,17 @@ backend/app/
 │   ├── case_repo.py          # Case CRUD + evidence linking
 │   ├── alert_repo.py         # Incident-as-alert filtered view
 │   ├── map_repo.py           # geospatial reads
-│   ├── timeline_repo.py      # global temporal activity sample
-│   └── analytics_repo.py     # GDS projections + algorithm runs
+│   ├── timeline_repo.py      # full-population temporal aggregation
+│   ├── analytics_repo.py     # GDS projections + algorithm runs
+│   ├── provenance_repo.py    # observations, assertions, conflicts, corroboration
+│   └── user_repo.py          # users and sessions
 └── services/                 # business logic that isn't pure Cypher
+    ├── audit.py               # append-only, hash-chained audit log
     ├── jobs.py                # async-job + Redis-status primitive
     ├── anomaly.py             # Isolation Forest + z-score detection
     ├── narrative.py           # deterministic template NLG
     ├── ollama.py              # optional local-LLM adapter
+    ├── provenance.py          # source registry, graph backfill, attribute resolution
     └── scenario.py            # subprocess-driven scenario generation
 ```
 
@@ -52,16 +74,19 @@ backend/app/
 
 ## Request lifecycle
 
-1. **Startup** (`main.py`'s `lifespan`): `connect_neo4j()` creates one process-wide `AsyncDriver` (connection pool, max 50), `connect_redis()` creates one process-wide `Redis` client. Both call `verify_connectivity()`/`ping()` — the app fails to start if either datastore is unreachable.
-2. **Per-request DI**: every route depends on `require_api_token` (bearer-token check against `settings.argus_api_token`) and `get_db` (returns the singleton driver via `Depends`). Routes needing Redis depend on `get_redis` the same way.
-3. **Handler**: resolves params, calls a repository/service function, wraps the result in `Envelope(data=..., meta=...)`.
-4. **Shutdown**: `close_neo4j()` / `close_redis()` release the pooled connections.
+1. **Startup** (`main.py`'s `lifespan`): PostgreSQL migrations run first (identity must be migrated before the app can authenticate anyone), then the Postgres pool, then `connect_neo4j()` / `connect_redis()`, then the Neo4j migrations, then registration of ARGUS's built-in provenance sources, then reaping of jobs orphaned by a previous process. A migration failure aborts startup deliberately.
+2. **Middleware**: registered so that CORS is **outermost**. Starlette applies middleware in reverse registration order, and with CORS registered innermost an early 429 short-circuited before it ran — so the browser reported an opaque "blocked by CORS policy" instead of the rate limit that actually happened.
+3. **Per-request DI**: routes depend on `require_permission(Permission.X)`, which resolves the session cookie to a user, enforces CSRF on unsafe methods, and checks the named permission. Permissions are enumerated in `app/security/roles.py` rather than inferred from role names, so adding a route forces an explicit decision about who may call it. `get_db` returns the singleton Neo4j driver; `get_pg` yields a pooled Postgres connection.
+4. **Handler**: resolves params, calls a repository/service function, wraps the result in `Envelope(data=..., meta=...)`. Mutating handlers also write an audit event — inside the mutation's transaction where one exists, so the change and its record commit or roll back together.
+5. **Shutdown**: in-flight jobs are cancelled and given a moment to record terminal state, then the pools are released.
 
-`GET /api/health` is the one unauthenticated route — it actively probes both datastores (`verify_connectivity()`, `ping()`) and reports `{"status": "ok"|"degraded", "neo4j": bool, "redis": bool}`.
+`GET /api/health`, `/livez` and `/readyz` are unauthenticated. `/readyz` probes all three datastores and returns **503** when any is unreachable, so an orchestrator pulls the instance rather than routing traffic to one that cannot serve it.
 
 ## Configuration
 
-`app/config.py`'s `Settings` (pydantic-settings, cached via `lru_cache`) reads from `../.env` relative to the backend process, with these fields: `neo4j_uri`, `neo4j_user`, `neo4j_password`, `redis_url`, `ollama_base_url`, `argus_api_token`, `cors_origins` (comma-separated, exposed as `cors_origin_list`). See [deployment.md](deployment.md#environment-variables) for the full variable reference and defaults.
+`app/config.py`'s `Settings` (pydantic-settings, cached via `lru_cache`) reads from `../.env` relative to the backend process: `neo4j_*`, `redis_url`, `postgres_*` (host, port, database, superuser and application credentials), `ollama_base_url`, `session_*`, and `cors_origins` (comma-separated, exposed as `cors_origin_list`). See [deployment.md](deployment.md#environment-variables) for the full reference and defaults.
+
+There is deliberately **no** `argus_api_token`. The single static bearer token was removed rather than rotated, and the setting was deleted with it: a setting left behind after the code stops reading it reads as a control that exists.
 
 ## Response envelope
 
@@ -121,7 +146,7 @@ Scenario generation uses `start_job_with_progress` instead, because it needs to 
 
 1. If it's a new read pattern, add a function to the relevant `repositories/*.py` module (or a new module if it's a genuinely new domain) — pure Cypher in, shaped dict/list out.
 2. If it needs logic beyond querying (ML, text generation, a subprocess, a multi-step Cypher orchestration), add it to `services/`.
-3. Add a route function in the matching `api/routes/*.py` module. Depend on `get_db`/`get_redis`/`require_api_token` as needed. Return `Envelope[...]`.
+3. Add a route function in the matching `api/routes/*.py` module. Depend on `require_permission(Permission.X)` for the permission it needs, plus `get_db`/`get_redis`/`get_pg`. Return `Envelope[...]`. A new permission means adding it to `app/security/roles.py` and deciding, explicitly, which roles hold it — the enum is the decision point, so a route cannot quietly inherit access.
 4. If it's long-running, wrap it with `jobs.start_job` / `start_job_with_progress` rather than awaiting it directly in the handler.
 5. Register the router in `main.py` if it's a new module (`app.include_router(...)`).
 

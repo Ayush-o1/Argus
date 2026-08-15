@@ -89,7 +89,20 @@ services:
       # Optional — see ARGUS_PLAN.md Phase 10. Defaults to the host's local
       # Ollama if running; ARGUS works fully offline without it.
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
-      ARGUS_API_TOKEN: ${ARGUS_API_TOKEN:-argus_dev_token}
+
+      # Identity, audit and provenance. Without these the container defaulted to
+      # localhost:55432 — which inside the container is the container itself,
+      # not the postgres service — so startup aborted on the first migration.
+      # The port here is 5432, the service's own port on the compose network,
+      # not the 55432 the host mapping uses.
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-argus}
+      POSTGRES_SUPERUSER: ${POSTGRES_SUPERUSER:-argus_admin}
+      POSTGRES_SUPERUSER_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:-argus_dev_password}
+      POSTGRES_APP_USER: ${POSTGRES_APP_USER:-argus_app}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:-argus_dev_app_password}
+
       CORS_ORIGINS: http://localhost:3000
     depends_on:
       neo4j:

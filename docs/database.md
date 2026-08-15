@@ -1,8 +1,21 @@
 # Database
 
-Scope: the Neo4j schema — labels, relationships, properties, indexes, and the reasoning behind the graph design. For how this data is generated, see [generator.md](generator.md). For how it's queried, see [backend.md](backend.md) and [api.md](api.md).
+Scope: the Neo4j schema — labels, relationships, properties, indexes, and the reasoning behind the graph design — plus the PostgreSQL schema that holds identity, audit and provenance. For how graph data is generated, see [generator.md](generator.md). For how it's queried, see [backend.md](backend.md) and [api.md](api.md).
 
-Neo4j Community Edition 5 + the Graph Data Science (GDS) plugin, self-hosted via `docker-compose.yml`. No separate schema-migration tool — the schema is created idempotently by `generator/generators/neo4j_writer.py` (`_create_constraints`, `_create_search_and_range_indexes`) every time the generator runs.
+Two datastores, with a clear division: **Neo4j** is authoritative for entities and the relationships between them; **PostgreSQL** holds records that must be immutable, which Neo4j Community cannot enforce (see [architecture.md](architecture.md)).
+
+Neo4j Community Edition 5 + the Graph Data Science (GDS) plugin, self-hosted via `docker-compose.yml`.
+
+## Migrations
+
+Both schemas are managed by **numbered, forward-only migrations applied at startup**, not as a side effect of running the generator:
+
+- `backend/app/database/migrations/` — Neo4j. Each migration is a list of statements plus an optional pre-flight `check`; applied state is recorded on a `:SchemaVersion` node.
+- `backend/app/database/pg_migrations/` — PostgreSQL, plain `.sql` files applied inside a transaction each, tracked in `schema_migrations`.
+
+A failure in either aborts startup deliberately: serving requests against a half-migrated schema risks wrong answers, and a half-applied privilege change is a security hole rather than an inconsistency.
+
+This replaced schema creation inside the generator. The generator's default path **wipes and rebuilds the graph**, so requiring a generator run to acquire an index meant no deployed instance could change its schema without destroying its data.
 
 ## Node labels
 
@@ -51,13 +64,22 @@ Every relationship except `LINKED_TO` is created once by the generator and never
 
 ## Constraints and indexes
 
-Created in `neo4j_writer.py`, idempotently (`IF NOT EXISTS`), every time `write_world` runs:
+Created by migration 001 (`backend/app/database/migrations/runner.py`). The generator also creates them idempotently on a full world build, so a freshly generated graph is usable before the backend has ever started:
 
 ```cypher
 -- One per node label in NODE_SPECS
 CREATE CONSTRAINT IF NOT EXISTS FOR (n:Person) REQUIRE n.id IS UNIQUE
 -- ... repeated for Organization, Location, Vehicle, Device, Account, Event,
 --     Shipment, Document, Incident, Case, Storyline
+
+-- And one per *human* ID, added by migration 001. These are the keys the API
+-- actually looks entities up by; without them every lookup was a label scan
+-- (NodeByLabelScan rather than NodeUniqueIndexSeek), and nothing prevented two
+-- nodes sharing a human ID — which concurrent case creation could and did
+-- produce, permanently breaking the affected case's detail page.
+CREATE CONSTRAINT IF NOT EXISTS FOR (n:Person) REQUIRE n.person_id IS UNIQUE
+-- ... repeated for org_id, account_id, device_id, vehicle_id, doc_id,
+--     shipment_id, event_id, location_id, case_id, incident_id, storyline_id
 
 CREATE FULLTEXT INDEX entity_name IF NOT EXISTS
 FOR (n:Person|Organization|Location|Vehicle) ON EACH [n.name]
@@ -135,4 +157,35 @@ See [analytics.md](analytics.md) for the GDS graph-projection queries (PageRank,
 - **UUID `id` as the real primary key, human-readable ID as the display key** — lets every internal Cypher pattern and relationship match stay stable even though the human ID scheme (`PRS-0000442`) encodes a sequential counter that the Scenario Generator has to extend without collision (see [generator.md#id-offsets](generator.md#id-offsets)).
 - **Edge properties over intermediate nodes for Transaction/Communication** — see [architecture.md](architecture.md#why-transactionscommunications-are-edge-properties-not-nodes).
 - **Alerts as a filtered Incident view, not a separate label** — the machine (generator's rule-based scorer, or the storyline injector) creates `Incident`; the analyst reviews and updates `Incident.status` through the same node. There is no separate write path to keep in sync.
-- **Idempotent constraint/index creation on every generator run** — since `write_world` wipes and rebuilds the graph by default (`wipe_existing=True`), constraints must survive a fresh `CREATE` pass without erroring on re-creation; `IF NOT EXISTS` makes this safe to run repeatedly.
+- **Idempotent constraint/index creation** — since `write_world` wipes and rebuilds the graph by default (`wipe_existing=True`), constraints must survive a fresh `CREATE` pass without erroring on re-creation; `IF NOT EXISTS` makes this safe to run repeatedly, in both the generator and the migration runner.
+
+## PostgreSQL schema
+
+Three groups of tables, all in one database.
+
+**Identity** — `users` (Argon2id hash, role, TOTP secret, lockout state) and `sessions` (token stored only as a SHA-256 hash, so a database read does not yield a usable credential, with separate absolute and idle expiry).
+
+**Audit** — `audit_events`: append-only and hash-chained. Each row carries `prev_hash` and `entry_hash`, so removing or altering a row breaks the chain from that point and the break is detectable by recomputation (`python -m app.cli verify-audit`). Audit writes share the mutation's transaction, so an action cannot succeed while its record is lost.
+
+**Provenance** — the observation/assertion split:
+
+| Table | Holds |
+|---|---|
+| `sources` | Every source, including ARGUS's own generator. Admiralty reliability `A`–`F` with a required stated basis, an `is_synthetic` flag, and an `independence_group` so two feeds reprinting one wire service count as one voice. |
+| `observations` | What a source said. Immutable. Keyed by `(source_id, content_hash)` so re-ingesting the same payload yields one row rather than inflating corroboration. Three separate timestamps — `occurred_at`, `collected_at`, `recorded_at` — of which only the last is `NOT NULL`, because only the last is knowable in every case. |
+| `observation_subjects` | Which entities an observation is about. |
+| `assertions` | What ARGUS or an analyst *believes*: subject, predicate, object, epistemic kind (`observed`/`reported`/`inferred`/`assessed`), and the two rating axes as separate `CHAR(1)` columns. Content is immutable; only supersession and retraction may be set, once, and never cleared. |
+| `assertion_evidence` | The observations for **and against** an assertion. Counter-evidence is recorded rather than discarded — an assertion whose contradicting evidence was dropped looks better supported than it is. |
+
+Reliability and credibility are stored as characters, not integers, on purpose: a numeric encoding invites arithmetic on an ordinal scale where A→B is not the same distance as E→F, and nothing establishes that it is.
+
+### How immutability is enforced
+
+Two independent layers, because either alone is weaker than it looks:
+
+1. **Grants.** The application role holds `INSERT` and `SELECT` on `audit_events`, `observations`, `observation_subjects` and `assertion_evidence`, and nothing else. It never holds `UPDATE` or `DELETE` on them.
+2. **Triggers.** `BEFORE UPDATE/DELETE/TRUNCATE` triggers raise `insufficient_privilege` for **every** role, including the superuser. `TRUNCATE` needs its own statement-level guard because it bypasses row-level triggers entirely.
+
+`assertions` is the one narrower case: a belief must be able to *end*. `UPDATE` is permitted for exactly four lifecycle columns, only in the direction unset → set, enforced by an explicit column-by-column trigger. It is written as an explicit list rather than a blanket comparison so that a column added later fails closed.
+
+Removing a row during development required connecting as superuser *and* explicitly disabling a trigger — two deliberate acts, which is the point.

@@ -41,3 +41,10 @@ npm-debug.log*
 
 # Database backups (never commit)
 backups/
+
+# Internal audit and phase records. Kept on disk because they are the working
+# record of what was found, decided and deliberately left undone — and kept out
+# of the repository because they are an unsparing internal assessment of this
+# project, not documentation of how it works. `docs/` is the published, current
+# description of the system; this directory is the notebook behind it.
+docs/production-audit/

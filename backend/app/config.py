@@ -77,7 +77,12 @@ class Settings(BaseSettings):
     # requires this — probed at runtime, all other features work without it.
     ollama_base_url: str = "http://localhost:11434"
 
-    argus_api_token: str = "argus_dev_token"
+    # No `argus_api_token`. The single static bearer token was removed in the
+    # identity phase and deliberately not replaced: the frontend also shipped it
+    # to the browser via NEXT_PUBLIC_ARGUS_API_TOKEN, so the credential guarding
+    # every endpoint was public to anyone who loaded the page. A setting left
+    # here after the code stopped reading it is worse than no setting — it reads
+    # as a control that exists.
 
     cors_origins: str = "http://localhost:3000"
 

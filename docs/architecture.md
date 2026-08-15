@@ -17,24 +17,27 @@ flowchart LR
     end
     subgraph Data
         Neo4j[(Neo4j 5 + GDS\nCommunity Edition)]
+        PG[(PostgreSQL 16\nidentity, audit, provenance)]
     end
     subgraph Offline
         Gen["generator/\nPython, own venv"]
         Ollama["Ollama\n(optional, external process)"]
     end
 
-    FE -- "REST, bearer token" --> BE
+    FE -- "REST, httpOnly session cookie\n+ CSRF double-submit" --> BE
     BE -- "Bolt protocol" --> Neo4j
     BE -- "job create/poll" --> Redis
+    BE -- "sessions, audit chain,\nobservations, assertions" --> PG
     Gen -- "Bolt protocol\n(direct write)" --> Neo4j
     BE -- "subprocess exec\n(scenario generation)" --> Gen
     BE -. "HTTP, probed at runtime\noptional" .-> Ollama
 ```
 
 - **`frontend/`** — Next.js 16 App Router app. Never talks to Neo4j or Redis directly; every read/write goes through the FastAPI REST API.
-- **`backend/`** — FastAPI app. Owns the only Neo4j and Redis connections in the running system. Stateless itself — all state lives in Neo4j (graph data) and Redis (ephemeral job status).
+- **`backend/`** — FastAPI app. Owns the only Neo4j, Redis and PostgreSQL connections in the running system. Stateless itself — all state lives in Neo4j (graph data), PostgreSQL (identity, audit, provenance) and Redis (ephemeral job status).
 - **`generator/`** — a separate Python project with its own virtualenv, dependencies (`faker`, `neo4j`), and entry points. Writes directly to Neo4j over Bolt. Run standalone for full-world generation (`generate_world.py`) or invoked by the backend as a subprocess for on-demand scenario injection (`generate_scenario.py`).
 - **Neo4j** — the single source of truth. Community Edition + the Graph Data Science (GDS) plugin, self-hosted via Docker Compose.
+- **PostgreSQL** — the one datastore added beyond the graph, and added for a property Neo4j Community cannot express rather than for convenience. Community Edition has no per-label privilege model, so any process holding write credentials — which ARGUS must — can rewrite an audit record or an observation. In Postgres the application role holds `INSERT` and `SELECT` on those tables and nothing else, and triggers reject `UPDATE`, `DELETE` and `TRUNCATE` for **every** role including the superuser. The audit log is additionally hash-chained, so tampering by someone who bypasses the triggers is still detectable by recomputation. The graph remains authoritative for entities and relationships; nothing about the intelligence model lives here.
 - **Redis** — not a cache in the traditional sense; it exists solely to hold the state of in-flight background jobs (analytics runs, scenario generation) so the frontend can poll a job by ID across requests.
 - **Ollama** — entirely optional, external, probed at runtime. See [ai-layer.md](ai-layer.md).
 

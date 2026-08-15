@@ -1,6 +1,32 @@
 # API Reference
 
-Scope: every HTTP endpoint the backend exposes. Base URL `http://localhost:8000` in local development. All routes except `GET /api/health` require `Authorization: Bearer <ARGUS_API_TOKEN>` (see [deployment.md](deployment.md#environment-variables)). All responses are wrapped in the [Envelope shape](backend.md#response-envelope).
+Scope: every HTTP endpoint the backend exposes. Base URL `http://localhost:8000` in local development. All responses are wrapped in the [Envelope shape](backend.md#response-envelope).
+
+## Authentication
+
+Every route except `/api/health`, `/livez`, `/readyz` and `POST /api/auth/login` requires an
+authenticated session, **and** the permission its handler declares.
+
+Authentication is a server-side session referenced by an **httpOnly cookie**. There is deliberately
+no bearer token and no API key: the previous design put a single static token in
+`NEXT_PUBLIC_ARGUS_API_TOKEN`, which Next.js inlines into the client bundle at build time — so the
+credential guarding every endpoint was served as static text to anyone who loaded the page. It was
+removed rather than rotated.
+
+Because the credential is a cookie, the browser attaches it automatically to cross-site requests, so
+**every unsafe method (POST/PUT/DELETE) also requires a CSRF token**: send the value of the
+`argus_csrf` cookie in the `X-CSRF-Token` header. That cookie is readable by same-origin JavaScript
+precisely so the SPA can echo it; an attacker's page can cause it to be *sent* but cannot read it.
+
+```
+POST /api/auth/login      {username, password, mfa_code?}  -> sets argus_session + argus_csrf
+GET  /api/auth/me                                          -> current user, role and permissions
+POST /api/auth/logout                                      -> revokes the session server-side
+```
+
+Roles and permissions are enumerated in `app/security/roles.py`. Two separations are deliberate: an
+**administrator** holds no intelligence-read permission, and an **auditor** holds no write permission
+of any kind — so a single compromised account cannot both act and erase the evidence of acting.
 
 Interactive docs (Swagger UI, generated from the same FastAPI app) are available at `http://localhost:8000/docs` whenever the backend is running — this file is the narrative companion, not a replacement.
 
@@ -28,6 +54,27 @@ Interactive docs (Swagger UI, generated from the same FastAPI app) are available
 | GET | `/api/entities/{entity_id}/timeline` | — | Person/Organization activity feed (events, transactions, communications), newest first. |
 | GET | `/api/entities/{entity_id}/cases` | — | Cases this entity is linked to (reverses `Case-[:LINKED_TO]->Entity`), newest-opened first. |
 | GET | `/api/entities/{entity_id}/alerts` | `limit` (default 20) | Alerts (High/Critical Incidents) this entity is involved in (reverses `Incident-[:INVOLVES]->Entity`), newest first. |
+| GET | `/api/entities/{entity_id}/provenance` | — | Per-attribute provenance: for each property, the observations that reported it, any assertions about it, and whether the stored value still matches what the source said. Also returns `observations_examined` / `observations_total`, so a bounded read can never be mistaken for a complete one. |
+
+## Provenance — `app/api/routes/provenance.py`
+
+Requires `provenance:read`, which every intelligence-reading role holds — knowing that a figure came
+from a synthetic source rated F is part of reading the figure.
+
+| Method | Path | Params | Description |
+|---|---|---|---|
+| GET | `/api/provenance/sources` | — | The source registry: type, Admiralty reliability, the stated basis for that rating, independence group, and `is_synthetic`. |
+| GET | `/api/provenance/summary` | — | Row counts and which registered sources are synthetic. Drives the "synthetic data" notice, so it disappears on its own when real sources replace generated ones. |
+| GET | `/api/provenance/subjects/{ref}` | `as_of`, `include_ended`, `observation_limit` | Observations, assertions, conflicts and sources for one entity. **`as_of` reconstructs what ARGUS believed at that instant** — filtering on when ARGUS learned or asserted something, not on when it happened. |
+| GET | `/api/provenance/subjects/{ref}/conflicts` | `as_of` | Predicates where current assertions disagree. Returns **every side, with no winner** — resolving a conflict is an analyst's job, and a system that quietly picks one hides the disagreement from the only person qualified to settle it. |
+| GET | `/api/provenance/observations/{id}` | — | One observation: payload, content hash, source, and its three timestamps. |
+| GET | `/api/provenance/assertions/{id}` | — | One assertion with its supporting *and* contradicting evidence, plus corroboration counted over independent source groups. |
+| POST | `/api/provenance/assertions` | `{subject_ref, predicate, object_value, epistemic_kind, reliability, credibility, note?, supporting_observation_ids?, contradicting_observation_ids?, supersedes?}` | Record a judgement, attributed to you. Requires `assertion:write`. `epistemic_kind` accepts only `assessed` or `reported`: `observed` belongs to a system of record and `inferred` to an algorithm that names its method, so neither can be claimed by hand (**400**). |
+| POST | `/api/provenance/assertions/{id}/retract` | `{reason}` | Withdraw a belief. Requires `assertion:retract`. The reason is mandatory, the assertion is not deleted, and the retraction cannot be reversed (**409** if already retracted). |
+
+Reliability (`A`–`F`) and credibility (`1`–`6`) are the two axes of the Admiralty Code and are
+returned as separate fields everywhere. Nothing in the API combines them into a single confidence
+number — "0.62" cannot tell an analyst whether the basis is one excellent source or four poor ones.
 
 ## Graph — `app/api/routes/graph.py`
 
@@ -126,8 +173,12 @@ See [generator.md](generator.md#on-demand-scenario-generation) for what runs und
 
 | Status | When |
 |---|---|
-| 401 | Missing/incorrect bearer token on any authenticated route |
-| 404 | Entity, case, or alert not found by ID |
-| 400 | Invalid scenario `type`/`complexity` |
-| 503 | `/api/ai/ask` called while Ollama is unreachable |
+| 401 | No session cookie, or the session has expired or been revoked |
+| 403 | Authenticated but the role lacks the permission the route requires; or a missing/invalid `X-CSRF-Token` on an unsafe method |
+| 404 | Entity, case, alert, observation or assertion not found by ID |
+| 400 | Invalid scenario `type`/`complexity`; unrecognised entity ID; an epistemic kind a person may not claim |
+| 409 | Assertion already retracted |
+| 422 | Request body fails validation (bad Admiralty rating, oversized field, missing reason) |
+| 429 | Rate limit exceeded, or the job concurrency limit is saturated (`Retry-After` set) |
+| 503 | A datastore is unreachable — Neo4j, Redis or PostgreSQL — or `/api/ai/ask` called while Ollama is down. Always with `Retry-After`, because the request was well-formed and should be retried rather than treated as a defect. |
 | 500 | Unhandled exception — surfaces as FastAPI's default error response |
