@@ -6,6 +6,10 @@ from fastapi import FastAPI, Request, status
 from fastapi import Response as FastAPIResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from neo4j.exceptions import ServiceUnavailable as Neo4jServiceUnavailable
+from neo4j.exceptions import SessionExpired as Neo4jSessionExpired
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from app.api.routes import (
     ai,
@@ -101,6 +105,42 @@ async def job_rejected_handler(request: Request, exc: JobRejected) -> JSONRespon
         status_code=status.HTTP_429_TOO_MANY_REQUESTS,
         content={"data": None, "error": str(exc)},
         headers={"Retry-After": "5"},
+    )
+
+
+@app.exception_handler(RedisConnectionError)
+@app.exception_handler(RedisTimeoutError)
+async def redis_unavailable_handler(request: Request, exc: Exception) -> JSONResponse:
+    """A datastore being unreachable is not an application defect.
+
+    Redis backs only job status, so its loss degrades one capability rather than
+    the platform: graph reads continue to work. Returning a bare 500 said
+    "ARGUS is broken" when the accurate statement is "analytics is temporarily
+    unavailable, everything else is fine" — and a 500 gives the client no reason
+    to retry, while a 503 does.
+    """
+    logger.error("redis unavailable", exc_info=exc, extra={"path": request.url.path})
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={
+            "data": None,
+            "error": "Job service unavailable — analytics and scenario generation are "
+            "temporarily offline. Graph, search, alerts and cases are unaffected.",
+        },
+        headers={"Retry-After": "10"},
+    )
+
+
+@app.exception_handler(Neo4jServiceUnavailable)
+@app.exception_handler(Neo4jSessionExpired)
+async def neo4j_unavailable_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Same reasoning for the graph: a transient database outage should tell the
+    client to retry, not present as a server bug."""
+    logger.error("neo4j unavailable", exc_info=exc, extra={"path": request.url.path})
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={"data": None, "error": "Graph database unavailable — please retry shortly."},
+        headers={"Retry-After": "10"},
     )
 
 app.include_router(dashboard.router)

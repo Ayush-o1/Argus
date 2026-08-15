@@ -39,6 +39,17 @@ from app.models.aggregate import Aggregate
 DETAIL_LIMIT = 400
 
 
+LANES = ("transactions", "communications", "events", "incidents")
+
+
+def _empty_bucket(day: str) -> dict:
+    bucket: dict = {"day": day, "total": 0, "flagged": 0}
+    for lane in LANES:
+        bucket[lane] = 0
+        bucket[f"{lane}_flagged"] = 0
+    return bucket
+
+
 async def _daily_counts(driver: AsyncDriver) -> tuple[list[dict], dict[str, int]]:
     """Per-day totals across every transaction, communication, event and
     incident in the graph. Returns (buckets, population_totals).
@@ -87,21 +98,16 @@ async def _daily_counts(driver: AsyncDriver) -> tuple[list[dict], dict[str, int]
 
     for row in rows:
         day = row["day"]
-        bucket = by_day.setdefault(
-            day,
-            {
-                "day": day,
-                "total": 0,
-                "flagged": 0,
-                "transactions": 0,
-                "communications": 0,
-                "events": 0,
-                "incidents": 0,
-            },
-        )
+        bucket = by_day.setdefault(day, _empty_bucket(day))
         bucket["total"] += row["total"]
         bucket["flagged"] += row["flagged"]
         bucket[row["lane"]] += row["total"]
+        # Kept per-lane, not just summed: the UI lets an analyst switch lanes
+        # off, and a single pre-summed total cannot be apportioned back
+        # afterwards. Without these the filtered flagged count would have to be
+        # approximated, and approximating a figure the analyst reads as exact is
+        # the failure this whole change exists to prevent.
+        bucket[f"{row['lane']}_flagged"] += row["flagged"]
         population[row["lane"]] += row["total"]
 
     return list(by_day.values()), population
@@ -127,20 +133,7 @@ def _zero_fill(buckets: list[dict]) -> list[dict]:
     cursor = start
     while cursor <= end:
         key = cursor.isoformat()
-        filled.append(
-            existing.get(
-                key,
-                {
-                    "day": key,
-                    "total": 0,
-                    "flagged": 0,
-                    "transactions": 0,
-                    "communications": 0,
-                    "events": 0,
-                    "incidents": 0,
-                },
-            )
-        )
+        filled.append(existing.get(key, _empty_bucket(key)))
         cursor += timedelta(days=1)
     return filled
 

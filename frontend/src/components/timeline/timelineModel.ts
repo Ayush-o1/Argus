@@ -105,19 +105,18 @@ function totalForLanes(bucket: DayBucket, lanes: Record<LaneKey, boolean>): numb
 /**
  * Flagged count restricted to the active lanes.
  *
- * Only transactions and communications carry a `flagged` property; incidents are
- * flagged by definition; events never are. The server's per-day `flagged` total
- * already reflects that, but it cannot be apportioned back to individual lanes
- * once summed — so when lanes are filtered we can only subtract the one lane
- * whose flagged contribution is exactly known (incidents). Anything finer would
- * require per-lane flagged counts, and asserting a number we cannot derive is
- * the failure this whole change exists to prevent.
+ * The API returns flagged counts per lane, not just a per-day total, precisely
+ * so this can be exact. A single summed total cannot be apportioned back to
+ * individual lanes, which would have forced an approximation here — and a
+ * figure the analyst reads as exact must not be an estimate.
  */
 function flaggedForLanes(bucket: DayBucket, lanes: Record<LaneKey, boolean>): number {
-  const incidentFlagged = lanes.incidents ? bucket.incidents : 0;
-  const nonIncidentFlagged = Math.max(0, bucket.flagged - bucket.incidents);
-  const includesFlaggableLane = lanes.transactions || lanes.communications;
-  return incidentFlagged + (includesFlaggableLane ? nonIncidentFlagged : 0);
+  let flagged = 0;
+  if (lanes.transactions) flagged += bucket.transactions_flagged;
+  if (lanes.communications) flagged += bucket.communications_flagged;
+  if (lanes.events) flagged += bucket.events_flagged;
+  if (lanes.incidents) flagged += bucket.incidents_flagged;
+  return flagged;
 }
 
 export function analyseDays(

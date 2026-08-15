@@ -16,6 +16,7 @@ docker compose up -d neo4j redis
 cd generator
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
+export NEO4J_PASSWORD=argus_dev_password
 python3 generate_world.py --seed 42
 
 # 3. Backend
@@ -87,8 +88,8 @@ There is no in-app control for this (deliberately — it's destructive):
 
 ```bash
 cd generator
-python3 generate_world.py --seed 42        # wipes and rebuilds the entire graph
-python3 generate_world.py --seed 42 --no-wipe   # additive instead
+python3 generate_world.py --seed 42          # refuses if the graph is already populated
+python3 generate_world.py --seed 42 --wipe   # destructive: deletes everything first
 ```
 
 See [generator.md](generator.md) for what this does and how to change scale.

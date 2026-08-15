@@ -53,6 +53,12 @@ export interface DayBucket {
   communications: number;
   events: number;
   incidents: number;
+  /** Flagged counts per lane. Returned separately from `flagged` so a lane
+   * filter can produce an exact figure rather than an apportioned estimate. */
+  transactions_flagged: number;
+  communications_flagged: number;
+  events_flagged: number;
+  incidents_flagged: number;
 }
 
 /** A bounded, deterministically ordered preview of individual records, for the

@@ -32,7 +32,7 @@ The `graph-data-science` plugin must be both installed (`NEO4J_PLUGINS` in `dock
 
 ## Scenario Generator fails with "Not enough existing low-risk persons" or "Not enough existing locations"
 
-`build_scenario` fetches existing `Person` nodes with `risk_score < 40` (and, for `supply_chain_divergence`, existing `Location` nodes) directly from the live graph to reuse as scenario participants — it never creates new persons. If you've run many high-complexity scenarios in a row, or seeded a very small world, the pool of low-risk persons can run out. Fix: regenerate the base world (`generate_world.py --seed 42`) to reset the pool, or lower scenario complexity.
+`build_scenario` fetches existing `Person` nodes with `risk_score < 40` (and, for `supply_chain_divergence`, existing `Location` nodes) directly from the live graph to reuse as scenario participants — it never creates new persons. If you've run many high-complexity scenarios in a row, or seeded a very small world, the pool of low-risk persons can run out. Fix: regenerate the base world (`generate_world.py --seed 42 --wipe`) to reset the pool, or lower scenario complexity.
 
 ## Map basemap doesn't render / MapLibre canvas stays blank
 

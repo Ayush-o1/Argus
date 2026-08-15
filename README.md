@@ -71,7 +71,8 @@ docker compose up -d neo4j redis   # graph database (with GDS) + cache
 cd generator
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-python3 generate_world.py --seed 42   # populates the graph (~20K nodes, ~90K relationships, ~15s)
+export NEO4J_PASSWORD=argus_dev_password   # credentials come from the env, never argv
+python3 generate_world.py --seed 42        # populates the graph (~20K nodes, ~90K relationships, ~15s)
 
 cd ../backend
 python3 -m venv .venv && source .venv/bin/activate

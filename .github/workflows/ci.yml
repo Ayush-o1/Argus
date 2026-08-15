@@ -13,6 +13,27 @@ jobs:
     defaults:
       run:
         working-directory: backend
+
+    # Integration tests run against a real Neo4j rather than a mocked driver.
+    # A mock cannot tell you that collect(...)[0..5] truncates a count, that
+    # count(*)+1 races under concurrency, or that a lookup is a label scan —
+    # which is precisely how those defects survived a green suite.
+    services:
+      neo4j:
+        image: neo4j:5-community
+        env:
+          NEO4J_AUTH: neo4j/argus_test_password
+          NEO4J_server_memory_heap_max__size: 1G
+        ports:
+          - 7687:7687
+          - 7474:7474
+        options: >-
+          --health-cmd "wget -q --spider http://localhost:7474 || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 20
+          --health-start-period 30s
+
     steps:
       - uses: actions/checkout@v4
 
@@ -29,8 +50,69 @@ jobs:
       - name: Mypy
         run: mypy app
 
+      - name: Apply migrations to the test database
+        env:
+          NEO4J_URI: bolt://localhost:7687
+          NEO4J_PASSWORD: argus_test_password
+        run: |
+          python -c "
+          import asyncio
+          from app.database.neo4j import connect_neo4j, close_neo4j
+          from app.database.migrations import run_migrations, current_version
+
+          async def main():
+              driver = await connect_neo4j()
+              await run_migrations(driver)
+              print('schema version:', await current_version(driver))
+              await close_neo4j()
+
+          asyncio.run(main())
+          "
+
       - name: Pytest
-        run: pytest
+        env:
+          TEST_NEO4J_URI: bolt://localhost:7687
+          TEST_NEO4J_PASSWORD: argus_test_password
+        run: pytest -v
+
+      - name: Fail if integration tests were skipped
+        # Skipping on a missing database is correct locally and wrong in CI:
+        # a green run that silently exercised nothing is worse than a red one.
+        env:
+          TEST_NEO4J_URI: bolt://localhost:7687
+          TEST_NEO4J_PASSWORD: argus_test_password
+        run: |
+          output=$(pytest -q -m "" --no-header 2>&1)
+          echo "$output"
+          if echo "$output" | grep -qE "[0-9]+ skipped"; then
+            echo "::error::Integration tests were skipped in CI — the Neo4j service is not reachable."
+            exit 1
+          fi
+
+  backend-security:
+    name: Backend security (pip-audit, bandit)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: |
+          pip install -e "."
+          pip install pip-audit bandit
+
+      - name: pip-audit (known vulnerable dependencies)
+        run: pip-audit --desc --skip-editable
+
+      - name: Bandit (static security analysis)
+        # B101 (assert) is excluded: asserts here document invariants that
+        # Cypher aggregates guarantee, and are not used for input validation.
+        run: bandit -r app -ll --skip B101
 
   frontend:
     name: Frontend (eslint, tsc, build)
@@ -61,3 +143,39 @@ jobs:
           NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
           NEXT_PUBLIC_ARGUS_API_TOKEN: ci_placeholder_token
         run: npm run build
+
+  frontend-security:
+    name: Frontend security (npm audit)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: npm audit
+        # Gates at high. The tree is currently clean; this exists so it stays
+        # that way rather than accumulating silently between releases.
+        run: npm audit --audit-level=high
+
+  secrets:
+    name: Secret scanning
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history: a secret committed once and removed later is still
+          # exposed, so scanning only the tip would miss it.
+          fetch-depth: 0
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

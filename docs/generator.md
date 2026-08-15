@@ -52,7 +52,7 @@ document_count: int = 2_000
 storyline_count: int = 15
 ```
 
-There is no CLI flag to override these individually — to change scale, edit `ScaleConfig`'s defaults directly (or construct a `GeneratorConfig(scale=ScaleConfig(...))` if calling `build_world` from other code). `--seed`, `--neo4j-uri/--neo4j-user/--neo4j-password`, and `--no-wipe` are the only CLI-exposed flags.
+There is no CLI flag to override these individually — to change scale, edit `ScaleConfig`'s defaults directly (or construct a `GeneratorConfig(scale=ScaleConfig(...))` if calling `build_world` from other code). `--seed`, `--neo4j-uri`, `--neo4j-user`, and `--wipe` are the only CLI-exposed flags. The password is read from `NEO4J_PASSWORD` (or prompted for) rather than accepted as a flag: command lines are world-readable via `/proc` and `ps`.
 
 `config.py` holds the synthetic reference data — bank, telecom and carrier name pools (grouped by region), industry and occupation lists, document types. The **geography itself lives in `geography.py`**: 70 real cities across 50 countries and 10 regions, each with real coordinates, an activity weight, and functional tags (`port`, `financial`, `hub`). No real personal data is used anywhere; only place names and coordinates are real, which is what grounds synthetic entities in plausible geography.
 
@@ -178,10 +178,10 @@ cd generator
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-python3 generate_world.py --seed 42                 # full rebuild (wipes existing graph)
-python3 generate_world.py --seed 42 --no-wipe        # additive, same as write_world(wipe_existing=False)
+python3 generate_world.py --seed 42                 # refuses if the graph is already populated
+python3 generate_world.py --seed 42 --wipe          # destructive: full rebuild
 
 python3 generate_scenario.py --type shell_company_ring --complexity Medium --seed 123
 ```
 
-Both scripts accept `--neo4j-uri`, `--neo4j-user`, `--neo4j-password` (defaulting to the docker-compose values). Keep `generator/.venv` in place even after initial world generation — the backend's Scenario Generator feature depends on that exact virtualenv path existing (`GENERATOR_PYTHON = generator/.venv/bin/python3`, hardcoded in `app/services/scenario.py`).
+Both scripts accept `--neo4j-uri` and `--neo4j-user`, and read the password from `NEO4J_PASSWORD`, prompting if it is unset. Keep `generator/.venv` in place even after initial world generation — the backend's Scenario Generator feature depends on that exact virtualenv path existing (`GENERATOR_PYTHON = generator/.venv/bin/python3`, hardcoded in `app/services/scenario.py`).

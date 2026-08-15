@@ -54,7 +54,7 @@ export function useEntity(entityId: string | undefined) {
   return useQuery({
     queryKey: ["entity", entityId],
     enabled: !!entityId,
-    queryFn: async () => (await apiFetch<GraphNode>(`/api/entities/${encodeURIComponent(entityId)}`)).data,
+    queryFn: async () => (await apiFetch<GraphNode>(`/api/entities/${encodeURIComponent(entityId!)}`)).data,
   });
 }
 
@@ -62,7 +62,7 @@ export function useEntityGraph(entityId: string | undefined, depth = 1) {
   return useQuery({
     queryKey: ["entity-graph", entityId, depth],
     enabled: !!entityId,
-    queryFn: async () => (await apiFetch<Subgraph>(`/api/entities/${encodeURIComponent(entityId)}/graph?depth=${depth}`)).data,
+    queryFn: async () => (await apiFetch<Subgraph>(`/api/entities/${encodeURIComponent(entityId!)}/graph?depth=${depth}`)).data,
   });
 }
 
@@ -70,7 +70,7 @@ export function useEntityTimeline(entityId: string | undefined) {
   return useQuery({
     queryKey: ["entity-timeline", entityId],
     enabled: !!entityId,
-    queryFn: async () => (await apiFetch<TimelineItem[]>(`/api/entities/${encodeURIComponent(entityId)}/timeline`)).data,
+    queryFn: async () => (await apiFetch<TimelineItem[]>(`/api/entities/${encodeURIComponent(entityId!)}/timeline`)).data,
   });
 }
 
@@ -81,7 +81,7 @@ export function useEntityCases(entityId: string | undefined) {
   return useQuery({
     queryKey: ["entity-cases", entityId],
     enabled: !!entityId,
-    queryFn: async () => (await apiFetch<CaseSummary[]>(`/api/entities/${encodeURIComponent(entityId)}/cases`)).data,
+    queryFn: async () => (await apiFetch<CaseSummary[]>(`/api/entities/${encodeURIComponent(entityId!)}/cases`)).data,
   });
 }
 
@@ -89,6 +89,6 @@ export function useEntityAlerts(entityId: string | undefined) {
   return useQuery({
     queryKey: ["entity-alerts", entityId],
     enabled: !!entityId,
-    queryFn: async () => (await apiFetch<Incident[]>(`/api/entities/${encodeURIComponent(entityId)}/alerts`)).data,
+    queryFn: async () => (await apiFetch<Incident[]>(`/api/entities/${encodeURIComponent(entityId!)}/alerts`)).data,
   });
 }

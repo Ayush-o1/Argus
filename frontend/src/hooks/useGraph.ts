@@ -6,7 +6,7 @@ export function useSubgraph(entityId: string | undefined, depth = 1) {
   return useQuery({
     queryKey: ["subgraph", entityId, depth],
     enabled: !!entityId,
-    queryFn: async () => (await apiFetch<Subgraph>(`/api/graph/subgraph?entity_id=${encodeURIComponent(entityId)}&depth=${depth}`)).data,
+    queryFn: async () => (await apiFetch<Subgraph>(`/api/graph/subgraph?entity_id=${encodeURIComponent(entityId!)}&depth=${depth}`)).data,
   });
 }
 
