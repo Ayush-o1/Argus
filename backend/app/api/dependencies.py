@@ -105,3 +105,31 @@ def require_permission(permission: Permission) -> Callable[..., Awaitable[Authen
         return user
 
     return _dependency
+
+
+def require_all_permissions(
+    *permissions: Permission,
+) -> Callable[..., Awaitable[AuthenticatedUser]]:
+    """Require every listed permission, not any of them.
+
+    Exists for one situation the single-permission form cannot express: an
+    endpoint that is both an operational action *and* a disclosure of
+    intelligence. Reading a dead-lettered payload is the case — an administrator
+    may operate the ingestion pipeline, but the raw record is source content, so
+    that route demands `ingest:read` **and** `entity:read` and an administrator
+    is refused. Operating the plumbing is not permission to read the water.
+    """
+
+    async def _dependency(user: AuthenticatedUser = Depends(current_user)) -> AuthenticatedUser:
+        missing = [p for p in permissions if not has_permission(user.role, p)]
+        if missing:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    f"Role '{user.role}' lacks permission(s): "
+                    f"{', '.join(p.value for p in missing)}"
+                ),
+            )
+        return user
+
+    return _dependency

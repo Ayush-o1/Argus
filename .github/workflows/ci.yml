@@ -58,6 +58,14 @@ jobs:
       - name: Install backend dependencies
         run: pip install -e ".[dev]"
 
+      - name: Install generator dependencies
+        # The generator is a separate project with its own virtualenv, so its
+        # modules are importable only when its requirements are present. Without
+        # this the generator tests skip — and the guard below correctly treats a
+        # skipped test in CI as a failure, because a green run that exercised
+        # nothing is worse than a red one.
+        run: pip install -r ../generator/requirements.txt
+
       - name: Ruff
         run: ruff check .
 

@@ -169,6 +169,33 @@ See [generator.md](generator.md#on-demand-scenario-generation) for what runs und
 | POST | `/api/scenario/generate` | `{type, complexity?: "Medium", seed?: int}` | 400 if `type`/`complexity` invalid. Returns `{job_id, status: "running"}`. |
 | GET | `/api/scenario/status/{job_id}` | — | `{status, result: {storyline_id, type, severity, description, case_id, key_entity_id, key_entity_name, node_counts, seed, stages}, error, stages}` |
 
+## Ingestion — `app/api/routes/ingest.py`
+
+Requires `ingest:read`, held by every intelligence-reading role **and** by
+administrators. Whether a source has gone quiet changes how its silence should be
+read, so pipeline health travels with the intelligence it feeds.
+
+| Method | Path | Params | Description |
+|---|---|---|---|
+| GET | `/api/ingest/health` | — | Per-connector freshness, 24h volume, rejection rate and dead-letter depth, plus queue depth and which sources are overdue against their own declared interval. Computed from `ingest_batches` rather than from counters, so the figures cannot drift from the events they describe. |
+| GET | `/api/ingest/connectors` | — | Configured connectors. `config` is redacted of anything credential-shaped before it leaves the process. |
+| GET | `/api/ingest/connectors/{id}/batches` | `limit` | Recent fetch attempts with per-batch counts. |
+| GET | `/api/ingest/connectors/{id}/fields` | — | Every field this source has ever sent, first and last seen. A field that stops arriving is a schema change nothing else reports. |
+| PUT | `/api/ingest/connectors` | `{connector_id, source_id, connector_type, display_name, config, mapping, poll_interval_seconds?, enabled?}` | Register or update a connector. Requires `ingest:manage`. **400** if the type is unregistered, the mapping is invalid, or `config` contains anything credential-shaped — name an environment variable instead (`token_env`). |
+| POST | `/api/ingest/connectors/{id}/run` | — | Queue an immediate run; returns a job id, not a result. Requires `ingest:manage`. |
+| POST | `/api/ingest/connectors/{id}/quarantine` | `{reason}` | Stop a connector, with a stated reason. Requires `ingest:manage`. |
+| POST | `/api/ingest/connectors/{id}/release` | — | Return a quarantined connector to service. Requires `ingest:manage`. |
+| GET | `/api/ingest/failures` | `connector_id`, `include_resolved`, `limit` | The dead-letter queue — **metadata only**, deliberately excluding the rejected payload. |
+| GET | `/api/ingest/failures/{id}/payload` | — | The rejected record itself. Requires `ingest:read` **and** `entity:read`, so an administrator — who operates the pipeline but cannot read intelligence — is refused here while still seeing that the failure exists and why. |
+| POST | `/api/ingest/failures/{id}/replay` | — | Re-run a dead-lettered record after fixing its cause. Requires `ingest:manage` and `entity:read`. |
+| POST | `/api/ingest/failures/{id}/resolve` | `{resolution}` | Close an entry without replaying it. The entry is never deleted; only its resolution is recorded. |
+
+Also `POST /api/provenance/sources` registers a source with its Admiralty rating,
+a **required** stated basis for that rating, and an optional `staleness_hours`.
+Re-registering an existing source is a **409**: a reliability rating re-weights
+every assertion resting on it, so changing one is not a side effect of a repeated
+call.
+
 ## Error responses
 
 | Status | When |

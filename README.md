@@ -19,6 +19,7 @@ An analyst-facing tool for exploring a connected dataset of people, organization
 - **Analytics Engine** — PageRank, Betweenness, Louvain communities, Node2Vec similarity, custom risk propagation, and cycle detection via Neo4j Graph Data Science; plus Isolation Forest + z-score transaction-anomaly detection that independently rediscovers injected anomalies without reading their ground-truth labels.
 - **Cases & Alerts** — alerts are a triage workspace where the queue selects and the detail argues: what happened, why it matters, what is affected, where it spreads (distinct countries and regions across the involved entities), and which other alerts share its storyline. A case opens with its footprint — reach across countries and regions, plus the alerts involving anything on its evidence board.
 - **Provenance & confidence** — every displayed value resolves to the source that reported it, or is explicitly marked *inferred*, *modified* or *unattributed*. Sources carry Admiralty reliability (A–F) and claims carry credibility (1–6), kept as two independent readings and never averaged into one figure. Contradictory claims render side by side with no automatic winner, and "what did ARGUS believe on date D" is answerable. The synthetic data generator is itself a registered source, flagged as such, so generated ground truth can never be mistaken for discovered intelligence.
+- **Ingestion** — a connector framework where adding a *source* is a database row and adding a *kind* of source is one class. Records land raw and hash-keyed before anything interprets them, so re-reading a file creates no duplicate and a wrong mapping can be corrected and replayed. Anything rejected goes to an inspectable dead-letter queue with the stage and reason — never silently dropped, because a silent drop makes a collection gap invisible. A feed that stops producing within its own declared interval is reported, since a silent source otherwise looks exactly like a quiet world. Runs are durable queued jobs in PostgreSQL, so a restart postpones a batch rather than losing it.
 - **Local Intelligence Layer** — deterministic, template-composed entity/case narratives (no model, no network call), plus an entirely optional local-LLM assistant that the rest of the product has zero dependency on.
 - **Scenario Generator** — creates a new synthetic investigation storyline on demand by running the real generation engine as a background job against the live graph.
 - **Map** — a global geospatial workspace (MapLibre + deck.gl) with three scale tiers that swap datasets rather than restyle one: regions and trade corridors at world zoom, country aggregates at regional zoom, individual entities and shipment routes locally. Routes and the ranked context panel scope to the visible extent, so drilling in actually narrows what you see. Clicking a flagged route explains *why* it was flagged.
@@ -33,7 +34,8 @@ flowchart LR
     FE["Next.js 16 frontend"] -- "REST, httpOnly session cookie + CSRF" --> BE["FastAPI backend"]
     BE -- "Bolt" --> Neo4j[(Neo4j 5 + GDS)]
     BE -- "job status" --> Redis[(Redis)]
-    BE -- "identity, audit, provenance" --> PG[(PostgreSQL 16)]
+    BE -- "identity, audit, provenance,\njob queue, raw landing" --> PG[(PostgreSQL 16)]
+    Feeds["external feeds\n(files, HTTP JSON)"] -- "connectors" --> BE
     Gen["generator/ (Python)"] -- "Bolt, direct write" --> Neo4j
     BE -- "subprocess" --> Gen
     BE -. "optional, probed at runtime" .-> Ollama["local Ollama"]
@@ -50,6 +52,7 @@ No hosted AI dependency anywhere in ARGUS Core — every "intelligence" feature 
 | Database | Neo4j 5 Community Edition + Graph Data Science (GDS) plugin, self-hosted via Docker |
 | Identity & provenance | PostgreSQL 16 — users, sessions, the append-only audit log, and the observation/assertion store |
 | Auth | Argon2id password hashing, TOTP MFA, httpOnly session cookies, CSRF double-submit, six-role RBAC |
+| Ingestion | Connector framework over a PostgreSQL-backed durable job queue (`FOR UPDATE SKIP LOCKED`); raw landing, dead-letter queue, schema-drift and volume-drift detection |
 | Data generation | Python + Faker (per-region locales), deterministic/seeded |
 | Intelligence | Neo4j GDS algorithms, scikit-learn (Isolation Forest), deterministic template NLG; optional local LLM via Ollama |
 

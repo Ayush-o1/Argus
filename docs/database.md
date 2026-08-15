@@ -179,6 +179,17 @@ Three groups of tables, all in one database.
 
 Reliability and credibility are stored as characters, not integers, on purpose: a numeric encoding invites arithmetic on an ordinal scale where A→B is not the same distance as E→F, and nothing establishes that it is.
 
+**Ingestion** — the pipeline's working state and its evidence:
+
+| Table | Holds |
+|---|---|
+| `job_queue` | Durable jobs. Claimed with `SELECT ... FOR UPDATE SKIP LOCKED` under a *lease* rather than a lock, so a worker that dies costs one visibility timeout instead of the job. Delivery is at-least-once, which is why handlers must be idempotent. |
+| `connectors` | One row per configured feed: type, config, record mapping, poll interval, cursor, quarantine state. Adding a source is an INSERT. **Credentials are never stored here** — config may *name* an environment variable, never carry a value. |
+| `ingest_batches` | One row per fetch attempt, with per-batch counts. Source health is computed from this table rather than kept in counters, so the numbers cannot drift from the events they describe. |
+| `raw_records` | What arrived, exactly as it arrived. Immutable, unique on `(connector_id, content_hash)`. This is what makes replay possible: a pipeline that discards its input can only ever be fixed going forward. |
+| `ingest_failures` | The dead-letter queue: stage, error, and the payload it refers to. Immutable except for its resolution. |
+| `connector_field_stats` | Every field a source has ever sent. A source that quietly renames or drops one does not error — it just stops populating something, and every derived figure silently degrades. |
+
 ### How immutability is enforced
 
 Two independent layers, because either alone is weaker than it looks:

@@ -27,6 +27,7 @@ from app.models.provenance import (
     Rating,
     Reliability,
     Source,
+    SourceType,
     SubjectProvenance,
 )
 from app.repositories import provenance_repo
@@ -83,6 +84,82 @@ async def get_sources() -> Envelope[list[Source]]:
     a figure came from a synthetic source rated F is part of reading the figure.
     """
     return Envelope(data=await provenance_repo.list_sources())
+
+
+class RegisterSourceRequest(BaseModel):
+    source_id: str = Field(min_length=1, max_length=64, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    name: str = Field(min_length=1, max_length=200)
+    source_type: SourceType
+    description: str = Field(min_length=1, max_length=2_000)
+    reliability: Reliability
+    # Required, not optional. A rating with no stated basis is an opinion
+    # wearing a letter, and every assertion built on this source inherits it.
+    reliability_basis: str = Field(min_length=1, max_length=2_000)
+    is_synthetic: bool = False
+    #: Sources sharing a group count once toward corroboration. Two feeds
+    #: reprinting one wire service are one voice.
+    independence_group: str | None = Field(default=None, max_length=64)
+    #: How long data from this source stays current. Without it ARGUS cannot
+    #: tell "quiet because nothing happened" from "quiet because it broke".
+    staleness_hours: int | None = Field(default=None, ge=1, le=8_760)
+
+
+@router.post("/sources")
+async def register_source(
+    payload: RegisterSourceRequest,
+    request: Request,
+    user: AuthenticatedUser = Depends(require_permission(Permission.INGEST_MANAGE)),
+) -> Envelope[Source]:
+    """Register a source.
+
+    Registration is deliberately not an update: an existing source is left
+    untouched. A reliability rating is an analytic judgement that every
+    assertion resting on it inherits, so silently overwriting one would change
+    what a body of past work means without anyone deciding to.
+    """
+    existing = await provenance_repo.get_source(payload.source_id)
+    if existing is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Source {payload.source_id!r} is already registered. Changing a reliability "
+                "rating re-weights every assertion that rests on it, so it is not a side "
+                "effect of re-registering."
+            ),
+        )
+
+    source = Source(
+        source_id=payload.source_id,
+        name=payload.name,
+        source_type=payload.source_type,
+        description=payload.description,
+        reliability=payload.reliability,
+        reliability_basis=payload.reliability_basis,
+        is_synthetic=payload.is_synthetic,
+        independence_group=payload.independence_group or payload.source_id,
+        staleness_hours=payload.staleness_hours,
+    )
+    await provenance_repo.register_source(source)
+
+    await audit.record(
+        audit.AuditEvent(
+            action="source.register",
+            outcome="success",
+            actor_id=user.id,
+            actor_username=user.username,
+            actor_role=user.role,
+            resource_type="Source",
+            resource_id=payload.source_id,
+            after_state=source.model_dump(mode="json"),
+            request_id=getattr(request.state, "request_id", None),
+            ip_address=request.client.host if request.client else None,
+        )
+    )
+
+    created = await provenance_repo.get_source(payload.source_id)
+    if created is None:  # pragma: no cover - just written
+        raise HTTPException(status_code=500, detail="Source was not persisted")
+    return Envelope(data=created)
 
 
 @router.get("/summary")

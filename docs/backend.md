@@ -34,6 +34,10 @@ backend/app/
 │   ├── redis.py              # process-wide Redis client singleton
 │   ├── migrations/           # Neo4j migrations, forward-only, applied at startup
 │   └── pg_migrations/        # PostgreSQL migrations, ditto
+├── ingestion/
+│   ├── base.py               # Connector ABC + registry; secrets read by env-var name
+│   ├── connectors.py         # filesystem drop folder, http_json poller
+│   └── mapping.py            # declarative record mapping; timestamp normalisation
 ├── middleware/
 │   ├── request_context.py    # request IDs, correlation
 │   └── security.py           # rate limiting, security headers
@@ -62,7 +66,10 @@ backend/app/
 │   └── user_repo.py          # users and sessions
 └── services/                 # business logic that isn't pure Cypher
     ├── audit.py               # append-only, hash-chained audit log
-    ├── jobs.py                # async-job + Redis-status primitive
+    ├── jobs.py                # async-job + Redis-status primitive (analytics, scenario)
+    ├── queue.py               # durable Postgres job queue + worker
+    ├── scheduler.py           # queues connector runs when their interval elapses
+    ├── ingest.py              # the pipeline: land, validate, observe, quarantine, replay
     ├── anomaly.py             # Isolation Forest + z-score detection
     ├── narrative.py           # deterministic template NLG
     ├── ollama.py              # optional local-LLM adapter

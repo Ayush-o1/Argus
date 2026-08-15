@@ -58,6 +58,7 @@ frontend/src/
 | `/search` | Full-text search + browse, with type/risk facets | `useSearch`, `useBrowseEntities` |
 | `/map` | Global geospatial workspace (MapLibre + deck.gl), three scale tiers | `useMapEntities`, `useMapShipments`, `useMapRegions`, `useMapCountries`, `useMapCorridors` |
 | `/timeline` | Volume histogram + burst detection + swimlane chart + ranked moments | `useGlobalTimeline` |
+| `/sources` | Source health — freshness against each source's declared interval, 24h volume and rejection rate, dead-letter queue with the reason each record was rejected, and job-queue depth | `useIngestHealth`, `useIngestFailures` |
 | `/entities/[id]` | Entity hub — risk and contributing factors always visible in the sidebar; Properties/Activity/Cases & Alerts/Provenance/Summary tabs | `useEntity`, `useEntityTimeline`, `useEntityCases`, `useEntityAlerts`, `useEntityProvenance`, `useEntitySummary` |
 | `/cases`, `/cases/[id]` | Case list + workspace (evidence board, notes, summary) | `useCases`, `useCase`, `useCaseSummary` |
 | `/alerts` | Alert review queue | `useAlerts`, `useReviewAlert` |

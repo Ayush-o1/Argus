@@ -66,9 +66,11 @@ export interface BurstStats {
 }
 
 function parseDay(day: string): Date {
-  // Buckets are date-only keys derived from the stored timestamps. Constructing
-  // at local midnight keeps the histogram's x-axis aligned with the labels a
-  // reader sees; there is no offset in the source data to honour.
+  // Buckets arrive as date-only keys — the server has already resolved each
+  // timestamp to a day. Constructing at local midnight keeps the histogram's
+  // x-axis aligned with the labels a reader sees, and deliberately does not
+  // re-interpret the key as UTC: the day has already been decided, and shifting
+  // it here would move events between buckets a second time.
   const [y, m, d] = day.split("-").map(Number);
   return new Date(y, m - 1, d);
 }

@@ -55,10 +55,18 @@ async def _daily_counts(driver: AsyncDriver) -> tuple[list[dict], dict[str, int]
     incident in the graph. Returns (buckets, population_totals).
 
     `substring(x.timestamp, 0, 10)` extracts the date from the stored ISO string
-    rather than parsing it into a temporal type. The generator writes naive local
-    timestamps (audit B-17), so there is no offset to honour — parsing would
-    invent a timezone the data does not carry. The day key is therefore the day
-    as written, which is the only interpretation the data actually supports.
+    rather than parsing it into a temporal type, and takes the day exactly as
+    written.
+
+    The generator now anchors the world in UTC (audit B-17 fixed in
+    `generator/generators/common.py`), so for anything generated since, the day
+    key is the UTC date — a stated convention rather than an inherited accident.
+
+    A graph populated before that fix still holds naive local timestamps, and
+    those are bucketed by their wall-clock date because no offset exists to
+    honour; parsing them would invent a timezone the data does not carry. Both
+    forms slice identically, so mixed data buckets consistently, but the older
+    rows carry an ambiguity that only regenerating the world removes.
     """
     query = """
     CALL () {

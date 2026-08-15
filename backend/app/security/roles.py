@@ -53,6 +53,12 @@ class Permission(StrEnum):
     # on — a judgement about someone's work as much as about the fact.
     ASSERTION_RETRACT = "assertion:retract"
 
+    # Operating the ingestion pipeline. Read is telemetry — is a feed healthy,
+    # is the dead-letter queue growing — and is deliberately separate from
+    # reading what flows through it. Manage configures and controls feeds.
+    INGEST_READ = "ingest:read"
+    INGEST_MANAGE = "ingest:manage"
+
     # Expensive or graph-mutating operations
     ANALYTICS_RUN = "analytics:run"
     SCENARIO_GENERATE = "scenario:generate"
@@ -74,6 +80,11 @@ _READ_INTELLIGENCE = frozenset(
         # see "risk 87.3" but not "assigned by a synthetic source, unrated" has
         # been handed the misleading half.
         Permission.PROVENANCE_READ,
+        # Whether a source has gone quiet changes how its absence should be
+        # read: no reports because nothing happened, or no reports because the
+        # feed broke. An analyst who cannot tell those apart is being misled by
+        # omission, so pipeline health travels with the intelligence it feeds.
+        Permission.INGEST_READ,
     }
 )
 
@@ -109,11 +120,27 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
         Permission.ANALYTICS_RUN,
         Permission.ASSERTION_WRITE,
         Permission.ASSERTION_RETRACT,
+        Permission.INGEST_MANAGE,
         Permission.SCENARIO_GENERATE,
         Permission.AUDIT_READ,
     },
     # No intelligence-read permissions. Deliberate: see the module docstring.
-    Role.ADMINISTRATOR: frozenset({Permission.USER_MANAGE, Permission.AUDIT_READ}),
+    #
+    # Ingestion is the one place this needed a finer line. An administrator
+    # operates the pipeline — configures a feed, quarantines a bad one, watches
+    # for a source going silent — without being able to read what the feed
+    # carries. So they hold INGEST_READ and INGEST_MANAGE, and the endpoints
+    # that expose an actual payload additionally require ENTITY_READ, which an
+    # administrator does not have. Operating the plumbing is not the same
+    # permission as reading the water.
+    Role.ADMINISTRATOR: frozenset(
+        {
+            Permission.USER_MANAGE,
+            Permission.AUDIT_READ,
+            Permission.INGEST_READ,
+            Permission.INGEST_MANAGE,
+        }
+    ),
     # Read-only, including the audit log. Deliberately holds no write permission
     # of any kind.
     Role.AUDITOR: _READ_INTELLIGENCE | {Permission.AUDIT_READ},

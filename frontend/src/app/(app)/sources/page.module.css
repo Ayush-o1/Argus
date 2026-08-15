@@ -1,0 +1,77 @@
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+  gap: var(--space-4);
+}
+
+.card { display: flex; flex-direction: column; gap: var(--space-3); }
+
+.cardHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); }
+.cardTitle { font-size: var(--text-base); font-weight: var(--font-semibold); color: var(--text-primary); }
+.cardMeta { font-size: var(--text-xs); color: var(--text-tertiary); margin-top: 2px; }
+.badges { display: flex; align-items: center; gap: var(--space-2); flex-shrink: 0; }
+
+/* A quarantine is a stopped feed, not a styling detail — it reads as a warning
+   band rather than a quiet label. */
+.quarantine {
+  display: flex; align-items: flex-start; gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: 6px;
+  background: rgba(255, 125, 26, 0.1);
+  border: 1px solid rgba(255, 125, 26, 0.3);
+  color: var(--risk-high);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+
+.stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-3); }
+.stat { display: flex; flex-direction: column; gap: 2px; }
+.statLabel { font-size: var(--text-xs); color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.04em; }
+.statValue { font-size: var(--text-base); font-weight: var(--font-medium); color: var(--text-primary); }
+.statHint { font-size: var(--text-xs); color: var(--text-tertiary); }
+
+.ok { color: var(--status-ok); }
+.medium { color: var(--risk-medium); }
+.critical { color: var(--risk-critical); }
+.neutral { color: var(--text-secondary); }
+
+.actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+
+.alertBanner {
+  display: flex; align-items: flex-start; gap: var(--space-3);
+  padding: var(--space-4);
+  margin-bottom: var(--space-5);
+  border-radius: var(--card-radius);
+  background: rgba(255, 59, 71, 0.08);
+  border: 1px solid rgba(255, 59, 71, 0.35);
+  color: var(--risk-critical);
+}
+.alertBody { margin: var(--space-2) 0 0; font-size: var(--text-sm); color: var(--text-secondary); line-height: 1.6; }
+.staleList { margin: var(--space-2) 0 0; padding-left: var(--space-4); font-size: var(--text-sm); color: var(--text-secondary); }
+.staleList li { margin-bottom: var(--space-1); }
+/* Display names are not unique across connectors; the id is. */
+.staleId { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-tertiary); }
+
+.failures { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-2); }
+.failure {
+  padding: var(--space-3);
+  border-radius: 6px;
+  background: var(--surface-inset);
+  border: 1px solid var(--surface-border-faint);
+}
+.failureTop { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2); }
+.failureTime { font-size: var(--text-xs); color: var(--text-tertiary); margin-left: auto; }
+.failureStage { margin: 0 0 var(--space-1); font-size: var(--text-xs); color: var(--text-tertiary); }
+.failureDetail {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  line-height: 1.6;
+  word-break: break-word;
+}
+.noFailures { font-size: var(--text-sm); color: var(--text-tertiary); margin: var(--space-2) 0 0; }
+
+.queueCard { margin-top: var(--space-5); display: flex; flex-direction: column; gap: var(--space-2); }
+.queueRow { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.deadNote { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-xs); color: var(--risk-high); margin: 0; }

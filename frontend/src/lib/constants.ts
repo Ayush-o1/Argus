@@ -5,6 +5,7 @@ import {
   FlaskConical,
   LayoutGrid,
   Map,
+  Radio,
   Search,
   Settings,
   ShieldHalf,
@@ -63,6 +64,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     title: "System",
     items: [
+      { label: "Sources", href: "/sources", icon: Radio, hint: "Feed health, freshness and rejected records",  permission: "ingest:read",},
       { label: "Scenario Generator", href: "/scenario", icon: FlaskConical, hint: "Inject a synthetic storyline",  permission: "scenario:generate",},
       { label: "Settings", href: "/settings", icon: Settings, hint: "Instance configuration" },
     ],

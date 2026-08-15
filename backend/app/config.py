@@ -98,6 +98,18 @@ class Settings(BaseSettings):
     # aggregator, which is the only place the structure pays off.
     log_json: bool = False
 
+    # --- Durable job worker (ingestion) ---
+    # Off switch rather than a code change, so an instance can serve the API
+    # without also being a worker — the split every deployment eventually wants,
+    # available before it needs a second service.
+    job_worker_enabled: bool = True
+    job_poll_seconds: float = 2.0
+    job_worker_concurrency: int = 2
+    # How often to check which connectors are due. Concurrent schedulers are
+    # safe: each queued job carries an idempotency key, so two instances ticking
+    # together produce one run.
+    ingest_schedule_seconds: float = 30.0
+
     # Ceiling on analytics/scenario jobs running at once. Each GDS job holds an
     # in-memory graph projection and real CPU, and jobs are startable by a single
     # client in a loop — without a ceiling that exhausts the host (audit B-07).

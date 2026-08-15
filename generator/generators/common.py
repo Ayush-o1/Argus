@@ -2,7 +2,7 @@
 
 import random
 import uuid
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from faker import Faker
 
@@ -68,7 +68,21 @@ def random_datetime_between(rng: random.Random, start: datetime, end: datetime) 
     return start + timedelta(seconds=seconds)
 
 
-# The generated world's activity window: the last 180 days, ending "today" —
+# The generated world's activity window: the last 180 days, ending "now" —
 # computed at generation time so the world always feels current on regeneration.
-WORLD_END = datetime.now()
+#
+# Timezone-aware UTC, not `datetime.now()` (audit B-17). Naive local time meant
+# every emitted instant was a wall-clock reading with no zone attached, so:
+#
+#   * the frontend bucketed by date and then treated that date as UTC, putting
+#     events near midnight in the wrong day by an amount that depended on the
+#     generating machine's timezone; and
+#   * two instances generating from the same seed in different timezones
+#     produced different burst days, which quietly broke the determinism this
+#     project advertises.
+#
+# Calendar values elsewhere — a date of birth, a registration date — stay plain
+# `date` objects. A birthday genuinely has no timezone, and giving one an offset
+# would be its own small lie.
+WORLD_END = datetime.now(UTC)
 WORLD_START = WORLD_END - timedelta(days=180)

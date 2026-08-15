@@ -23,6 +23,7 @@ from app.api.routes import (
     dashboard,
     entities,
     graph,
+    ingest,
     provenance,
     scenario,
     search,
@@ -40,8 +41,10 @@ from app.database.redis import close_redis, connect_redis
 from app.middleware.request_context import RequestContextMiddleware
 from app.middleware.security import RateLimitMiddleware, SecurityHeadersMiddleware
 from app.observability.logging import configure_logging
+from app.services import queue
 from app.services.jobs import JobRejected, cancel_active_jobs, reap_stale_jobs
 from app.services.provenance import ensure_builtin_sources
+from app.services.scheduler import IngestScheduler
 
 # Structured logging is installed before anything else so startup itself — including
 # a migration failure, which is the most important thing to be able to read — is
@@ -80,6 +83,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # deploy would alter the meaning of every assertion resting on it.
     await ensure_builtin_sources()
 
+    # The durable job worker. Importing app.services.ingest registers its
+    # handler; without the import the worker would start with no known kinds and
+    # quietly consume nothing — a stall that looks exactly like an empty queue.
+    from app.services import ingest as _ingest  # noqa: F401  (handler registration)
+
+    worker = queue.Worker(
+        poll_interval=settings.job_poll_seconds,
+        concurrency=settings.job_worker_concurrency,
+    )
+    scheduler = IngestScheduler(interval=settings.ingest_schedule_seconds)
+    if settings.job_worker_enabled:
+        worker.start()
+        scheduler.start()
+    else:
+        logger.info("job worker disabled by configuration")
+
     # Any job still marked "running" belongs to a previous process: in-process
     # asyncio tasks do not survive a restart, so without this the frontend polls
     # a job that will never complete until its TTL expires (audit B-07).
@@ -88,6 +107,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.warning("marked %d orphaned job(s) as failed after restart", reaped)
 
     yield
+
+    # Stop scheduling first, then drain the worker: reversing this would let a
+    # tick queue work the worker is no longer there to run.
+    await scheduler.stop()
+    await worker.stop()
 
     # Cancel in-flight jobs and give them a moment to record terminal state, so
     # a clean shutdown does not manufacture the orphans reap_stale_jobs exists
@@ -220,6 +244,7 @@ app.include_router(admin.router)
 app.include_router(dashboard.router)
 app.include_router(entities.router)
 app.include_router(provenance.router)
+app.include_router(ingest.router)
 app.include_router(graph.router)
 app.include_router(analytics.router)
 app.include_router(cases.router)

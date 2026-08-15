@@ -82,6 +82,49 @@ def test_user_management_is_administrator_only() -> None:
     assert allowed == {Role.ADMINISTRATOR}
 
 
+def test_a_manage_permission_always_comes_with_its_read() -> None:
+    """Pins a defect this test was written in response to.
+
+    Ingest routers declare `ingest:read` at the router level and the stricter
+    permission per route. A role granted only `ingest:manage` therefore gets a
+    403 on *every* route in the group, including the ones it is supposed to be
+    able to call — a lockout that looks like a permission bug in the route but
+    is really an incomplete role.
+
+    Supervisor was in exactly that state, and no type check or unit test caught
+    it; only driving the live API did. The invariant is general, so it is
+    asserted generally rather than for the one case that failed.
+    """
+    read_for_manage = {
+        Permission.INGEST_MANAGE: Permission.INGEST_READ,
+        Permission.ASSERTION_WRITE: Permission.PROVENANCE_READ,
+        Permission.ASSERTION_RETRACT: Permission.PROVENANCE_READ,
+    }
+    for role in Role:
+        granted = permissions_for(role)
+        for manage, read in read_for_manage.items():
+            if manage in granted:
+                assert read in granted, (
+                    f"{role.value} holds {manage.value} but not {read.value}; "
+                    "the router-level dependency will deny it every route in that group"
+                )
+
+
+def test_administrator_operates_ingestion_without_reading_intelligence() -> None:
+    """The separation, at the one place it needed a finer line.
+
+    An administrator must be able to configure a feed, quarantine a bad one and
+    see that a source has gone silent — none of which is reading intelligence.
+    Reading a dead-lettered *payload* is, so that route additionally requires
+    entity:read, which an administrator does not have.
+    """
+    admin = permissions_for(Role.ADMINISTRATOR)
+    assert Permission.INGEST_READ in admin
+    assert Permission.INGEST_MANAGE in admin
+    assert Permission.ENTITY_READ not in admin
+    assert Permission.PROVENANCE_READ not in admin
+
+
 def test_unknown_role_grants_nothing() -> None:
     """Failing closed matters more than a helpful error: a typo in a role name
     must never widen access."""
