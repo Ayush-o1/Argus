@@ -9,6 +9,7 @@ import { LeadQueue } from "@/components/dashboard/LeadQueue";
 import { RegionStrip } from "@/components/dashboard/RegionStrip";
 import { SituationBrief } from "@/components/dashboard/SituationBrief";
 import { PageShell } from "@/components/layout/PageShell";
+import { SyntheticNotice } from "@/components/provenance/SyntheticNotice";
 import { useDashboardSummary } from "@/hooks/useDashboard";
 import { useBrowseEntities } from "@/hooks/useEntities";
 import { useMapRegions } from "@/hooks/useMap";
@@ -57,6 +58,11 @@ export default function DashboardPage() {
   return (
     <PageShell title="Command Center" subtitle="Global situation and what to investigate next">
       <div className={styles.stack}>
+        {/* The entry surface states what the data is before it states anything
+            about the world. Driven by the source registry rather than a build
+            flag, so it disappears on its own the day real sources replace the
+            generated ones — instead of waiting for someone to remember. */}
+        <SyntheticNotice />
         <SituationBrief summary={summary} regions={regions} />
 
         {regions && regions.length > 0 ? (

@@ -4,8 +4,9 @@ from neo4j import AsyncDriver
 from app.api.dependencies import get_db, require_permission
 from app.api.routes.graph import DepthParam
 from app.models.envelope import Envelope, Meta
-from app.repositories import entity_repo, graph_repo
+from app.repositories import entity_repo, graph_repo, provenance_repo
 from app.security.roles import Permission
+from app.services import provenance as provenance_service
 
 router = APIRouter(
     prefix="/api/entities",
@@ -37,6 +38,49 @@ async def get_entity(entity_id: str, driver: AsyncDriver = Depends(get_db)) -> E
         raise HTTPException(status_code=404, detail="Entity not found")
     node["connections"] = await entity_repo.get_connection_summary(driver, entity_id)
     return Envelope(data=node)
+
+
+@router.get("/{entity_id}/provenance")
+async def get_entity_provenance(
+    entity_id: str, driver: AsyncDriver = Depends(get_db)
+) -> Envelope[dict]:
+    """Per-attribute provenance for one entity.
+
+    Answers, for every value the profile page displays: which source reported
+    it, when ARGUS learned it, whether the stored value still matches what was
+    reported, and whether any assertion or conflict bears on it.
+
+    This is what makes "every displayed fact resolves to an observation or is
+    explicitly marked inferred" a property of the system rather than a claim in
+    a document. A value with no provenance comes back as `unattributed` — the
+    one thing that must never happen is a value rendering as though it were
+    sourced when nothing accounts for it.
+    """
+    node = await graph_repo.get_node_by_human_id(driver, entity_id)
+    if node is None:
+        raise HTTPException(status_code=404, detail="Entity not found")
+
+    resolved = await provenance_service.attribute_provenance(entity_id, node["properties"])
+    assertions = await provenance_repo.assertions_for_subject(entity_id, include_ended=True)
+    # Conflicts are a grouping of the assertions already loaded, and only
+    # current ones can conflict — a withdrawn claim is not a live disagreement.
+    conflicts = provenance_repo.find_conflicts(entity_id, [a for a in assertions if a.is_current])
+    sources = await provenance_repo.sources_for_subject(entity_id)
+
+    return Envelope(
+        data={
+            "subject_ref": entity_id,
+            "attributes": resolved.attributes,
+            # Carried so the client can tell "no source reported this field"
+            # from "the observation that did was outside the window read".
+            "observations_examined": resolved.observations_examined,
+            "observations_total": resolved.observations_total,
+            "attributes_complete": resolved.complete,
+            "assertions": [a.model_dump(mode="json") for a in assertions],
+            "conflicts": [c.model_dump(mode="json") for c in conflicts],
+            "sources": [s.model_dump(mode="json") for s in sources],
+        }
+    )
 
 
 @router.get("/{entity_id}/graph")

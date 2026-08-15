@@ -33,6 +33,20 @@
   border-radius: 3px;
 }
 
+.provenanceRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.basis {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: 1.6;
+  color: var(--text-tertiary);
+}
+
 .factors {
   display: flex;
   flex-direction: column;

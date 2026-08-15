@@ -16,7 +16,11 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { Tabs } from "@/components/ui/Tabs";
 import { PageShell } from "@/components/layout/PageShell";
 import { useEntity, useEntityAlerts, useEntityCases, useEntityTimeline } from "@/hooks/useEntities";
+import { useEntityProvenance } from "@/hooks/useProvenance";
 import { useEntitySummary } from "@/hooks/useAssistant";
+import { AttributeProvenance } from "@/components/provenance/AttributeProvenance";
+import { ConflictPanel } from "@/components/provenance/ConflictPanel";
+import { ProvenancePanel } from "@/components/provenance/ProvenancePanel";
 import { formatRelativeTime } from "@/lib/formatters";
 import type { CaseSummary, Incident, TimelineItem } from "@/lib/types";
 import styles from "./page.module.css";
@@ -96,6 +100,7 @@ export default function EntityProfilePage() {
   const { data: timeline } = useEntityTimeline(entityId);
   const { data: relatedCases } = useEntityCases(entityId);
   const { data: relatedAlerts } = useEntityAlerts(entityId);
+  const { data: provenance } = useEntityProvenance(entityId);
   const summary = useEntitySummary();
 
   if (isLoading) {
@@ -191,7 +196,11 @@ export default function EntityProfilePage() {
               the analyst moves between tabs. */}
           <div className={styles.sidebarBlock}>
             <span className={styles.sidebarTitle}>Risk</span>
-            <RiskScoreWidget score={entity.risk_score} factors={riskFactors} />
+            <RiskScoreWidget
+              score={entity.risk_score}
+              factors={riskFactors}
+              provenance={provenance?.attributes.risk_score}
+            />
           </div>
 
           <span className={styles.sidebarTitle}>Connections</span>
@@ -210,20 +219,46 @@ export default function EntityProfilePage() {
         </aside>
 
         <div>
-          <Tabs tabs={["Properties", "Activity", "Cases & Alerts", "Summary"]} active={tab} onChange={setTab} />
+          <Tabs
+            tabs={["Properties", "Activity", "Cases & Alerts", "Provenance", "Summary"]}
+            active={tab}
+            onChange={setTab}
+          />
 
           {tab === "Properties" && (
             <Card>
+              {/* A disagreement about an attribute belongs beside the
+                  attributes, not behind another tab — an analyst reading a
+                  value needs to know two sources contest it before they act on
+                  it, not after. */}
+              {provenance && provenance.conflicts.length > 0 ? (
+                <div style={{ marginBottom: "var(--space-4)" }}>
+                  <ConflictPanel conflicts={provenance.conflicts} />
+                </div>
+              ) : null}
+
               <div className={styles.propertyGrid}>
                 {fields.map(({ key, label }) => (
                   <div key={key} className={styles.propertyRow}>
                     <span className={styles.propertyLabel}>{label}</span>
                     <span className={styles.propertyValue}>{String(entity.properties[key] ?? "—")}</span>
+                    {/* Every displayed value gets its origin one click away.
+                        Rendered even when nothing accounts for the value: an
+                        unattributed field that looked identical to a sourced
+                        one is the exact confusion this phase removes. */}
+                    <AttributeProvenance
+                      label={label}
+                      value={entity.properties[key]}
+                      provenance={provenance?.attributes[key]}
+                      complete={provenance?.attributes_complete ?? true}
+                    />
                   </div>
                 ))}
               </div>
             </Card>
           )}
+
+          {tab === "Provenance" && <ProvenancePanel subjectRef={entity.id} />}
 
           {tab === "Activity" && (
             <Card>

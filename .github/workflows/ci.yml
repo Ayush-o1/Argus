@@ -64,21 +64,29 @@ jobs:
       - name: Mypy
         run: mypy app
 
-      - name: Apply migrations to the test database
+      - name: Apply migrations to the test databases
         env:
           NEO4J_URI: bolt://localhost:7687
           NEO4J_PASSWORD: argus_test_password
           POSTGRES_SUPERUSER_PASSWORD: argus_test_password
         run: |
+          # Both stores. The Postgres migrations create the least-privilege
+          # application role as well as the tables, so without them the identity,
+          # audit and provenance integration tests cannot even connect — they
+          # would skip, and the guard below would fail the run.
           python -c "
           import asyncio
           from app.database.neo4j import connect_neo4j, close_neo4j
           from app.database.migrations import run_migrations, current_version
+          from app.database.pg_migrations import run_pg_migrations
 
           async def main():
+              applied = await run_pg_migrations()
+              print('postgres migrations applied:', applied)
+
               driver = await connect_neo4j()
               await run_migrations(driver)
-              print('schema version:', await current_version(driver))
+              print('neo4j schema version:', await current_version(driver))
               await close_neo4j()
 
           asyncio.run(main())

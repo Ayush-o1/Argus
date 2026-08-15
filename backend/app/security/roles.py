@@ -35,6 +35,7 @@ class Permission(StrEnum):
     ALERT_READ = "alert:read"
     CASE_READ = "case:read"
     ANALYTICS_READ = "analytics:read"
+    PROVENANCE_READ = "provenance:read"
 
     # Acting on intelligence
     ALERT_TRIAGE = "alert:triage"
@@ -42,6 +43,15 @@ class Permission(StrEnum):
     CASE_UPDATE = "case:update"
     CASE_UPDATE_ANY = "case:update:any"  # beyond one's own assignments
     EVIDENCE_LINK = "evidence:link"
+    # Recording a judgement under one's own name. Separate from case work
+    # because an assertion is an intelligence claim that outlives the case it
+    # was made in, and other analysts will rely on it.
+    ASSERTION_WRITE = "assertion:write"
+    # Withdrawing a belief. Held above analyst deliberately: an analyst who
+    # changes their mind supersedes their assertion, which preserves both
+    # versions, whereas retraction says the claim should never have been relied
+    # on — a judgement about someone's work as much as about the fact.
+    ASSERTION_RETRACT = "assertion:retract"
 
     # Expensive or graph-mutating operations
     ANALYTICS_RUN = "analytics:run"
@@ -59,6 +69,11 @@ _READ_INTELLIGENCE = frozenset(
         Permission.ALERT_READ,
         Permission.CASE_READ,
         Permission.ANALYTICS_READ,
+        # Provenance travels with the fact it explains. Anyone permitted to see
+        # a value must be permitted to see where it came from — a reader who can
+        # see "risk 87.3" but not "assigned by a synthetic source, unrated" has
+        # been handed the misleading half.
+        Permission.PROVENANCE_READ,
     }
 )
 
@@ -71,6 +86,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
         Permission.CASE_UPDATE,
         Permission.EVIDENCE_LINK,
         Permission.ANALYTICS_RUN,
+        Permission.ASSERTION_WRITE,
     },
     Role.INVESTIGATOR: _READ_INTELLIGENCE
     | {
@@ -80,6 +96,8 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
         Permission.CASE_UPDATE_ANY,
         Permission.EVIDENCE_LINK,
         Permission.ANALYTICS_RUN,
+        Permission.ASSERTION_WRITE,
+        Permission.ASSERTION_RETRACT,
     },
     Role.SUPERVISOR: _READ_INTELLIGENCE
     | {
@@ -89,6 +107,8 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
         Permission.CASE_UPDATE_ANY,
         Permission.EVIDENCE_LINK,
         Permission.ANALYTICS_RUN,
+        Permission.ASSERTION_WRITE,
+        Permission.ASSERTION_RETRACT,
         Permission.SCENARIO_GENERATE,
         Permission.AUDIT_READ,
     },

@@ -84,6 +84,49 @@ async def _verify_audit() -> int:
         await close_postgres()
 
 
+async def _backfill_provenance(labels: list[str] | None, dry_run: bool) -> int:
+    """Attribute the existing graph to the source that produced it.
+
+    An operator command rather than a startup step: it writes one row per node,
+    and a schema migration that silently rewrites twenty thousand records on
+    deploy is the kind of thing that should require somebody to type it.
+
+    Safe to re-run. Observations deduplicate on content hash and risk assertions
+    skip subjects that already have one, so a second run adds only what is new —
+    which matters, because a backfill that doubled its output would double every
+    corroboration count with it.
+    """
+    from app.database.neo4j import close_neo4j, connect_neo4j
+    from app.repositories import provenance_repo
+    from app.services import provenance as provenance_service
+
+    await run_pg_migrations()
+    await connect_postgres()
+    driver = await connect_neo4j()
+    try:
+        before = await provenance_repo.counts()
+        if dry_run:
+            print("current provenance store:")
+            for key, value in before.items():
+                print(f"  {key:24} {value:>8,}")
+            print("\n--dry-run: nothing written")
+            return 0
+
+        result = await provenance_service.backfill_graph_provenance(driver, labels=labels)
+        after = await provenance_repo.counts()
+
+        print("backfill complete")
+        for key, value in result.as_dict().items():
+            print(f"  {key:24} {value:>8,}")
+        print("\nprovenance store:")
+        for key, value in after.items():
+            print(f"  {key:24} {before[key]:>8,} -> {value:>8,}")
+        return 0
+    finally:
+        await close_neo4j()
+        await close_postgres()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="python -m app.cli", description="ARGUS operations")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -99,6 +142,20 @@ def main() -> int:
 
     sub.add_parser("verify-audit", help="Recompute and verify the audit hash chain")
 
+    backfill = sub.add_parser(
+        "backfill-provenance",
+        help="Attribute existing graph nodes to the source that produced them",
+    )
+    backfill.add_argument(
+        "--label",
+        action="append",
+        dest="labels",
+        help="Restrict to one graph label; repeatable. Omit for every label.",
+    )
+    backfill.add_argument(
+        "--dry-run", action="store_true", help="Report current counts and write nothing"
+    )
+
     args = parser.parse_args()
 
     if args.command == "create-user":
@@ -107,6 +164,8 @@ def main() -> int:
         )
     if args.command == "verify-audit":
         return asyncio.run(_verify_audit())
+    if args.command == "backfill-provenance":
+        return asyncio.run(_backfill_provenance(args.labels, args.dry_run))
     return 1  # pragma: no cover - argparse rejects unknown commands
 
 

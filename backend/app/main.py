@@ -2,6 +2,8 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import asyncpg
+from asyncpg.exceptions import PostgresConnectionError
 from fastapi import FastAPI, Request, status
 from fastapi import Response as FastAPIResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,6 +23,7 @@ from app.api.routes import (
     dashboard,
     entities,
     graph,
+    provenance,
     scenario,
     search,
     timeline,
@@ -38,6 +41,7 @@ from app.middleware.request_context import RequestContextMiddleware
 from app.middleware.security import RateLimitMiddleware, SecurityHeadersMiddleware
 from app.observability.logging import configure_logging
 from app.services.jobs import JobRejected, cancel_active_jobs, reap_stale_jobs
+from app.services.provenance import ensure_builtin_sources
 
 # Structured logging is installed before anything else so startup itself — including
 # a migration failure, which is the most important thing to be able to read — is
@@ -68,6 +72,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     applied = await run_migrations(driver)
     if applied:
         logger.info("applied %d migration(s): %s", len(applied), applied)
+
+    # ARGUS's own sources — including the scenario generator, registered as
+    # synthetic — must exist before anything can record an observation against
+    # them. Idempotent, and it never overwrites a reliability rating that is
+    # already there: a rating is an analytic judgement, and changing one on
+    # deploy would alter the meaning of every assertion resting on it.
+    await ensure_builtin_sources()
 
     # Any job still marked "running" belongs to a previous process: in-process
     # asyncio tasks do not survive a restart, so without this the frontend polls
@@ -173,10 +184,42 @@ async def neo4j_unavailable_handler(request: Request, exc: Exception) -> JSONRes
         headers={"Retry-After": "10"},
     )
 
+@app.exception_handler(PostgresConnectionError)
+@app.exception_handler(asyncpg.InterfaceError)
+@app.exception_handler(ConnectionRefusedError)
+async def postgres_unavailable_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Postgres, unlike Redis and Neo4j, had no handler — so an outage produced
+    a bare `500 Internal Server Error` on every authenticated route.
+
+    Found by failure testing rather than by any test suite: the exception is
+    raised inside a dependency, so a caller sees "ARGUS is broken" and no reason
+    to retry, while `/readyz` was correctly reporting 503 the whole time.
+
+    Phase 2 made this worth fixing rather than merely noting. Postgres now backs
+    provenance as well as identity, so an outage reaches ordinary intelligence
+    surfaces instead of only the login path.
+
+    Deliberately not described as partial degradation. Postgres holds identity,
+    so while it is down nobody can authenticate at all — claiming the rest of
+    the platform is unaffected would be false comfort.
+    """
+    logger.error("postgres unavailable", exc_info=exc, extra={"path": request.url.path})
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={
+            "data": None,
+            "error": "Identity and provenance store unavailable — ARGUS cannot authenticate "
+            "requests or resolve where a fact came from. Please retry shortly.",
+        },
+        headers={"Retry-After": "10"},
+    )
+
+
 app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(dashboard.router)
 app.include_router(entities.router)
+app.include_router(provenance.router)
 app.include_router(graph.router)
 app.include_router(analytics.router)
 app.include_router(cases.router)
