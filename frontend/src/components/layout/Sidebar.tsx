@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
 import { NAV_GROUPS } from "@/lib/constants";
 import { useDashboardSummary } from "@/hooks/useDashboard";
+import { useSession } from "@/hooks/useAuth";
 import { useUIStore } from "@/stores/uiStore";
 import styles from "./Sidebar.module.css";
 
@@ -18,6 +19,13 @@ export function Sidebar() {
   // any page where the dashboard has already been visited this session, and
   // is what lets the sidebar answer "what needs attention?" from any page.
   const { data: summary } = useDashboardSummary();
+  const { data: session } = useSession();
+
+  // Hide what this role cannot use. An administrator holds no
+  // intelligence-read permission by design, so they see an administrative
+  // sidebar rather than a wall of links that would all 403.
+  const permitted = (permission?: string) =>
+    !permission || (session?.permissions.includes(permission) ?? false);
 
   return (
     <aside className={cn(styles.sidebar, collapsed && styles.collapsed)}>
@@ -35,10 +43,14 @@ export function Sidebar() {
       </Link>
 
       <nav className={styles.nav}>
-        {NAV_GROUPS.map((group, i) => (
-          <div key={group.title ?? i} className={styles.group}>
+        {NAV_GROUPS.map((group) => ({ group, items: group.items.filter((item) => permitted(item.permission)) }))
+          // A group header with nothing under it is visual noise that reads as a
+          // failed load rather than an absent permission.
+          .filter(({ items }) => items.length > 0)
+          .map(({ group, items }) => (
+          <div key={group.title ?? items[0].href} className={styles.group}>
             {!collapsed && group.title ? <div className={styles.groupTitle}>{group.title}</div> : null}
-            {group.items.map((item) => {
+            {items.map((item) => {
               const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
               const Icon = item.icon;
               const count =

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { PageShell } from "@/components/layout/PageShell";
 import { Button } from "@/components/ui/Button";
+import { useHasPermission } from "@/hooks/useAuth";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Spinner } from "@/components/ui/Spinner";
@@ -99,6 +100,12 @@ type AnyResult =
 
 export default function AnalyticsPage() {
   const [active, setActive] = useState<AlgorithmId>("pagerank");
+  // Reading results and starting jobs are separate permissions: a viewer or
+  // auditor may look at what previous runs produced but not spend the cluster's
+  // CPU. Disabling the control explains that in place, rather than letting the
+  // click fail with a 403 the analyst has to interpret.
+  const canRun = useHasPermission("analytics:run");
+
   const [entityInput, setEntityInput] = useState("");
   const job = useAnalyticsJob<AnyResult>();
 
@@ -159,7 +166,7 @@ export default function AnalyticsPage() {
               </div>
             </div>
             {!algorithm.needsInput && (
-              <Button onClick={run} disabled={status === "running"}>
+              <Button onClick={run} disabled={!canRun || status === "running"} title={canRun ? undefined : "Your role can view results but not start analytics jobs"}>
                 {status === "running" ? "Running…" : "Run"}
               </Button>
             )}
@@ -176,7 +183,7 @@ export default function AnalyticsPage() {
                 onChange={(e) => setEntityInput(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && run()}
               />
-              <Button onClick={run} disabled={status === "running" || !entityInput.trim()}>
+              <Button onClick={run} disabled={!canRun || status === "running" || !entityInput.trim()} title={canRun ? undefined : "Your role can view results but not start analytics jobs"}>
                 {status === "running" ? "Running…" : "Run"}
               </Button>
             </div>

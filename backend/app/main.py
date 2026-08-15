@@ -96,15 +96,27 @@ app = FastAPI(
 
 settings = get_settings()
 
-# Methods and headers are enumerated rather than wildcarded (audit B-26).
+# Middleware order matters, and Starlette applies it in reverse registration
+# order — the last registered is the outermost. So this block reads
+# inside-out: RequestContext runs first on the way in, then rate limiting, then
+# security headers, and CORS is outermost.
 #
+# CORS *must* be outermost. Registered inside the rate limiter, an early 429
+# short-circuits before CORS ever runs, so the response carries no CORS headers
+# and the browser reports a bare "blocked by CORS policy" instead of the rate
+# limit that actually happened. Found in browser verification; invisible to
+# server-side tests, which do not enforce CORS.
+app.add_middleware(RequestContextMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(RateLimitMiddleware)
+
 # `allow_credentials=True` is required now that the session is a cookie: the
 # frontend is a different origin from the API, and without it the browser will
 # not attach the session cookie at all. It is only safe because `allow_origins`
 # is an explicit list — never "*", which the CORS spec forbids combining with
 # credentials precisely because it would let any site make authenticated
 # requests. CSRF protection (double-submit token, enforced in
-# api/dependencies.current_user) is the other half of this tradeoff.
+# api/dependencies.current_user) is the other half of that tradeoff.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
@@ -113,12 +125,6 @@ app.add_middleware(
     allow_headers=["Content-Type", "X-Request-ID", "X-CSRF-Token"],
     expose_headers=["X-Request-ID"],
 )
-# Order matters: Starlette runs middleware in reverse registration order, so
-# the request context (and its correlation id) is established first, then rate
-# limiting, then security headers on the way out.
-app.add_middleware(SecurityHeadersMiddleware)
-app.add_middleware(RateLimitMiddleware)
-app.add_middleware(RequestContextMiddleware)
 
 
 @app.exception_handler(JobRejected)

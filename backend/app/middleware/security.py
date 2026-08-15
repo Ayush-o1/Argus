@@ -15,6 +15,11 @@ from app.security.sessions import SESSION_COOKIE_NAME, hash_token
 
 logger = logging.getLogger(__name__)
 
+# Endpoints where the caller submits a credential, and which therefore get the
+# strict budget. Matched exactly rather than by prefix so that adding a read
+# endpoint under /api/auth cannot silently inherit a limit meant for guessing.
+_CREDENTIAL_ENDPOINTS = frozenset({"/api/auth/login", "/api/auth/change-password"})
+
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Headers the browser enforces on our behalf.
@@ -86,11 +91,24 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(
         self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
-        # Login and password change get a much tighter budget: they are the
-        # endpoints worth brute-forcing, and per-account lockout alone does not
-        # stop credential stuffing across many accounts from one source.
-        is_auth = request.url.path.startswith("/api/auth/")
-        limit = self.auth_limit if is_auth else self.limit
+        # The tight budget applies only to endpoints where a caller submits a
+        # credential — those are the ones worth brute-forcing, and per-account
+        # lockout alone does not stop credential stuffing spread across many
+        # accounts from one source.
+        #
+        # It must NOT cover /api/auth/me: that is a session check the SPA issues
+        # on every page load, so including it locked a normal user out after ten
+        # navigations. Found in runtime verification, not by the type checker.
+        # A CORS preflight carries no credentials and cannot itself be a
+        # guessing attempt, so it must not consume the login budget — otherwise
+        # the browser's own preflight exhausts the limit before the real request
+        # arrives, and the failure surfaces as an opaque CORS error.
+        is_preflight = request.method == "OPTIONS"
+        limit = (
+            self.auth_limit
+            if (request.url.path in _CREDENTIAL_ENDPOINTS and not is_preflight)
+            else self.limit
+        )
 
         minute = int(time.time() // 60)
         key = (self._key(request), minute)

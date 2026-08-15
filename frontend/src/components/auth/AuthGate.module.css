@@ -1,0 +1,40 @@
+.centre {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: var(--space-6);
+}
+
+.message {
+  max-width: 380px;
+  text-align: center;
+}
+
+.title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.body {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--text-tertiary);
+}
+
+.retry {
+  padding: var(--space-2) var(--space-4);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  background: var(--surface);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.retry:hover { border-color: var(--accent); }
+.retry:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }

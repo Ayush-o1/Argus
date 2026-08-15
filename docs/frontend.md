@@ -107,7 +107,7 @@ Application navigation and marketing navigation are deliberately separate.
 
 ## Data fetching
 
-`lib/api.ts`'s `apiFetch<T>(path, init)` is the single fetch wrapper every hook uses: prefixes `NEXT_PUBLIC_API_BASE_URL` (default `http://localhost:8000`), attaches `Authorization: Bearer {NEXT_PUBLIC_ARGUS_API_TOKEN}`, throws a typed `ApiError` (carries `status`) on any non-2xx response, and returns the parsed `Envelope<T>` (mirrors the backend's [Envelope shape](backend.md#response-envelope) — `lib/api.ts` redeclares the interface rather than sharing a types package, consistent with the deliberate frontend/backend separation described in [architecture.md](architecture.md#why-three-separate-deployables-instead-of-one)).
+`lib/api.ts`'s `apiFetch<T>(path, init)` is the single fetch wrapper every hook uses: prefixes `NEXT_PUBLIC_API_BASE_URL` (default `http://localhost:8000`), sends the session cookie via `credentials: "include"` and echoes the CSRF cookie in `X-CSRF-Token` on state-changing requests (there is deliberately no token in the bundle), throws a typed `ApiError` (carries `status`) on any non-2xx response, and returns the parsed `Envelope<T>` (mirrors the backend's [Envelope shape](backend.md#response-envelope) — `lib/api.ts` redeclares the interface rather than sharing a types package, consistent with the deliberate frontend/backend separation described in [architecture.md](architecture.md#why-three-separate-deployables-instead-of-one)).
 
 `lib/queryClient.ts` configures TanStack Query defaults: 30s `staleTime`, `refetchOnWindowFocus: false`, one retry. Every `hooks/use*.ts` file follows the same shape: a `useQuery` wrapping `apiFetch` for reads, `useMutation` + `queryClient.invalidateQueries` for writes.
 

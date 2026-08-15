@@ -24,7 +24,11 @@ The `graph-data-science` plugin must be both installed (`NEO4J_PLUGINS` in `dock
 
 ## `401 Unauthorized` on every API call
 
-`ARGUS_API_TOKEN` (backend) and `NEXT_PUBLIC_ARGUS_API_TOKEN` (frontend) must match exactly — they're two separate environment variables, one per process, and nothing enforces they stay in sync. If you changed one in `.env` without restarting the corresponding process (`NEXT_PUBLIC_*` values are baked in at Next.js build/dev-server start), restart it.
+Every request returns 401 — check you are signed in. Authentication is a session cookie, not a
+token, so there is nothing to keep in sync between the frontend and backend `.env` files. If the
+login form rejects known-good credentials, the account may be temporarily locked after repeated
+failures; wait for the lockout window, or check the audit log (`GET /api/admin/audit`) as an
+administrator to see the recorded reason.
 
 ## Scenario Generator fails immediately / `generate_scenario.py` not found
 

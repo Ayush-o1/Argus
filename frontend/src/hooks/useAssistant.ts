@@ -1,12 +1,19 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { useHasPermission } from "@/hooks/useAuth";
 import { apiFetch, ApiError } from "@/lib/api";
 
 /** Probes for the optional local Ollama-backed assistant (ARGUS_PLAN.md
  * Phase 10). ARGUS Core has zero dependency on this — every other feature
  * works whether or not this query ever resolves to `available: true`. */
 export function useAssistantStatus() {
+  // Probed app-wide, so it must not fire for a role that cannot use it — an
+  // administrator holds no entity:read permission and was getting a 403 on
+  // every page load for a panel they can never open.
+  const canUse = useHasPermission("entity:read");
+
   return useQuery({
     queryKey: ["assistant-status"],
+    enabled: canUse,
     queryFn: async () => (await apiFetch<{ available: boolean }>("/api/ai/assistant-status")).data,
     staleTime: 30_000,
     retry: false,

@@ -20,6 +20,10 @@ export interface NavItem {
   /** One-line purpose, surfaced as the nav tooltip (and the only affordance
    * when the sidebar is collapsed to icons). */
   hint?: string;
+  /** Permission required to use this surface. Items the signed-in role lacks
+   * are hidden — an affordance, not a control: the server enforces the same
+   * permission again, because a hidden link is not a boundary. */
+  permission?: string;
 }
 
 export interface NavGroup {
@@ -34,32 +38,32 @@ export interface NavGroup {
  * "Investigation", which told a new user nothing about where to start. */
 export const NAV_GROUPS: NavGroup[] = [
   {
-    items: [{ label: "Dashboard", href: "/dashboard", icon: LayoutGrid, hint: "Situational overview" }],
+    items: [{ label: "Dashboard", href: "/dashboard", icon: LayoutGrid, hint: "Situational overview",  permission: "entity:read",}],
   },
   {
     title: "Triage",
     items: [
-      { label: "Alerts", href: "/alerts", icon: AlertTriangle, badgeKey: "alerts", hint: "Flagged anomalies awaiting review" },
-      { label: "Cases", href: "/cases", icon: ShieldHalf, badgeKey: "cases", hint: "Active investigations" },
+      { label: "Alerts", href: "/alerts", icon: AlertTriangle, badgeKey: "alerts", hint: "Flagged anomalies awaiting review",  permission: "alert:read",},
+      { label: "Cases", href: "/cases", icon: ShieldHalf, badgeKey: "cases", hint: "Active investigations",  permission: "case:read",},
     ],
   },
   {
     title: "Investigate",
     items: [
-      { label: "Search", href: "/search", icon: Search, hint: "Find any entity in the graph" },
-      { label: "Graph Explorer", href: "/graph", icon: Waypoints, hint: "Explore entity relationships" },
-      { label: "Map", href: "/map", icon: Map, hint: "Geographic and route intelligence" },
-      { label: "Timeline", href: "/timeline", icon: Clock, hint: "Temporal activity patterns" },
+      { label: "Search", href: "/search", icon: Search, hint: "Find any entity in the graph",  permission: "entity:read",},
+      { label: "Graph Explorer", href: "/graph", icon: Waypoints, hint: "Explore entity relationships",  permission: "graph:read",},
+      { label: "Map", href: "/map", icon: Map, hint: "Geographic and route intelligence",  permission: "graph:read",},
+      { label: "Timeline", href: "/timeline", icon: Clock, hint: "Temporal activity patterns",  permission: "entity:read",},
     ],
   },
   {
     title: "Analyze",
-    items: [{ label: "Analytics", href: "/analytics", icon: BarChart3, hint: "Graph algorithms and anomaly detection" }],
+    items: [{ label: "Analytics", href: "/analytics", icon: BarChart3, hint: "Graph algorithms and anomaly detection",  permission: "analytics:read",}],
   },
   {
     title: "System",
     items: [
-      { label: "Scenario Generator", href: "/scenario", icon: FlaskConical, hint: "Inject a synthetic storyline" },
+      { label: "Scenario Generator", href: "/scenario", icon: FlaskConical, hint: "Inject a synthetic storyline",  permission: "scenario:generate",},
       { label: "Settings", href: "/settings", icon: Settings, hint: "Instance configuration" },
     ],
   },

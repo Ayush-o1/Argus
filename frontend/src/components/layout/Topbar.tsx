@@ -2,6 +2,7 @@
 
 import { Search } from "lucide-react";
 import { usePathname } from "next/navigation";
+import { UserMenu } from "@/components/auth/UserMenu";
 import { useDashboardSummary } from "@/hooks/useDashboard";
 import { useUIStore } from "@/stores/uiStore";
 import styles from "./Topbar.module.css";
@@ -58,6 +59,7 @@ export function Topbar() {
           <span className={styles.simDot} />
           Synthetic
         </span>
+        <UserMenu />
       </div>
     </header>
   );
