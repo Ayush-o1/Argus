@@ -93,7 +93,14 @@ async def create_case(
             """
             MERGE (seq:IdSequence {prefix: 'CASE'})
             ON CREATE SET seq.value = $seed
-            SET seq.value = seq.value + 1
+            // Take whichever is higher: the counter, or the highest case_id
+            // actually in the graph. The two can diverge — the generator writes
+            // cases directly with its own numbering, and a restore or manual
+            // intervention can move one without the other. When the counter
+            // fell behind, every create failed the uniqueness constraint with
+            // no recovery path. Reconciling here makes the counter self-healing
+            // while staying monotonic, so ids are never reused.
+            SET seq.value = CASE WHEN $seed > seq.value THEN $seed ELSE seq.value END + 1
             WITH seq.value AS next_seq
             CREATE (c:Case)
             SET c = $case,
@@ -124,10 +131,11 @@ async def create_case(
 
 
 async def _sequence_seed(session) -> int:
-    """Initial counter value, used only when the :IdSequence node does not yet
-    exist. Seeded from the highest existing case number so a graph populated by
-    the generator (which writes CASE-0001..N directly) does not immediately
-    collide with the constraint.
+    """The highest case number currently in the graph.
+
+    Used both to seed the counter on first use and to reconcile it on every
+    allocation, because the generator writes cases directly with its own
+    numbering and can leave the counter behind.
 
     Parses the numeric suffix rather than taking a string max: `max()` over
     strings is lexicographic, which breaks the moment the zero-padding width

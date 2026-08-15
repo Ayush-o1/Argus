@@ -112,3 +112,50 @@ async def test_closing_a_case_records_closed_at(graph: AsyncDriver) -> None:
 
 async def test_update_case_returns_none_for_a_missing_case(graph: AsyncDriver) -> None:
     assert await case_repo.update_case(graph, "CASE-DOES-NOT-EXIST", {"status": "Open"}) is None
+
+
+async def test_id_counter_self_heals_when_it_falls_behind(graph: AsyncDriver) -> None:
+    """The counter and the graph's actual maximum can diverge.
+
+    The generator writes cases directly with its own numbering, so a scenario
+    run leaves the backend's counter behind. When that happened every create
+    failed the uniqueness constraint with no recovery path — a 500 on a routine
+    action. Allocation now reconciles against the real maximum.
+    """
+    first = await case_repo.create_case(graph, "Self-heal baseline", "Low", "")
+    created = [first["case_id"]]
+    try:
+        highest = int(first["case_id"].rsplit("-", 1)[1])
+
+        # Drag the counter well behind reality, as a direct write would.
+        async with graph.session() as session:
+            await session.run(
+                "MERGE (seq:IdSequence {prefix: 'CASE'}) SET seq.value = $value", value=highest - 25
+            )
+
+        for _ in range(3):
+            case = await case_repo.create_case(graph, "Self-heal probe", "Low", "")
+            created.append(case["case_id"])
+            number = int(case["case_id"].rsplit("-", 1)[1])
+            assert number > highest, f"allocated {case['case_id']} at or below the existing maximum"
+            highest = number
+
+        assert len(set(created)) == len(created)
+    finally:
+        await _cleanup_cases(graph, created)
+
+
+async def test_case_ids_use_the_generator_padding(graph: AsyncDriver) -> None:
+    """One identifier format across the system.
+
+    The backend used four-digit padding against the generator's seven, so one
+    graph held CASE-0105 and CASE-0000001 for the same identifier type — which
+    sorts wrongly and reads as a data-quality fault.
+    """
+    import re
+
+    case = await case_repo.create_case(graph, "Padding probe", "Low", "")
+    try:
+        assert re.fullmatch(r"CASE-\d{7}", case["case_id"]), case["case_id"]
+    finally:
+        await _cleanup_cases(graph, [case["case_id"]])
