@@ -2,12 +2,17 @@ from fastapi import APIRouter, Depends, HTTPException
 from neo4j import AsyncDriver
 from pydantic import BaseModel
 
-from app.api.dependencies import get_db, require_api_token
+from app.api.dependencies import get_db, require_permission
 from app.models.envelope import Envelope
 from app.repositories import case_repo, entity_repo, graph_repo
+from app.security.roles import Permission
 from app.services import narrative, ollama
 
-router = APIRouter(prefix="/api/ai", tags=["ai"], dependencies=[Depends(require_api_token)])
+router = APIRouter(
+    prefix="/api/ai",
+    tags=["ai"],
+    dependencies=[Depends(require_permission(Permission.ENTITY_READ))],
+)
 
 # entity-summary/case-summary are deterministic template NLG (app/services/
 # narrative.py) — no network call, no dependency. /ask is the one optional

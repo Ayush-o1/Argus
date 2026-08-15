@@ -15,6 +15,8 @@ The five-entity preview is still returned, because the panel only has room to
 list a few, but it now travels with the totals it is a preview *of*.
 """
 
+from datetime import UTC, datetime
+
 from neo4j import AsyncDriver
 
 from app.models.aggregate import Aggregate
@@ -135,12 +137,36 @@ async def list_related_alerts(driver: AsyncDriver, incident_id: str, limit: int 
         return [dict(record["other"]) async for record in result]
 
 
-async def review_alert(driver: AsyncDriver, incident_id: str, new_status: str) -> dict | None:
+async def get_alert(driver: AsyncDriver, incident_id: str) -> dict | None:
+    """Fetch one incident. Used to capture before-state for the audit record."""
     async with driver.session() as session:
         result = await session.run(
-            "MATCH (i:Incident {incident_id: $incident_id}) SET i.status = $status RETURN i",
+            "MATCH (i:Incident {incident_id: $incident_id}) RETURN i", incident_id=incident_id
+        )
+        record = await result.single()
+        return dict(record["i"]) if record else None
+
+
+async def review_alert(
+    driver: AsyncDriver, incident_id: str, new_status: str, reviewed_by: str = "unknown"
+) -> dict | None:
+    """Set an alert's triage status, recording who did it and when.
+
+    The reviewer is stored on the node as well as in the audit log: the log is
+    the authoritative history, but an analyst looking at the alert should not
+    have to query the audit trail to see who last touched it.
+    """
+    async with driver.session() as session:
+        result = await session.run(
+            """
+            MATCH (i:Incident {incident_id: $incident_id})
+            SET i.status = $status, i.reviewed_by = $reviewed_by, i.reviewed_at = $reviewed_at
+            RETURN i
+            """,
             incident_id=incident_id,
             status=new_status,
+            reviewed_by=reviewed_by,
+            reviewed_at=datetime.now(UTC).isoformat(),
         )
         record = await result.single()
         return dict(record["i"]) if record else None

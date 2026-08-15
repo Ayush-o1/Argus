@@ -5,13 +5,24 @@ from neo4j import AsyncDriver
 from pydantic import BaseModel
 from redis.asyncio import Redis
 
-from app.api.dependencies import get_db, require_api_token
+from app.api.dependencies import get_db, require_permission
 from app.database.redis import get_redis
 from app.models.envelope import Envelope
 from app.repositories import analytics_repo
+from app.security.roles import Permission
+from app.security.sessions import AuthenticatedUser
 from app.services import anomaly, jobs
 
-router = APIRouter(prefix="/api/analytics", tags=["analytics"], dependencies=[Depends(require_api_token)])
+# The router-level permission gates *reading* results. Every POST below starts a
+# GDS job — real CPU, an in-memory graph projection, and a job slot — so each one
+# additionally requires ANALYTICS_RUN. Without that, the authorization matrix
+# showed a viewer (read-only by definition) able to start unbounded analytics
+# work, which is both a privilege and an availability problem.
+router = APIRouter(
+    prefix="/api/analytics",
+    tags=["analytics"],
+    dependencies=[Depends(require_permission(Permission.ANALYTICS_READ))],
+)
 
 
 class RiskPropagationRequest(BaseModel):
@@ -20,19 +31,31 @@ class RiskPropagationRequest(BaseModel):
 
 
 @router.post("/pagerank")
-async def run_pagerank(driver: AsyncDriver = Depends(get_db), redis: Redis = Depends(get_redis)) -> Envelope[dict]:
+async def run_pagerank(
+    driver: AsyncDriver = Depends(get_db),
+    redis: Redis = Depends(get_redis),
+    _: AuthenticatedUser = Depends(require_permission(Permission.ANALYTICS_RUN)),
+) -> Envelope[dict]:
     job_id = await jobs.start_job(redis, "pagerank", partial(analytics_repo.run_pagerank, driver))
     return Envelope(data={"job_id": job_id, "status": "running"})
 
 
 @router.post("/betweenness")
-async def run_betweenness(driver: AsyncDriver = Depends(get_db), redis: Redis = Depends(get_redis)) -> Envelope[dict]:
+async def run_betweenness(
+    driver: AsyncDriver = Depends(get_db),
+    redis: Redis = Depends(get_redis),
+    _: AuthenticatedUser = Depends(require_permission(Permission.ANALYTICS_RUN)),
+) -> Envelope[dict]:
     job_id = await jobs.start_job(redis, "betweenness", partial(analytics_repo.run_betweenness, driver))
     return Envelope(data={"job_id": job_id, "status": "running"})
 
 
 @router.post("/louvain")
-async def run_louvain(driver: AsyncDriver = Depends(get_db), redis: Redis = Depends(get_redis)) -> Envelope[dict]:
+async def run_louvain(
+    driver: AsyncDriver = Depends(get_db),
+    redis: Redis = Depends(get_redis),
+    _: AuthenticatedUser = Depends(require_permission(Permission.ANALYTICS_RUN)),
+) -> Envelope[dict]:
     job_id = await jobs.start_job(redis, "louvain", partial(analytics_repo.run_louvain, driver))
     return Envelope(data={"job_id": job_id, "status": "running"})
 
@@ -42,6 +65,7 @@ async def run_risk_propagation(
     payload: RiskPropagationRequest,
     driver: AsyncDriver = Depends(get_db),
     redis: Redis = Depends(get_redis),
+    _: AuthenticatedUser = Depends(require_permission(Permission.ANALYTICS_RUN)),
 ) -> Envelope[dict]:
     job_id = await jobs.start_job(
         redis,
@@ -53,7 +77,9 @@ async def run_risk_propagation(
 
 @router.post("/cycle-detection")
 async def run_cycle_detection(
-    driver: AsyncDriver = Depends(get_db), redis: Redis = Depends(get_redis)
+    driver: AsyncDriver = Depends(get_db),
+    redis: Redis = Depends(get_redis),
+    _: AuthenticatedUser = Depends(require_permission(Permission.ANALYTICS_RUN)),
 ) -> Envelope[dict]:
     job_id = await jobs.start_job(redis, "cycle-detection", partial(analytics_repo.run_cycle_detection, driver))
     return Envelope(data={"job_id": job_id, "status": "running"})
@@ -65,6 +91,7 @@ async def run_similar_entities(
     top_k: int = 10,
     driver: AsyncDriver = Depends(get_db),
     redis: Redis = Depends(get_redis),
+    _: AuthenticatedUser = Depends(require_permission(Permission.ANALYTICS_RUN)),
 ) -> Envelope[dict]:
     job_id = await jobs.start_job(
         redis,
@@ -76,7 +103,9 @@ async def run_similar_entities(
 
 @router.post("/anomalies")
 async def run_anomaly_detection(
-    driver: AsyncDriver = Depends(get_db), redis: Redis = Depends(get_redis)
+    driver: AsyncDriver = Depends(get_db),
+    redis: Redis = Depends(get_redis),
+    _: AuthenticatedUser = Depends(require_permission(Permission.ANALYTICS_RUN)),
 ) -> Envelope[dict]:
     job_id = await jobs.start_job(redis, "anomalies", partial(anomaly.detect_transaction_anomalies, driver))
     return Envelope(data={"job_id": job_id, "status": "running"})

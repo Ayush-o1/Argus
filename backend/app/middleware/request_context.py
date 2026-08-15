@@ -44,6 +44,9 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             else str(uuid.uuid4())
         )
         token = request_id_var.set(request_id)
+        # Also on request.state so route handlers can attach it to audit
+        # records without reaching into the logging module.
+        request.state.request_id = request_id
         started = time.perf_counter()
 
         try:

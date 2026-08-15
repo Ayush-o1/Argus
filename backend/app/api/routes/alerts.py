@@ -1,14 +1,21 @@
 from enum import StrEnum
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from neo4j import AsyncDriver
 from pydantic import BaseModel
 
-from app.api.dependencies import get_db, require_api_token
+from app.api.dependencies import get_db, require_permission
 from app.models.envelope import Envelope, Meta
 from app.repositories import alert_repo
+from app.security.roles import Permission
+from app.security.sessions import AuthenticatedUser
+from app.services import audit
 
-router = APIRouter(prefix="/api/alerts", tags=["alerts"], dependencies=[Depends(require_api_token)])
+router = APIRouter(
+    prefix="/api/alerts",
+    tags=["alerts"],
+    dependencies=[Depends(require_permission(Permission.ALERT_READ))],
+)
 
 
 class AlertStatus(StrEnum):
@@ -74,9 +81,42 @@ async def related_alerts(
 
 @router.put("/{alert_id}/review")
 async def review_alert(
-    alert_id: str, payload: ReviewAlertRequest, driver: AsyncDriver = Depends(get_db)
+    alert_id: str,
+    payload: ReviewAlertRequest,
+    request: Request,
+    driver: AsyncDriver = Depends(get_db),
+    user: AuthenticatedUser = Depends(require_permission(Permission.ALERT_TRIAGE)),
 ) -> Envelope[dict]:
-    alert = await alert_repo.review_alert(driver, alert_id, payload.status.value)
-    if alert is None:
+    """Change an alert's triage status.
+
+    Before/after state is captured so review can answer "who downgraded this,
+    when, and from what" — the question the audit found to be structurally
+    unanswerable, since a bare `SET i.status = $status` left no record and there
+    were no identities to attribute it to.
+    """
+    before = await alert_repo.get_alert(driver, alert_id)
+    if before is None:
         raise HTTPException(status_code=404, detail="Alert not found")
+
+    alert = await alert_repo.review_alert(
+        driver, alert_id, payload.status.value, reviewed_by=user.username
+    )
+    if alert is None:  # pragma: no cover - existence was just confirmed
+        raise HTTPException(status_code=404, detail="Alert not found")
+
+    await audit.record(
+        audit.AuditEvent(
+            action="alert.review",
+            outcome="success",
+            actor_id=user.id,
+            actor_username=user.username,
+            actor_role=user.role,
+            resource_type="Incident",
+            resource_id=alert_id,
+            before_state={"status": before.get("status"), "severity": before.get("severity")},
+            after_state={"status": payload.status.value},
+            request_id=getattr(request.state, "request_id", None),
+            ip_address=request.client.host if request.client else None,
+        )
+    )
     return Envelope(data=alert)

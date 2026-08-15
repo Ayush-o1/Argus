@@ -12,9 +12,11 @@ from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from app.api.routes import (
+    admin,
     ai,
     alerts,
     analytics,
+    auth,
     cases,
     dashboard,
     entities,
@@ -29,8 +31,11 @@ from app.api.routes import (
 from app.config import get_settings
 from app.database.migrations import run_migrations
 from app.database.neo4j import close_neo4j, connect_neo4j
+from app.database.pg_migrations import run_pg_migrations
+from app.database.postgres import close_postgres, connect_postgres
 from app.database.redis import close_redis, connect_redis
 from app.middleware.request_context import RequestContextMiddleware
+from app.middleware.security import RateLimitMiddleware, SecurityHeadersMiddleware
 from app.observability.logging import configure_logging
 from app.services.jobs import JobRejected, cancel_active_jobs, reap_stale_jobs
 
@@ -46,6 +51,14 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     driver = await connect_neo4j()
     redis = await connect_redis()
+
+    # Identity and audit must be migrated before the app can authenticate
+    # anyone. A failure here aborts startup: running with a half-built
+    # authorization schema risks granting access it should not.
+    pg_applied = await run_pg_migrations()
+    if pg_applied:
+        logger.info("applied %d postgres migration(s): %s", len(pg_applied), pg_applied)
+    await connect_postgres()
 
     # Schema is applied here rather than as a side effect of running the data
     # generator, so a deployed backend can acquire an index without anyone
@@ -71,6 +84,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await cancel_active_jobs()
     await close_neo4j()
     await close_redis()
+    await close_postgres()
 
 
 app = FastAPI(
@@ -82,18 +96,28 @@ app = FastAPI(
 
 settings = get_settings()
 
-# Enumerated rather than wildcarded (audit B-26). `allow_credentials` is False
-# because authentication is a bearer header, not a cookie — enabling it granted
-# a capability nothing uses. This must be revisited when cookie sessions land,
-# at which point CSRF protection becomes mandatory alongside it.
+# Methods and headers are enumerated rather than wildcarded (audit B-26).
+#
+# `allow_credentials=True` is required now that the session is a cookie: the
+# frontend is a different origin from the API, and without it the browser will
+# not attach the session cookie at all. It is only safe because `allow_origins`
+# is an explicit list — never "*", which the CORS spec forbids combining with
+# credentials precisely because it would let any site make authenticated
+# requests. CSRF protection (double-submit token, enforced in
+# api/dependencies.current_user) is the other half of this tradeoff.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
-    allow_credentials=False,
+    allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+    allow_headers=["Content-Type", "X-Request-ID", "X-CSRF-Token"],
     expose_headers=["X-Request-ID"],
 )
+# Order matters: Starlette runs middleware in reverse registration order, so
+# the request context (and its correlation id) is established first, then rate
+# limiting, then security headers on the way out.
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(RateLimitMiddleware)
 app.add_middleware(RequestContextMiddleware)
 
 
@@ -143,6 +167,8 @@ async def neo4j_unavailable_handler(request: Request, exc: Exception) -> JSONRes
         headers={"Retry-After": "10"},
     )
 
+app.include_router(auth.router)
+app.include_router(admin.router)
 app.include_router(dashboard.router)
 app.include_router(entities.router)
 app.include_router(graph.router)
@@ -156,14 +182,16 @@ app.include_router(search.router)
 app.include_router(scenario.router)
 
 
-async def _dependency_status() -> tuple[bool, bool]:
-    """(neo4j_ok, redis_ok). Never raises — a health check that throws is useless
-    to the orchestrator polling it."""
+async def _dependency_status() -> tuple[bool, bool, bool]:
+    """(neo4j_ok, redis_ok, postgres_ok). Never raises — a health check that
+    throws is useless to the orchestrator polling it."""
     from app.database.neo4j import get_driver
+    from app.database.postgres import acquire
     from app.database.redis import get_redis
 
     neo4j_ok = False
     redis_ok = False
+    postgres_ok = False
     try:
         await get_driver().verify_connectivity()
         neo4j_ok = True
@@ -174,7 +202,13 @@ async def _dependency_status() -> tuple[bool, bool]:
         redis_ok = True
     except Exception:
         logger.warning("readiness: redis unreachable", exc_info=True)
-    return neo4j_ok, redis_ok
+    try:
+        async with acquire() as conn:
+            await conn.execute("SELECT 1")
+        postgres_ok = True
+    except Exception:
+        logger.warning("readiness: postgres unreachable", exc_info=True)
+    return neo4j_ok, redis_ok, postgres_ok
 
 
 @app.get("/livez")
@@ -191,11 +225,18 @@ async def readyz(response: FastAPIResponse) -> dict:
     """Readiness: should this instance receive traffic. Returns 503 when a
     dependency is down so a load balancer drains it rather than sending requests
     that are certain to fail."""
-    neo4j_ok, redis_ok = await _dependency_status()
-    ready = neo4j_ok and redis_ok
+    neo4j_ok, redis_ok, postgres_ok = await _dependency_status()
+    # Postgres counts: without it nobody can authenticate, so the instance
+    # cannot usefully serve traffic even though the graph is reachable.
+    ready = neo4j_ok and redis_ok and postgres_ok
     if not ready:
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
-    return {"status": "ready" if ready else "not_ready", "neo4j": neo4j_ok, "redis": redis_ok}
+    return {
+        "status": "ready" if ready else "not_ready",
+        "neo4j": neo4j_ok,
+        "redis": redis_ok,
+        "postgres": postgres_ok,
+    }
 
 
 @app.get("/api/health")
@@ -203,9 +244,10 @@ async def health() -> dict:
     """Retained for the existing frontend and docs. Equivalent to /readyz but
     always 200, since callers treat a non-200 as "ARGUS is gone" rather than
     reading the body."""
-    neo4j_ok, redis_ok = await _dependency_status()
+    neo4j_ok, redis_ok, postgres_ok = await _dependency_status()
     return {
-        "status": "ok" if (neo4j_ok and redis_ok) else "degraded",
+        "status": "ok" if (neo4j_ok and redis_ok and postgres_ok) else "degraded",
         "neo4j": neo4j_ok,
         "redis": redis_ok,
+        "postgres": postgres_ok,
     }

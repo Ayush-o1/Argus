@@ -27,6 +27,52 @@ class Settings(BaseSettings):
 
     redis_url: str = "redis://localhost:6379/0"
 
+    # --- PostgreSQL: identity, authorization, audit ---
+    # Two DSNs by design. Migrations connect as the admin role to create the
+    # schema, the triggers and the least-privilege role; the application then
+    # connects as `argus_app`, which cannot UPDATE or DELETE an audit row. If
+    # the app used the admin DSN, the audit log's tamper-resistance would be
+    # decorative.
+    postgres_host: str = "localhost"
+    postgres_port: int = 55432
+    postgres_db: str = "argus"
+
+    postgres_superuser: str = "argus_admin"
+    postgres_superuser_password: str = "argus_dev_password"
+
+    postgres_app_user: str = "argus_app"
+    postgres_app_password: str = "argus_dev_app_password"
+
+    postgres_command_timeout_seconds: float = 10.0
+
+    @property
+    def postgres_admin_dsn(self) -> str:
+        return (
+            f"postgresql://{self.postgres_superuser}:{self.postgres_superuser_password}"
+            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+        )
+
+    @property
+    def postgres_dsn(self) -> str:
+        return (
+            f"postgresql://{self.postgres_app_user}:{self.postgres_app_password}"
+            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+        )
+
+    # --- Sessions ---
+    # Absolute lifetime: a session cannot outlive this regardless of activity.
+    session_absolute_hours: int = 12
+    # Idle lifetime: a session unused for this long is dead even if within the
+    # absolute window. Both are enforced; the shorter one wins.
+    session_idle_minutes: int = 60
+    # Cookie Secure flag. False for local http development only; any deployment
+    # reachable over a network must set this true.
+    session_cookie_secure: bool = False
+
+    # --- Brute-force protection ---
+    max_failed_logins: int = 5
+    lockout_minutes: int = 15
+
     # Optional local LLM assistant (see docs/ai-layer.md). ARGUS Core never
     # requires this — probed at runtime, all other features work without it.
     ollama_base_url: str = "http://localhost:11434"

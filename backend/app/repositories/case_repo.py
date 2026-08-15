@@ -45,7 +45,8 @@ async def get_case(driver: AsyncDriver, case_id: str) -> dict | None:
         result = await session.run(
             """
             MATCH (c:Case {case_id: $case_id})
-            OPTIONAL MATCH (c)-[:LINKED_TO]->(entity)
+            OPTIONAL MATCH (c)-[link:LINKED_TO]->(entity)
+            WHERE link.removed_at IS NULL
             RETURN c, collect(DISTINCT {label: labels(entity)[0], properties: entity}) AS linked_entities
             """,
             case_id=case_id,
@@ -62,7 +63,9 @@ async def get_case(driver: AsyncDriver, case_id: str) -> dict | None:
         return case
 
 
-async def create_case(driver: AsyncDriver, title: str, priority: str, notes: str) -> dict:
+async def create_case(
+    driver: AsyncDriver, title: str, priority: str, notes: str, opened_by: str = 'unknown'
+) -> dict:
     """Allocates the next case_id and creates the case in one transaction.
 
     The previous implementation read `count(c) + 1` in one query and wrote in
@@ -80,10 +83,13 @@ async def create_case(driver: AsyncDriver, title: str, priority: str, notes: str
     now = datetime.now(UTC).isoformat()
     async with driver.session() as session:
         result = await session.run(
-            # Zero-padded to 4 digits for display, but only while that is
-            # lossless: past 9999 the number is emitted in full rather than
-            # truncated to its last four digits, which would reintroduce
-            # collisions at exactly the point they become likely.
+            # Seven-digit zero padding, matching the generator's new_id() format
+            # (generator/generators/common.py). The backend previously used four,
+            # so the same graph held CASE-0000001 and CASE-0105 — two formats for
+            # one identifier type, which sorts wrongly and reads as a data-quality
+            # fault. Past 9,999,999 the number is emitted in full rather than
+            # truncated, which would reintroduce collisions exactly when they
+            # become likely.
             """
             MERGE (seq:IdSequence {prefix: 'CASE'})
             ON CREATE SET seq.value = $seed
@@ -92,7 +98,7 @@ async def create_case(driver: AsyncDriver, title: str, priority: str, notes: str
             CREATE (c:Case)
             SET c = $case,
                 c.case_id = 'CASE-' + CASE
-                    WHEN next_seq < 10000 THEN right('0000' + toString(next_seq), 4)
+                    WHEN next_seq < 10000000 THEN right('0000000' + toString(next_seq), 7)
                     ELSE toString(next_seq)
                 END
             RETURN c
@@ -104,6 +110,7 @@ async def create_case(driver: AsyncDriver, title: str, priority: str, notes: str
                 "status": "Draft",
                 "priority": priority,
                 "assigned_analyst": "Unassigned",
+                "opened_by": opened_by,
                 "opened_at": now,
                 "closed_at": None,
                 "notes": notes,
@@ -179,7 +186,9 @@ async def update_case(driver: AsyncDriver, case_id: str, updates: dict) -> dict 
         return _shape_case(record["c"]) if record else None
 
 
-async def add_entity_to_case(driver: AsyncDriver, case_id: str, entity_human_id: str, reason: str) -> bool:
+async def add_entity_to_case(
+    driver: AsyncDriver, case_id: str, entity_human_id: str, reason: str, added_by: str = 'unknown'
+) -> bool:
     info = resolve_label(entity_human_id)
     if info is None:
         return False
@@ -189,29 +198,53 @@ async def add_entity_to_case(driver: AsyncDriver, case_id: str, entity_human_id:
             MATCH (c:Case {{case_id: $case_id}})
             MATCH (e:{info.label} {{{info.id_field}: $entity_id}})
             MERGE (c)-[r:LINKED_TO]->(e)
-            SET r.reason = $reason, r.added_at = $added_at
+            SET r.reason = $reason,
+                r.added_at = $added_at,
+                r.added_by = $added_by,
+                // Re-linking previously removed evidence clears the tombstone
+                // rather than leaving a link that claims to be both live and
+                // removed.
+                r.removed_at = null,
+                r.removed_by = null,
+                r.removal_reason = null
             RETURN c
             """,
             case_id=case_id,
             entity_id=entity_human_id,
             reason=reason,
+            added_by=added_by,
             added_at=datetime.now(UTC).isoformat(),
         )
         return await result.single() is not None
 
 
-async def remove_entity_from_case(driver: AsyncDriver, case_id: str, entity_human_id: str) -> None:
+async def remove_entity_from_case(
+    driver: AsyncDriver, case_id: str, entity_human_id: str, removed_by: str = "unknown", reason: str = ""
+) -> bool:
+    """Tombstone an evidence link. Returns whether a live link was found.
+
+    Previously this issued `DELETE r`, so the fact that a piece of evidence had
+    ever been linked — and who removed it, and why — vanished with it (audit
+    G-11). In an investigation that history is itself evidence, and its removal
+    is exactly the action an audit trail exists to capture.
+    """
     info = resolve_label(entity_human_id)
     if info is None:
-        return
+        return False
     async with driver.session() as session:
-        await session.run(
+        result = await session.run(
             f"""
             MATCH (c:Case {{case_id: $case_id}})-[r:LINKED_TO]->(e:{info.label} {{{info.id_field}: $entity_id}})
-            DELETE r
+            WHERE r.removed_at IS NULL
+            SET r.removed_at = $removed_at, r.removed_by = $removed_by, r.removal_reason = $reason
+            RETURN r
             """,
             case_id=case_id,
             entity_id=entity_human_id,
+            removed_at=datetime.now(UTC).isoformat(),
+            removed_by=removed_by,
+            reason=reason,
         )
+        return await result.single() is not None
 
 

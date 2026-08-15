@@ -1,11 +1,16 @@
 from fastapi import APIRouter, Depends, Query
 from neo4j import AsyncDriver
 
-from app.api.dependencies import get_db, require_api_token
+from app.api.dependencies import get_db, require_permission
 from app.models.envelope import Envelope, Meta
 from app.repositories import graph_repo
+from app.security.roles import Permission
 
-router = APIRouter(prefix="/api/search", tags=["search"], dependencies=[Depends(require_api_token)])
+router = APIRouter(
+    prefix="/api/search",
+    tags=["search"],
+    dependencies=[Depends(require_permission(Permission.ENTITY_READ))],
+)
 
 # Long enough for a full name plus qualifiers; short enough that the Lucene
 # parser is never handed an unbounded string.

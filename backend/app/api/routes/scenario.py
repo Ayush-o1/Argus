@@ -2,12 +2,17 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from redis.asyncio import Redis
 
-from app.api.dependencies import require_api_token
+from app.api.dependencies import require_permission
 from app.database.redis import get_redis
 from app.models.envelope import Envelope
+from app.security.roles import Permission
 from app.services import jobs, scenario
 
-router = APIRouter(prefix="/api/scenario", tags=["scenario"], dependencies=[Depends(require_api_token)])
+router = APIRouter(
+    prefix="/api/scenario",
+    tags=["scenario"],
+    dependencies=[Depends(require_permission(Permission.SCENARIO_GENERATE))],
+)
 
 
 class GenerateScenarioRequest(BaseModel):

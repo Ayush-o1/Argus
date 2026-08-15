@@ -36,6 +36,39 @@ services:
       timeout: 5s
       retries: 10
 
+  # Identity, authorization and the audit log live here rather than in Neo4j.
+  #
+  # This is the one new datastore the audit recommended, and it is introduced
+  # for a property Neo4j cannot provide: the audit log must survive compromise
+  # of the application. Neo4j has no per-table privilege model in Community
+  # edition, so any process holding write credentials — which the app must —
+  # can SET or DELETE an audit node. In Postgres the application role is granted
+  # INSERT only, and a trigger rejects UPDATE and DELETE outright, so tampering
+  # requires database-superuser access rather than merely compromising ARGUS.
+  #
+  # The graph remains authoritative for entities and relationships. Nothing
+  # about the intelligence model moves here.
+  postgres:
+    image: postgres:16-alpine
+    container_name: argus-postgres
+    ports:
+      # 55432 on the host, not 5432: a developer machine may already run its own
+      # PostgreSQL, and silently competing for the default port produces
+      # authentication errors that look like credential bugs. ARGUS never binds
+      # a port another Postgres is likely to hold.
+      - "${POSTGRES_PORT:-55432}:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-argus}
+      POSTGRES_USER: ${POSTGRES_SUPERUSER:-argus_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:-argus_dev_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_SUPERUSER:-argus_admin} -d ${POSTGRES_DB:-argus}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   backend:
     build:
       # Build context must be the repo root, not ./backend: the Dockerfile
@@ -63,6 +96,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
     volumes:
       - ./backend/app:/app/app
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
@@ -71,3 +106,4 @@ volumes:
   neo4j_data:
   neo4j_logs:
   redis_data:
+  postgres_data:

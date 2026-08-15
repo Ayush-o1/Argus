@@ -11,7 +11,16 @@ dependencies = [
     "pydantic-settings>=2.6",
     "scikit-learn>=1.5",
     "httpx>=0.27",
+    "asyncpg>=0.30",
+    "argon2-cffi>=23.1",
+    "pyotp>=2.9",
 ]
+# asyncpg backs identity, authorization and the audit log (see
+# app/database/postgres.py for why a second datastore exists). argon2-cffi is
+# the password hash — Argon2id is the current OWASP recommendation and is
+# memory-hard, unlike PBKDF2. pyotp implements TOTP for MFA. All three are
+# local; none makes a network call.
+#
 # scikit-learn is used for Isolation Forest anomaly detection (Phase 8) —
 # unsupervised, trained fresh on ARGUS's own synthetic data every run, no
 # external model or dataset. httpx is used only by the optional Ollama
@@ -46,6 +55,13 @@ ignore = [
 
 [[tool.mypy.overrides]]
 module = "sklearn.*"
+ignore_missing_imports = true
+
+# asyncpg ships no py.typed marker. The Connection/Record types we use are
+# exercised by the integration tests against a real database, which is stronger
+# evidence than a stub would be.
+[[tool.mypy.overrides]]
+module = "asyncpg.*"
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

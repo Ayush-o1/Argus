@@ -1,11 +1,16 @@
 from fastapi import APIRouter, Depends, Query
 from neo4j import AsyncDriver
 
-from app.api.dependencies import get_db, require_api_token
+from app.api.dependencies import get_db, require_permission
 from app.models.envelope import Envelope
 from app.repositories import graph_repo
+from app.security.roles import Permission
 
-router = APIRouter(prefix="/api/graph", tags=["graph"], dependencies=[Depends(require_api_token)])
+router = APIRouter(
+    prefix="/api/graph",
+    tags=["graph"],
+    dependencies=[Depends(require_permission(Permission.GRAPH_READ))],
+)
 
 # Traversal cost grows with depth, and get_neighborhood issues one query per
 # frontier node — so an unbounded `depth` let a single request fan out into

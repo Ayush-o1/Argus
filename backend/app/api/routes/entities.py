@@ -1,12 +1,17 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from neo4j import AsyncDriver
 
-from app.api.dependencies import get_db, require_api_token
+from app.api.dependencies import get_db, require_permission
 from app.api.routes.graph import DepthParam
 from app.models.envelope import Envelope, Meta
 from app.repositories import entity_repo, graph_repo
+from app.security.roles import Permission
 
-router = APIRouter(prefix="/api/entities", tags=["entities"], dependencies=[Depends(require_api_token)])
+router = APIRouter(
+    prefix="/api/entities",
+    tags=["entities"],
+    dependencies=[Depends(require_permission(Permission.ENTITY_READ))],
+)
 
 
 @router.get("")
