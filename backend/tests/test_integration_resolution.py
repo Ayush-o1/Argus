@@ -63,6 +63,17 @@ async def stack(driver: AsyncDriver) -> AsyncIterator[AsyncDriver]:
     previous = getattr(neo4j_module, "_driver", None)
     neo4j_module._driver = driver
 
+    # Evaluations are published measurements in an append-only table. A test
+    # that persists one and never removes it leaves the environment claiming a
+    # report nobody ran, so the high-water mark is captured here and anything
+    # above it is cleared at teardown.
+    async with acquire() as conn:
+        evaluation_mark = (
+            await conn.fetchval(
+                "SELECT coalesce(max(evaluation_id), 0) FROM resolution_evaluations"
+            )
+        ) or 0
+
     refs = [ref(i) for i in range(12)]
     async with driver.session() as session:
         await session.run(
@@ -126,6 +137,10 @@ async def stack(driver: AsyncDriver) -> AsyncIterator[AsyncDriver]:
                     "DELETE FROM resolution_labels WHERE left_ref = ANY($1::text[]) "
                     "OR right_ref = ANY($1::text[])",
                     refs,
+                )
+                await admin.execute(
+                    "DELETE FROM resolution_evaluations WHERE evaluation_id > $1",
+                    evaluation_mark,
                 )
                 for table in _LEDGER_TABLES:
                     await admin.execute(f"ALTER TABLE {table} ENABLE TRIGGER USER")
