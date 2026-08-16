@@ -102,10 +102,26 @@ jobs:
 
       - name: Pytest
         env:
+          # Deliberately *not* NEO4J_URI/NEO4J_PASSWORD. Tests must reach the
+          # graph through the conftest fixture, which honours TEST_NEO4J_*; a
+          # test that reaches for the application's own driver is a test that
+          # depends on deployment configuration, and will pass on a developer
+          # machine where both happen to be set while failing here.
           TEST_NEO4J_URI: bolt://localhost:7687
           TEST_NEO4J_PASSWORD: argus_test_password
           POSTGRES_SUPERUSER_PASSWORD: argus_test_password
-        run: pytest -v
+        run: |
+          set -o pipefail
+          # Failures are echoed as workflow annotations as well as to the log.
+          # Log download needs repository admin rights; annotations do not, so
+          # without this a contributor who cannot read the logs is told only
+          # "Process completed with exit code 1".
+          pytest -v --tb=short 2>&1 | tee /tmp/pytest.log || {
+            grep -E "^(FAILED|ERROR) " /tmp/pytest.log | while read -r line; do
+              echo "::error::$line"
+            done
+            exit 1
+          }
 
       - name: Fail if integration tests were skipped
         # Skipping on a missing database is correct locally and wrong in CI:

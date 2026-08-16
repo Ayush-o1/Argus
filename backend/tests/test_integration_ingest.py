@@ -16,9 +16,9 @@ from pathlib import Path
 import asyncpg
 import pytest
 import pytest_asyncio
+from neo4j import AsyncDriver
 
 from app.config import get_settings
-from app.database.neo4j import close_neo4j, connect_neo4j
 from app.database.postgres import acquire, close_postgres, connect_postgres
 from app.ingestion.connectors import INGEST_ROOT_ENV
 from app.models.provenance import Reliability, Source, SourceType
@@ -43,8 +43,18 @@ SUBJECT_MARKER = "argus-ingest-test"
 
 
 @pytest_asyncio.fixture
-async def feed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[dict]:
-    """A registered source, a connector, and a drop folder — torn down after."""
+async def feed(
+    driver: AsyncDriver, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> AsyncIterator[dict]:
+    """A registered source, a connector, and a drop folder — torn down after.
+
+    Takes the graph from the shared `driver` fixture rather than calling the
+    application's `connect_neo4j()`. That distinction is not cosmetic: the app
+    driver reads `NEO4J_URI`/`NEO4J_PASSWORD`, which CI deliberately does not
+    set for the test step — it sets `TEST_NEO4J_*`, which only the conftest
+    fixture honours. Using the app driver meant every test in this file errored
+    in CI while passing on any machine where both happened to be configured.
+    """
     settings = get_settings()
     try:
         probe = await asyncpg.connect(dsn=settings.postgres_dsn, timeout=5)
@@ -52,15 +62,12 @@ async def feed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncIterator
         pytest.skip("No PostgreSQL reachable; skipping ingestion integration tests")
     await probe.close()
 
-    # Subject resolution reads the graph, so these tests need one. Skipped
-    # rather than failed when it is absent, matching every other integration
-    # test in the suite.
-    driver = await connect_neo4j()
-    try:
-        await driver.verify_connectivity()
-    except Exception:
-        await close_neo4j()
-        pytest.skip("No Neo4j reachable; skipping ingestion integration tests")
+    # The ingestion service resolves subjects through the process-wide driver,
+    # so point that at the test graph for the duration.
+    import app.database.neo4j as neo4j_module
+
+    previous_driver = getattr(neo4j_module, "_driver", None)
+    neo4j_module._driver = driver
 
     async with driver.session() as session:
         await session.run(
@@ -160,7 +167,7 @@ async def feed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncIterator
             await session.run(
                 "MATCH (n {marker: $marker}) DETACH DELETE n", marker=SUBJECT_MARKER
             )
-        await close_neo4j()
+        neo4j_module._driver = previous_driver
 
 
 def _write(directory: Path, name: str, records: list[dict]) -> None:
