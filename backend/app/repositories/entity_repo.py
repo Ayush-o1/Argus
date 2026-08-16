@@ -13,8 +13,14 @@ async def get_connection_summary(driver: AsyncDriver, human_id: str) -> dict[str
     if info is None:
         return {}
 
+    # SAME_AS is excluded, here and in every other type-agnostic traversal.
+    # It is not a relationship in the domain graph: it says "this record and
+    # that record denote the same thing", so counting it would report a person
+    # as being connected to a person when the claim is that they *are* one.
+    # See app/repositories/resolution_graph_repo.py.
     query = f"""
-    MATCH (n:{info.label} {{{info.id_field}: $human_id}})-[]-(m)
+    MATCH (n:{info.label} {{{info.id_field}: $human_id}})-[r]-(m)
+    WHERE type(r) <> 'SAME_AS'
     RETURN labels(m)[0] AS label, count(DISTINCT m) AS count
     """
     async with driver.session() as session:

@@ -59,6 +59,7 @@ frontend/src/
 | `/map` | Global geospatial workspace (MapLibre + deck.gl), three scale tiers | `useMapEntities`, `useMapShipments`, `useMapRegions`, `useMapCountries`, `useMapCorridors` |
 | `/timeline` | Volume histogram + burst detection + swimlane chart + ranked moments | `useGlobalTimeline` |
 | `/sources` | Source health — freshness against each source's declared interval, 24h volume and rejection rate, dead-letter queue with the reason each record was rejected, and job-queue depth | `useIngestHealth`, `useIngestFailures` |
+| `/resolution` | The review queue: every attribute two records were compared on, side by side, with agreements, disagreements and **the ones that could not be compared** shown as distinct states. Every score carries the share of evidence behind it. Contested identities lead the page; the decision ledger and the published precision/recall sit below it | `useResolutionQueue`, `useClusters`, `useResolutionDecisions`, `useEvaluations` |
 | `/entities/[id]` | Entity hub — risk and contributing factors always visible in the sidebar; Properties/Activity/Cases & Alerts/Provenance/Summary tabs | `useEntity`, `useEntityTimeline`, `useEntityCases`, `useEntityAlerts`, `useEntityProvenance`, `useEntitySummary` |
 | `/cases`, `/cases/[id]` | Case list + workspace (evidence board, notes, summary) | `useCases`, `useCase`, `useCaseSummary` |
 | `/alerts` | Alert review queue | `useAlerts`, `useReviewAlert` |

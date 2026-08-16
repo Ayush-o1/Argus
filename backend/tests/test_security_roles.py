@@ -137,3 +137,33 @@ def test_every_role_is_in_the_permission_table() -> None:
     permissions bug rather than a missing table entry."""
     for role in Role:
         assert permissions_for(role), f"{role.value} has no permissions defined"
+
+
+# ── Entity resolution (Phase 4) ──────────────────────────────────────────────
+
+
+def test_an_administrator_cannot_read_the_resolution_queue() -> None:
+    """A candidate pair puts two records' attributes side by side, which is
+    intelligence. The administrator separation has to hold here too."""
+    assert not has_permission(Role.ADMINISTRATOR, Permission.RESOLUTION_READ)
+    assert not has_permission(Role.ADMINISTRATOR, Permission.RESOLUTION_DECIDE)
+
+
+def test_a_viewer_can_see_that_records_were_merged_but_cannot_merge_them() -> None:
+    assert has_permission(Role.VIEWER, Permission.RESOLUTION_READ)
+    assert not has_permission(Role.VIEWER, Permission.RESOLUTION_DECIDE)
+
+
+def test_an_auditor_can_read_resolution_but_writes_nothing() -> None:
+    assert has_permission(Role.AUDITOR, Permission.RESOLUTION_READ)
+    assert not has_permission(Role.AUDITOR, Permission.RESOLUTION_DECIDE)
+    assert not has_permission(Role.AUDITOR, Permission.RESOLUTION_MANAGE)
+
+
+def test_an_analyst_may_decide_but_not_undo_a_colleagues_decision() -> None:
+    """Same reasoning as assertion retraction: reversing someone else's merge
+    is a judgement about their work, so it sits a level above."""
+    assert has_permission(Role.ANALYST, Permission.RESOLUTION_DECIDE)
+    assert not has_permission(Role.ANALYST, Permission.RESOLUTION_MANAGE)
+    assert has_permission(Role.INVESTIGATOR, Permission.RESOLUTION_MANAGE)
+    assert has_permission(Role.SUPERVISOR, Permission.RESOLUTION_MANAGE)

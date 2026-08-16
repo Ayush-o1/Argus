@@ -185,7 +185,7 @@ read, so pipeline health travels with the intelligence it feeds.
 | POST | `/api/ingest/connectors/{id}/run` | — | Queue an immediate run; returns a job id, not a result. Requires `ingest:manage`. |
 | POST | `/api/ingest/connectors/{id}/quarantine` | `{reason}` | Stop a connector, with a stated reason. Requires `ingest:manage`. |
 | POST | `/api/ingest/connectors/{id}/release` | — | Return a quarantined connector to service. Requires `ingest:manage`. |
-| GET | `/api/ingest/failures` | `connector_id`, `include_resolved`, `limit` | The dead-letter queue — **metadata only**, deliberately excluding the rejected payload. |
+| GET | `/api/ingest/failures` | `connector_id`, `include_resolved`, `limit` | The dead-letter queue — **metadata only**, deliberately excluding the rejected payload. Stages are `fetch`, `validate`, `normalize`, `resolve` and `persist`; `resolve` means the record is well-formed but its subject matches no entity ARGUS holds. |
 | GET | `/api/ingest/failures/{id}/payload` | — | The rejected record itself. Requires `ingest:read` **and** `entity:read`, so an administrator — who operates the pipeline but cannot read intelligence — is refused here while still seeing that the failure exists and why. |
 | POST | `/api/ingest/failures/{id}/replay` | — | Re-run a dead-lettered record after fixing its cause. Requires `ingest:manage` and `entity:read`. |
 | POST | `/api/ingest/failures/{id}/resolve` | `{resolution}` | Close an entry without replaying it. The entry is never deleted; only its resolution is recorded. |
@@ -195,6 +195,42 @@ a **required** stated basis for that rating, and an optional `staleness_hours`.
 Re-registering an existing source is a **409**: a reliability rating re-weights
 every assertion resting on it, so changing one is not a side effect of a repeated
 call.
+
+## Entity Resolution — `app/api/routes/resolution.py`
+
+Requires `resolution:read`, held by every intelligence-reading role. An
+administrator is **refused**: a candidate pair puts two records' attributes side
+by side, which is intelligence, not pipeline operation.
+
+`resolution:decide` records a decision; `resolution:manage` reverses one, pins a
+cluster's representative record, or triggers a sweep. Reversal sits above
+analyst for the same reason retraction does — undoing a colleague's decision is
+a judgement about their work.
+
+| Method | Path | Params | Description |
+|---|---|---|---|
+| GET | `/api/resolution/queue` | `band`, `entity_type`, `include_decided`, `limit`, `offset` | The review queue. Returns counts for **every** band and status, not just the one displayed: "12 pending" reads as "12 duplicates exist" without the denominators. |
+| GET | `/api/resolution/model` | — | Every attribute the matcher compares, with its weight, comparator, and whether it is disqualifying or a strong identifier — plus the thresholds and the model fingerprint. Published rather than buried: a weighting nobody can inspect is not reviewable. |
+| GET | `/api/resolution/candidates/{id}` | — | One scored pair with every attribute comparison, including the ones that **could not be compared**, and the pair's full decision history. |
+| POST | `/api/resolution/candidates/{id}/decide` | `{verdict, rationale}` | Record `same` or `different`. `rationale` is required. **409** if the pair is already decided — reverse it instead, so the change is recorded as a reversal. Requires `resolution:decide`. |
+| POST | `/api/resolution/decisions` | `{left_ref, right_ref, verdict, rationale}` | Decide a pair the matcher never proposed. The escape hatch for blocking's one silent failure: a pair no key brings together is never scored and appears nowhere. The pair is scored on the way through, so the record still carries what the model thought — including where it disagreed with the person. Requires `resolution:decide`. |
+| GET | `/api/resolution/decisions` | `verdict`, `limit` | The append-only ledger, most recent first. |
+| GET | `/api/resolution/decisions/pair` | `left`, `right` | Full merge lineage for a pair. A list, not a current state: "merged, un-merged, merged again by someone else" is a different situation from "merged". |
+| POST | `/api/resolution/decisions/{id}/reverse` | `{rationale}` | Undo a decision by recording its opposite. Nothing is deleted. **409** if it is no longer the current decision for that pair. Requires `resolution:manage`. |
+| GET | `/api/resolution/clusters` | `contested_only`, `entity_type`, `limit` | Clusters with their members, representative record, and how that record was chosen. A **contested** cluster contains a pair judged different — ARGUS states the contradiction and refuses to resolve it. |
+| GET | `/api/resolution/entity/{ref}` | — | Everything resolution knows about one record: its cluster, its projected `SAME_AS` links, open candidates and decision history. Consumed by the entity profile. |
+| POST | `/api/resolution/clusters/pin` | `{ref, reason}` | Choose which record represents a cluster, overriding the stated rule. Requires `resolution:manage`. |
+| GET | `/api/resolution/runs` | `limit` | Sweep history, including the blocking report — how many records no key could place, and which keys stopped discriminating. |
+| POST | `/api/resolution/runs` | `{entity_types?, apply_auto?}` | Queue a sweep; returns a job id. `apply_auto: false` scores without merging, which is the mode to use after changing weights. Requires `resolution:manage`. |
+| GET | `/api/resolution/evaluations` | `limit` | Published precision and recall per model fingerprint, for both labelled datasets, each with a note stating what it does and does not measure. |
+| POST | `/api/resolution/evaluations` | `entity_type`, `sample` | Re-measure and publish. Requires `resolution:manage`. |
+| POST | `/api/resolution/rebuild-projection` | — | Re-derive every `SAME_AS` edge from the ledger. A repair tool and a proof at once: if the graph and PostgreSQL disagree, PostgreSQL wins. Requires `resolution:manage`. |
+
+`SAME_AS` is deliberately excluded from every type-agnostic graph traversal —
+connection counts, node degree, one-hop neighbours, shortest path and risk
+propagation. It is a statement about *records*, not a relationship between
+entities, and routing a path through one would manufacture a connection the
+graph never contained.
 
 ## Error responses
 

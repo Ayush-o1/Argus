@@ -1,0 +1,137 @@
+.headerActions { display: flex; align-items: center; gap: var(--space-2); }
+
+/* A contradiction ARGUS has refused to resolve is a finding, not a footnote,
+   so it gets the same treatment as a silent source on the Sources page. */
+.contestedBanner {
+  display: flex; align-items: flex-start; gap: var(--space-3);
+  padding: var(--space-4);
+  margin-bottom: var(--space-5);
+  border-radius: var(--card-radius);
+  background: rgba(255, 125, 26, 0.09);
+  border: 1px solid rgba(255, 125, 26, 0.35);
+  color: var(--risk-high);
+}
+.bannerBody { margin: var(--space-2) 0 0; font-size: var(--text-sm); color: var(--text-secondary); line-height: 1.6; }
+.contestedList { margin: var(--space-3) 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--space-2); }
+.contestedList li { display: flex; flex-direction: column; gap: 2px; font-family: var(--font-mono); font-size: var(--text-xs); }
+.contestedReason { font-family: var(--font-sans); font-size: var(--text-sm); color: var(--text-secondary); line-height: 1.55; }
+
+/* The band cards are the denominators. Showing the review count alone would
+   read as "this many duplicates exist". */
+.summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+.bandCard {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: var(--space-3) var(--space-4);
+  text-align: left;
+  border-radius: var(--card-radius);
+  background: var(--surface-raised);
+  border: 1px solid var(--surface-border-faint);
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+.bandCard:hover { border-color: var(--surface-border); }
+.bandCardActive { border-color: var(--accent); background: var(--surface-inset); }
+.bandCount { font-size: var(--text-xl); font-weight: var(--font-semibold); color: var(--text-primary); }
+.bandLabel { font-size: var(--text-sm); color: var(--text-secondary); }
+.bandMeta { font-size: var(--text-xs); color: var(--text-tertiary); }
+.bandMeaning { margin: 0 0 var(--space-5); font-size: var(--text-sm); color: var(--text-tertiary); }
+
+.columns {
+  display: grid;
+  grid-template-columns: minmax(260px, 340px) 1fr;
+  gap: var(--space-4);
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .columns { grid-template-columns: 1fr; }
+}
+
+.queueColumn { min-width: 0; }
+.detailColumn { min-width: 0; }
+
+.candidateList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.candidate {
+  width: 100%;
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
+  padding: var(--space-3);
+  border-radius: 8px;
+  background: var(--surface-raised);
+  border: 1px solid var(--surface-border-faint);
+  cursor: pointer;
+  text-align: left;
+}
+.candidate:hover { border-color: var(--surface-border); }
+.candidateActive { border-color: var(--accent); background: var(--surface-inset); }
+.candidateRefs { display: flex; align-items: center; gap: var(--space-2); font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-secondary); flex-wrap: wrap; }
+.candidateScore { display: flex; flex-direction: column; align-items: flex-end; font-size: var(--text-sm); font-weight: var(--font-medium); color: var(--text-primary); }
+.candidateEvidence { font-size: var(--text-xs); font-weight: var(--font-normal); color: var(--text-tertiary); }
+
+.detail { display: flex; flex-direction: column; gap: var(--space-4); }
+.detailHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); }
+.detailTitle { font-size: var(--text-base); color: var(--text-primary); }
+.detailTitle code { font-family: var(--font-mono); font-size: var(--text-sm); }
+.detailMeta { margin-top: 2px; font-size: var(--text-xs); color: var(--text-tertiary); }
+.fingerprint { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-tertiary); }
+.detailMeter { margin: 0; }
+
+.bandReason {
+  margin: 0;
+  padding: var(--space-3);
+  border-radius: 6px;
+  background: var(--surface-inset);
+  border-left: 2px solid var(--accent);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.blocking { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; font-size: var(--text-xs); }
+.blockingLabel { color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.04em; }
+.blockingKey { font-family: var(--font-mono); padding: 2px 6px; border-radius: 4px; background: var(--surface-inset); color: var(--text-secondary); }
+
+.decideBox { display: flex; flex-direction: column; gap: var(--space-2); }
+.decideLabel { font-size: var(--text-sm); color: var(--text-secondary); }
+.rationale {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border-radius: 6px;
+  background: var(--surface-inset);
+  border: 1px solid var(--surface-border-faint);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  resize: vertical;
+}
+.rationale:focus { outline: none; border-color: var(--accent); }
+.decideActions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.reversibleNote { margin: 0; font-size: var(--text-xs); color: var(--text-tertiary); line-height: 1.55; }
+
+.section { margin-top: var(--space-5); display: flex; flex-direction: column; gap: var(--space-3); }
+.sectionTitle { margin: 0; font-size: var(--text-base); font-weight: var(--font-semibold); color: var(--text-primary); }
+.sectionBody { margin: 0; font-size: var(--text-sm); color: var(--text-tertiary); line-height: 1.6; }
+
+.decisionList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-3); }
+.decision { padding: var(--space-3); border-radius: 8px; background: var(--surface-inset); border: 1px solid var(--surface-border-faint); }
+.decisionMain { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-secondary); }
+.decisionBy { font-family: var(--font-sans); color: var(--text-secondary); }
+.decisionAt { font-family: var(--font-sans); color: var(--text-tertiary); }
+.decisionReason { margin: var(--space-2) 0 0; font-size: var(--text-sm); color: var(--text-secondary); line-height: 1.55; }
+.reverseBox { margin-top: var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); }
+
+.evaluations { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: var(--space-4); }
+.evaluation { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border-radius: 8px; background: var(--surface-inset); border: 1px solid var(--surface-border-faint); }
+.evaluationHead { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.metrics { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-2); margin: 0; }
+.metric { display: flex; flex-direction: column; gap: 1px; }
+.metric dt { font-size: var(--text-xs); color: var(--text-tertiary); }
+.metric dd { margin: 0; font-size: var(--text-sm); font-weight: var(--font-medium); color: var(--text-primary); }
+.evaluationNote { margin: 0; font-size: var(--text-xs); color: var(--text-tertiary); line-height: 1.6; }
+
+.runFooter { margin: var(--space-4) 0 0; font-size: var(--text-xs); color: var(--text-tertiary); }
+.muted { margin: 0; font-size: var(--text-sm); color: var(--text-tertiary); line-height: 1.6; }

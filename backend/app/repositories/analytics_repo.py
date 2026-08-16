@@ -296,6 +296,7 @@ async def run_risk_propagation(driver: AsyncDriver, seed_ids: list[str], max_hop
                 """
                 MATCH (n)-[r]-(m)
                 WHERE n.id IN $frontier_ids AND NOT m.id IN $visited
+                  AND type(r) <> 'SAME_AS' 
                   AND any(l IN labels(m) WHERE l IN ['Person', 'Organization', 'Account', 'Device', 'Vehicle'])
                 RETURN DISTINCT m.id AS uuid,
                        coalesce(m.person_id, m.org_id, m.account_id, m.device_id, m.vehicle_id) AS human_id,

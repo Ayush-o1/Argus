@@ -18,14 +18,19 @@ import pytest
 import pytest_asyncio
 
 from app.config import get_settings
+from app.database.neo4j import close_neo4j, connect_neo4j
 from app.database.postgres import acquire, close_postgres, connect_postgres
 from app.ingestion.connectors import INGEST_ROOT_ENV
 from app.models.provenance import Reliability, Source, SourceType
 from app.repositories import ingest_repo, provenance_repo
+from app.repositories import resolution_graph_repo as graph_repo
 from app.services import ingest
 
 pytestmark = pytest.mark.asyncio
 
+# A real person in the graph. It has to be real: since Phase 4, ingestion
+# checks that a subject *exists* rather than only that its id has a recognised
+# prefix, so a fabricated ref would now — correctly — be dead-lettered.
 SUBJECT = "PRS-0000001"
 
 
@@ -38,6 +43,19 @@ async def feed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncIterator
     except Exception:
         pytest.skip("No PostgreSQL reachable; skipping ingestion integration tests")
     await probe.close()
+
+    # Subject resolution reads the graph, so these tests need one. Skipped
+    # rather than failed when it is absent, matching every other integration
+    # test in the suite.
+    driver = await connect_neo4j()
+    try:
+        await driver.verify_connectivity()
+    except Exception:
+        await close_neo4j()
+        pytest.skip("No Neo4j reachable; skipping ingestion integration tests")
+    if not await graph_repo.entity_exists(driver, SUBJECT):
+        await close_neo4j()
+        pytest.skip(f"{SUBJECT} is not in the graph; skipping ingestion integration tests")
 
     await connect_postgres()
 
@@ -121,6 +139,7 @@ async def feed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncIterator
         finally:
             await admin.close()
         await close_postgres()
+        await close_neo4j()
 
 
 def _write(directory: Path, name: str, records: list[dict]) -> None:
@@ -409,3 +428,37 @@ async def test_one_connector_failing_leaves_others_untouched(feed: dict) -> None
                 await admin.execute("DELETE FROM connectors WHERE connector_id = $1", other_id)
         finally:
             await admin.close()
+
+
+async def test_a_subject_that_does_not_exist_is_dead_lettered_not_recorded(
+    feed: dict,
+) -> None:
+    """A recognised prefix is not an existence check.
+
+    `PRS-9999999` passes every Phase 3 validation and names nobody. Before
+    subject resolution, this record landed as an observation about a person who
+    does not exist: no error, no dead-letter entry, and it would never have
+    appeared on any entity page. Silent loss inside a check that looked like it
+    covered the case.
+    """
+    ghost = "PRS-9999999"
+    _write(
+        feed["directory"],
+        "a.jsonl",
+        [{"entity_id": ghost, "observed_at": "2026-08-01T10:00:00Z", "note": "seen"}],
+    )
+    outcome = await ingest.run_connector(feed["connector_id"])
+
+    assert outcome.new == 0
+    assert outcome.unresolved_subjects == 1
+    assert await provenance_repo.observations_for_subject(ghost) == []
+
+    failures = await ingest_repo.list_failures(connector_id=feed["connector_id"])
+    assert len(failures) == 1
+    # A stage of its own: the remedy for "ARGUS has never heard of this person"
+    # is nothing like the remedy for a broken mapping.
+    assert failures[0]["stage"] == "resolve"
+    assert "UnresolvedSubject" in failures[0]["error_type"]
+    # And the payload is kept, so the record can be replayed once the entity
+    # exists or the mapping learns how to match it.
+    assert failures[0]["raw_id"] is not None

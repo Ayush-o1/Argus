@@ -12,17 +12,27 @@ and the reason. **Nothing is ever silently dropped.** A silent drop is the worst
 failure mode this system can have: the analyst sees no data and concludes there
 was nothing to see, when in fact ARGUS threw it away.
 
-## What this phase deliberately does not do
+## Subjects: what "resolves" means
 
 Ingestion records observations about entities that **already exist**. A record
-whose subject does not resolve to a known entity is a DLQ entry, not a new node.
+whose subject cannot be resolved to one is a DLQ entry, not a new node —
+creating entities from an unresolved feed is precisely how the same real-world
+person reported by three sources becomes three entities, and un-merging them
+afterwards is far harder than not doing it.
 
-That is a real limit and it is the right one: creating entities from an
-unresolved feed is precisely how the same real-world person reported by three
-sources becomes three entities, and un-merging them afterwards is far harder
-than not doing it. Entity resolution is the next phase; until it exists, those
-records wait in the dead-letter queue where they are visible and replayable
-rather than being turned into duplicates nobody asked for.
+Phase 3 checked only that a subject id carried a **recognised prefix**, which
+looks like existence validation and is not. A feed could record observations
+against `PRS-9999999` — a person who does not exist — and nothing anywhere
+would say so. No error, no dead-letter entry; the observation simply landed and
+would never appear on any entity page. That is the same silent-loss failure
+this pipeline was built to prevent, hiding inside a check that appeared to
+cover it.
+
+So the id is now checked against the graph. If it names nothing and the mapping
+declares `match_attributes`, the matcher is asked whether this is someone ARGUS
+already knows (Phase 4). An unambiguous match resolves the record onto the
+existing entity; anything less dead-letters it with the candidates named, which
+is a far more actionable entry than "unknown subject".
 """
 
 from __future__ import annotations
@@ -30,6 +40,9 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from typing import Any
+
+from neo4j.exceptions import ServiceUnavailable as Neo4jServiceUnavailable
+from neo4j.exceptions import SessionExpired as Neo4jSessionExpired
 
 from app.database.postgres import acquire
 from app.ingestion.base import (
@@ -47,7 +60,7 @@ from app.ingestion.mapping import (
 )
 from app.repositories import ingest_repo, provenance_repo
 from app.repositories.ingest_repo import ConnectorRow
-from app.services import queue
+from app.services import queue, resolution
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +91,15 @@ class IngestOutcome:
     error: str | None = None
     new_fields: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    #: Records dead-lettered because their subject names no entity ARGUS holds.
+    #: Counted separately from `failed` in the report because the remedy is
+    #: different: a mapping failure means the connector is misconfigured, an
+    #: unresolved subject means ARGUS has never heard of who the record is about.
+    unresolved_subjects: int = 0
+    #: Records whose subject id was unknown but which the matcher attached to an
+    #: existing entity. Surfaced because it is a judgement ARGUS made, not a
+    #: fact the source supplied.
+    matched_subjects: int = 0
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -91,6 +113,8 @@ class IngestOutcome:
             "error": self.error,
             "new_fields": self.new_fields,
             "warnings": self.warnings,
+            "unresolved_subjects": self.unresolved_subjects,
+            "matched_subjects": self.matched_subjects,
         }
 
 
@@ -169,14 +193,32 @@ async def run_connector(connector_id: str) -> IngestOutcome:
     outcome.fetched = len(result.records)
 
     for record in result.records:
-        await _process_record(
-            outcome=outcome,
-            row=row,
-            connector=connector,
-            mapping=mapping,
-            batch_id=batch_id,
-            payload=record.payload,
-        )
+        try:
+            await _process_record(
+                outcome=outcome,
+                row=row,
+                connector=connector,
+                mapping=mapping,
+                batch_id=batch_id,
+                payload=record.payload,
+            )
+        except (Neo4jServiceUnavailable, Neo4jSessionExpired) as exc:
+            # Subject resolution needs the graph. Without it ARGUS cannot tell
+            # "no such entity" from "cannot ask", so it stops rather than
+            # dead-lettering the rest of the batch under a verdict it is not in
+            # a position to give. The batch fails and is retried whole; raw
+            # records already landed, so nothing is lost or duplicated.
+            logger.warning(
+                "graph unavailable during subject resolution; failing the batch",
+                extra={"connector_id": row.connector_id, "batch_id": batch_id},
+            )
+            await _fail_batch(outcome, row.connector_id, batch_id, exc, stage="resolve")
+            await ingest_repo.mark_run(row.connector_id, succeeded=False, cursor=None)
+            outcome.warnings.append(
+                "Graph unavailable — subject resolution could not run, so the batch was "
+                "stopped rather than dead-lettering records ARGUS could not check."
+            )
+            return outcome
 
     await ingest_repo.finish_batch(
         batch_id,
@@ -267,22 +309,65 @@ async def _process_record(
             outcome.failed += 1
             return
 
-        note = None
+        # Does the subject actually exist? A recognised prefix is not an
+        # existence check, and treating it as one let observations attach to
+        # entities ARGUS does not have.
+        #
+        # A graph outage must not answer this question. "The database is down"
+        # and "this person does not exist" are different facts, and conflating
+        # them would fill the dead-letter queue with permanent-looking verdicts
+        # that were really a transient outage — which someone would then have to
+        # replay by hand, one record at a time. So the exception propagates and
+        # the batch fails, to be retried whole.
+        subject = await resolution.resolve_subject(
+            mapped.subject_ref,
+            attributes=mapped.match_attributes,
+            origin=row.source_id,
+        )
+        if not subject.resolved:
+            await ingest_repo.mark_raw(conn, raw_id, status="failed")
+            await ingest_repo.record_failure(
+                conn,
+                connector_id=row.connector_id,
+                batch_id=batch_id,
+                raw_id=raw_id,
+                stage="resolve",
+                error_type=f"UnresolvedSubject:{subject.status}",
+                error_detail=_resolution_detail(subject),
+            )
+            outcome.failed += 1
+            outcome.unresolved_subjects += 1
+            return
+
+        subject_ref = subject.ref or mapped.subject_ref
+
+        notes: list[str] = []
         if mapped.unresolved_timestamps:
             # Recorded on the observation itself, not just logged. The whole
             # point of the provenance layer is that a gap in what ARGUS knows
             # is visible on the record, where an analyst reading it will see it.
-            note = (
+            notes.append(
                 "Timestamps the source supplied could not be resolved to an instant: "
                 + "; ".join(mapped.unresolved_timestamps)
             )
+        if subject.status == "matched":
+            # The record named one id and ARGUS attached it to another. That is
+            # a judgement, so it is recorded on the observation rather than
+            # applied invisibly — a reader must be able to see that the subject
+            # was resolved by matching and on what basis.
+            notes.append(
+                f"Source named subject {mapped.subject_ref}, which ARGUS does not hold. "
+                f"{subject.detail}"
+            )
+            outcome.matched_subjects += 1
+        note = " | ".join(notes) if notes else None
 
         try:
             observation_id, created = await provenance_repo.record_observation(
                 source_id=row.source_id,
                 content_type=mapped.content_type,
                 payload=mapped.payload,
-                subjects=[(mapped.subject_ref, mapped.subject_type)],
+                subjects=[(subject_ref, mapped.subject_type)],
                 occurred_at=mapped.occurred_at,
                 collected_at=mapped.collected_at,
                 provenance_note=note,
@@ -316,6 +401,34 @@ async def _process_record(
             # an earlier one. Counted as a duplicate so corroboration is not
             # inflated by a record that added nothing.
             outcome.duplicate += 1
+
+
+def _resolution_detail(subject: resolution.SubjectResolution) -> str:
+    """The dead-letter reason for an unresolved subject.
+
+    Names the candidates when there were any. "Unknown subject PRS-9999999" is
+    true and useless; "unknown, but these three records are plausible matches
+    and here is what agreed and what did not" is something an analyst can
+    actually act on — either by merging, or by concluding this really is
+    someone new.
+    """
+    parts = [subject.detail]
+    if subject.candidates:
+        described = "; ".join(
+            f"{c['ref']} (score "
+            + (f"{c['score']:.2f}" if c["score"] is not None else "n/a")
+            + f", {c['evidence_weight']:.0%} of evidence comparable"
+            + (f", agrees on {', '.join(c['agreed_on'])}" if c["agreed_on"] else "")
+            + (f", disagrees on {', '.join(c['disagreed_on'])}" if c["disagreed_on"] else "")
+            + ")"
+            for c in subject.candidates
+        )
+        parts.append(f"Closest existing records: {described}.")
+    if subject.search_truncated:
+        parts.append(
+            "The candidate search hit its ceiling, so this list is not exhaustive."
+        )
+    return " ".join(parts)
 
 
 async def _assess_quality(outcome: IngestOutcome, row: ConnectorRow) -> None:

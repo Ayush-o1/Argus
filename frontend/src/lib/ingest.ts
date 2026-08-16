@@ -51,7 +51,7 @@ export interface IngestFailure {
   connector_id: string;
   connector_name: string;
   batch_id: number | null;
-  stage: "fetch" | "validate" | "normalize" | "persist";
+  stage: "fetch" | "validate" | "normalize" | "resolve" | "persist";
   error_type: string;
   error_detail: string;
   occurred_at: string;
@@ -65,5 +65,8 @@ export const STAGE_MEANING: Record<IngestFailure["stage"], string> = {
   fetch: "ARGUS could not reach or read the source at all.",
   validate: "The record arrived but did not satisfy this source's mapping.",
   normalize: "A field could not be converted into the shape ARGUS stores.",
+  // Its own stage because the remedy is nothing like a mapping fix: the record
+  // is well-formed and ARGUS has simply never heard of who it is about.
+  resolve: "The record is valid, but its subject matches no entity ARGUS holds.",
   persist: "The record was valid but could not be written.",
 };

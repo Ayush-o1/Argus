@@ -25,6 +25,7 @@ from app.api.routes import (
     graph,
     ingest,
     provenance,
+    resolution,
     scenario,
     search,
     timeline,
@@ -87,6 +88,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # handler; without the import the worker would start with no known kinds and
     # quietly consume nothing — a stall that looks exactly like an empty queue.
     from app.services import ingest as _ingest  # noqa: F401  (handler registration)
+    from app.services import resolution as _resolution  # noqa: F401  (handler registration)
 
     worker = queue.Worker(
         poll_interval=settings.job_poll_seconds,
@@ -245,6 +247,7 @@ app.include_router(dashboard.router)
 app.include_router(entities.router)
 app.include_router(provenance.router)
 app.include_router(ingest.router)
+app.include_router(resolution.router)
 app.include_router(graph.router)
 app.include_router(analytics.router)
 app.include_router(cases.router)

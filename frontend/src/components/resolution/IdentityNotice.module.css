@@ -1,0 +1,46 @@
+.notice,
+.contested {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+  border-radius: var(--card-radius);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+
+.notice {
+  background: var(--surface-inset);
+  border: 1px solid var(--surface-border-faint);
+  color: var(--accent);
+}
+
+/* A contradiction ARGUS has declined to resolve reads as a warning, not as
+   information — everything aggregated across the cluster is unsettled. */
+.contested {
+  background: rgba(255, 125, 26, 0.09);
+  border: 1px solid rgba(255, 125, 26, 0.35);
+  color: var(--risk-high);
+}
+
+.body { color: var(--text-secondary); }
+.body strong { color: var(--text-primary); }
+
+.members { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
+.member {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--surface-raised);
+  border: 1px solid var(--surface-border-faint);
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+.member:hover { border-color: var(--accent); color: var(--text-primary); }
+
+.canonical { margin-top: var(--space-2); font-size: var(--text-xs); color: var(--text-tertiary); }
+.canonical code { font-family: var(--font-mono); }
+.link { color: var(--accent); text-decoration: none; }
+.link:hover { text-decoration: underline; }

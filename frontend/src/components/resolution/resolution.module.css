@@ -1,0 +1,70 @@
+/* ── The comparison table ─────────────────────────────────────────────────── */
+
+.comparison {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+.comparison thead th {
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-xs);
+  font-weight: var(--font-medium);
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--surface-border-faint);
+}
+.comparison thead th:nth-child(2),
+.comparison thead th:nth-child(3) { font-family: var(--font-mono); text-transform: none; letter-spacing: 0; }
+.comparison tbody tr { border-bottom: 1px solid var(--surface-border-faint); }
+.comparison tbody tr:last-child { border-bottom: none; }
+.comparison td,
+.comparison tbody th { padding: var(--space-2) var(--space-3); vertical-align: top; }
+
+.attributeName {
+  text-align: left;
+  font-weight: var(--font-medium);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+/* The score is a weighted mean, so a row's weight is part of reading it —
+   without it, "name agrees" and "colour agrees" look equally strong. */
+.weight { margin-left: var(--space-2); font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-tertiary); font-weight: var(--font-normal); }
+
+.value { color: var(--text-primary); word-break: break-word; }
+.verdict { display: flex; align-items: center; gap: var(--space-2); white-space: nowrap; font-size: var(--text-xs); }
+.subScore { font-family: var(--font-mono); color: var(--text-tertiary); }
+
+.row_agree { color: var(--status-ok); }
+.row_agree .value,
+.row_partial .value,
+.row_disagree .value,
+.row_not_comparable .value { color: var(--text-primary); }
+.row_partial { color: var(--risk-medium); }
+.row_disagree { color: var(--risk-critical); }
+
+/* Not a faded, forgettable row. "ARGUS cannot compare these" is a real state
+   an analyst has to read, not an absence — and rendering it as a blank would
+   let it be mistaken for agreement. */
+.row_not_comparable { color: var(--text-tertiary); }
+.row_not_comparable .value { color: var(--text-tertiary); font-style: italic; }
+
+/* ── The evidence meter ───────────────────────────────────────────────────── */
+
+.meter { display: flex; align-items: center; gap: var(--space-4); }
+.meterScore {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xl);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+  line-height: 1;
+  min-width: 4ch;
+}
+.meterBody { flex: 1; display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+.meterTrack { height: 6px; border-radius: 3px; background: var(--surface-inset); overflow: hidden; }
+.meterFill { height: 100%; border-radius: 3px; background: var(--accent); }
+/* Thin evidence is coloured as a caution rather than left looking the same as
+   a well-supported score at the same value. */
+.meterFillThin { background: var(--risk-medium); }
+.meterLabel { font-size: var(--text-xs); color: var(--text-tertiary); }

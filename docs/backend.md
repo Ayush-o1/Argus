@@ -25,6 +25,7 @@ backend/app/
 │       ├── graph.py
 │       ├── map.py
 │       ├── provenance.py      # sources, observations, assertions, conflicts
+│       ├── resolution.py      # review queue, decision ledger, clusters, evaluations
 │       ├── scenario.py
 │       ├── search.py
 │       └── timeline.py
@@ -34,6 +35,8 @@ backend/app/
 │   ├── redis.py              # process-wide Redis client singleton
 │   ├── migrations/           # Neo4j migrations, forward-only, applied at startup
 │   └── pg_migrations/        # PostgreSQL migrations, ditto
+├── resolution/               # matching: normalise, compare, block, score, cluster, evaluate
+│   │                         # pure — no I/O, so a merge is re-derivable from the record alone
 ├── ingestion/
 │   ├── base.py               # Connector ABC + registry; secrets read by env-var name
 │   ├── connectors.py         # filesystem drop folder, http_json poller
@@ -69,7 +72,8 @@ backend/app/
     ├── jobs.py                # async-job + Redis-status primitive (analytics, scenario)
     ├── queue.py               # durable Postgres job queue + worker
     ├── scheduler.py           # queues connector runs when their interval elapses
-    ├── ingest.py              # the pipeline: land, validate, observe, quarantine, replay
+    ├── ingest.py              # the pipeline: land, validate, resolve, observe, quarantine, replay
+    ├── resolution.py          # runs, decisions, clusters, subject lookup — every DB call for matching
     ├── anomaly.py             # Isolation Forest + z-score detection
     ├── narrative.py           # deterministic template NLG
     ├── ollama.py              # optional local-LLM adapter

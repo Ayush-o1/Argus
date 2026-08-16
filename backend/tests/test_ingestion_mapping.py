@@ -182,3 +182,52 @@ def test_field_paths_is_depth_bounded() -> None:
     paths = field_paths(deep)
     assert paths
     assert max(p.count(".") for p in paths) <= 6
+
+
+# ── Match attributes (Phase 4) ───────────────────────────────────────────────
+
+
+def test_a_mapping_may_declare_attributes_for_matching() -> None:
+    mapping = RecordMapping.from_config(
+        {
+            "content_type": "t",
+            "subject_path": "ref",
+            "match_attributes": {"name": "subject.full_name", "phone": "subject.tel"},
+        }
+    )
+    mapped = apply_mapping(
+        {"ref": "PRS-0000001", "subject": {"full_name": "Sarah Ellis", "tel": "+1 645221119"}},
+        mapping,
+    )
+    assert mapped.match_attributes == {"name": "Sarah Ellis", "phone": "+1 645221119"}
+
+
+def test_an_unknown_match_attribute_is_refused_at_configuration_time() -> None:
+    """Rather than being ignored at match time while appearing to do something.
+
+    A feed that declares `email` — which no rule scores — would otherwise look
+    configured for matching and contribute nothing.
+    """
+    with pytest.raises(InvalidMapping, match="unknown match attribute"):
+        RecordMapping.from_config(
+            {"content_type": "t", "subject_path": "ref", "match_attributes": {"email": "e"}}
+        )
+
+
+def test_match_attributes_are_optional() -> None:
+    mapping = RecordMapping.from_config({"content_type": "t", "subject_path": "ref"})
+    assert mapping.match_attributes == {}
+    assert apply_mapping({"ref": "PRS-0000001"}, mapping).match_attributes == {}
+
+
+def test_a_missing_match_attribute_is_absent_rather_than_empty() -> None:
+    """An empty string is a value the comparators would try to compare."""
+    mapping = RecordMapping.from_config(
+        {
+            "content_type": "t",
+            "subject_path": "ref",
+            "match_attributes": {"name": "n", "phone": "p"},
+        }
+    )
+    mapped = apply_mapping({"ref": "PRS-0000001", "n": "Sarah Ellis", "p": ""}, mapping)
+    assert mapped.match_attributes == {"name": "Sarah Ellis"}

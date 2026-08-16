@@ -190,6 +190,23 @@ Reliability and credibility are stored as characters, not integers, on purpose: 
 | `ingest_failures` | The dead-letter queue: stage, error, and the payload it refers to. Immutable except for its resolution. |
 | `connector_field_stats` | Every field a source has ever sent. A source that quietly renames or drops one does not error — it just stops populating something, and every derived figure silently degrades. |
 
+**Entity resolution** — the ledger, and the projections derived from it:
+
+| Table | Purpose |
+|---|---|
+| `resolution_runs` | One row per sweep, with the model fingerprint it ran under and a blocking report: how many records no key could place, and which keys matched so many records they stopped discriminating. A silent loss of recall is the one failure in this pipeline that leaves no other trace. |
+| `resolution_candidates` | A scored pair with **every** attribute comparison kept, including the ones that could not be made — storing only the agreements would produce a review screen that argues for the merge and never against it. `score` is nullable: a pair with nothing comparable has no score, and `0.0` would say "definitely different". `evidence_weight` is its denominator. One row per pair, with `left_ref < right_ref` enforced. |
+| `resolution_decisions` | **The record.** Append-only, enforced by trigger for every role. There is no `active` column: the current decision for a pair is simply the highest `decision_id`, so reversing a merge is an INSERT and nothing is ever rewritten. Both entity records are untouched throughout, which is why a merge is reversible without a restore. |
+| `resolution_clusters`, `resolution_cluster_members` | Connected components over active merges — a **derived cache**, safe to drop and rebuild from the ledger. A component containing a pair judged different is flagged `contested` with a stated reason; ARGUS does not choose which decision to discard. |
+| `resolution_canonical_pins` | An analyst's choice of which record represents a cluster. Pinned by ref rather than by cluster, because cluster identity changes as members join while the judgement about the record does not. |
+| `resolution_blocking_index` | Which coarse keys each record falls under. Exists for the single-record path: when a feed delivers a subject ARGUS does not hold, one indexed lookup per key answers "is this anyone we already have?" without scoring against the whole population. |
+| `resolution_labels`, `resolution_evaluations` | Ground truth and the measurements taken against it, both append-only. A precision figure computed against a set that can be quietly edited is a claim, not a measurement. |
+
+Nothing in the resolution schema can modify or delete an entity. There is no
+`merged_into` column, no tombstone, no surviving-record pointer — the acceptance
+criterion *"a merge never destroys either source record"* is a property of the
+data model rather than of careful coding.
+
 ### How immutability is enforced
 
 Two independent layers, because either alone is weaker than it looks:

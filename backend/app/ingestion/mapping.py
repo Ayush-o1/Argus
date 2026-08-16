@@ -54,6 +54,14 @@ class RecordMapping:
     #: unstated means the instant stays unknown rather than being guessed.
     timezone: str | None = None
     required_fields: list[str] = field(default_factory=list)
+    #: Optional: profile attribute -> dotted path, e.g. {"name": "subject.full_name"}.
+    #: When a record's subject id names no entity ARGUS holds, these let the
+    #: matcher ask "is this someone we already know?" instead of dead-lettering
+    #: with nothing but an unrecognised id. Keys are the matcher's vocabulary,
+    #: and unknown ones are refused at configuration time rather than silently
+    #: ignored — a mapping that looks like it is doing something and is not is
+    #: worse than one that fails.
+    match_attributes: dict[str, str] = field(default_factory=dict)
 
     @classmethod
     def from_config(cls, raw: dict[str, Any]) -> RecordMapping:
@@ -73,6 +81,21 @@ class RecordMapping:
         if not isinstance(required, list):
             raise InvalidMapping("`required_fields` must be a list")
 
+        match_attributes = raw.get("match_attributes") or {}
+        if not isinstance(match_attributes, dict):
+            raise InvalidMapping("`match_attributes` must be an object of attribute -> path")
+        # Imported here rather than at module scope: `app.resolution` imports
+        # nothing from ingestion, and keeping the dependency one-directional and
+        # lazy stops a cycle if that ever changes.
+        from app.resolution.profile import MATCHABLE_ATTRIBUTES
+
+        unknown = sorted(set(match_attributes) - MATCHABLE_ATTRIBUTES)
+        if unknown:
+            raise InvalidMapping(
+                f"unknown match attribute(s): {', '.join(unknown)}. "
+                f"Known: {', '.join(sorted(MATCHABLE_ATTRIBUTES))}"
+            )
+
         return cls(
             content_type=str(content_type),
             subject_path=str(subject_path),
@@ -80,6 +103,7 @@ class RecordMapping:
             collected_at_path=_optional_str(raw.get("collected_at_path")),
             timezone=str(zone) if zone is not None else None,
             required_fields=[str(f) for f in required],
+            match_attributes={str(k): str(v) for k, v in match_attributes.items()},
         )
 
 
@@ -99,6 +123,9 @@ class MappedRecord:
     #: Carried into the observation's note so the gap is visible on the record
     #: itself, not only in a log nobody reads.
     unresolved_timestamps: tuple[str, ...] = ()
+    #: Attribute values pulled out for the matcher, when the mapping declared
+    #: any. Empty is the normal case for a feed whose subject ids are reliable.
+    match_attributes: dict[str, Any] = field(default_factory=dict)
 
 
 def dig(payload: dict[str, Any], path: str) -> Any:
@@ -139,6 +166,12 @@ def apply_mapping(payload: dict[str, Any], mapping: RecordMapping) -> MappedReco
     occurred_at = _timestamp(payload, mapping.occurred_at_path, mapping, unresolved)
     collected_at = _timestamp(payload, mapping.collected_at_path, mapping, unresolved)
 
+    matched = {
+        attribute: value
+        for attribute, path in mapping.match_attributes.items()
+        if (value := dig(payload, path)) not in (None, "", [])
+    }
+
     return MappedRecord(
         subject_ref=subject_ref,
         subject_type=info.label,
@@ -147,6 +180,7 @@ def apply_mapping(payload: dict[str, Any], mapping: RecordMapping) -> MappedReco
         collected_at=collected_at,
         payload=payload,
         unresolved_timestamps=tuple(unresolved),
+        match_attributes=matched,
     )
 
 

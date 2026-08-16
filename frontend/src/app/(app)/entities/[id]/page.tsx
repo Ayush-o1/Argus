@@ -13,6 +13,7 @@ import { RiskBadge, riskLevelFromScore } from "@/components/ui/RiskBadge";
 import { RiskScoreWidget } from "@/components/entity/RiskScoreWidget";
 import { EntityTypeIcon } from "@/components/entity/EntityTypeIcon";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { IdentityNotice } from "@/components/resolution/IdentityNotice";
 import { Tabs } from "@/components/ui/Tabs";
 import { PageShell } from "@/components/layout/PageShell";
 import { useEntity, useEntityAlerts, useEntityCases, useEntityTimeline } from "@/hooks/useEntities";
@@ -163,6 +164,12 @@ export default function EntityProfilePage() {
           ) : null}
         </div>
       </div>
+
+      {/* Whether this record is one of several describing the same entity
+          changes how every count below should be read, so it sits above them
+          rather than behind a tab. Renders nothing when the record stands
+          alone. */}
+      <IdentityNotice entityRef={entityId} />
 
       {/* Whether an entity is already under investigation changes what the
           analyst should do next, so it belongs on arrival rather than three

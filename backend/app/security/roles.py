@@ -59,6 +59,21 @@ class Permission(StrEnum):
     INGEST_READ = "ingest:read"
     INGEST_MANAGE = "ingest:manage"
 
+    # Entity resolution. Reading the review queue is reading intelligence —
+    # a candidate pair displays two records' attributes side by side — so it
+    # travels with the rest of the read set rather than with pipeline
+    # operation, and an administrator does not get it.
+    RESOLUTION_READ = "resolution:read"
+    # Deciding that two records are the same person, or that they are not.
+    # Held from viewers and auditors, and separate from `assertion:write`
+    # because a merge changes what every other surface shows about both
+    # records, where an assertion adds a claim beside them.
+    RESOLUTION_DECIDE = "resolution:decide"
+    # Reversing someone else's merge, pinning a cluster's canonical record, and
+    # triggering a matcher sweep. Above analyst for the same reason retraction
+    # is: undoing a colleague's decision is a judgement about their work.
+    RESOLUTION_MANAGE = "resolution:manage"
+
     # Expensive or graph-mutating operations
     ANALYTICS_RUN = "analytics:run"
     SCENARIO_GENERATE = "scenario:generate"
@@ -85,6 +100,11 @@ _READ_INTELLIGENCE = frozenset(
         # feed broke. An analyst who cannot tell those apart is being misled by
         # omission, so pipeline health travels with the intelligence it feeds.
         Permission.INGEST_READ,
+        # Whether ARGUS thinks two records are one entity changes how every
+        # count, connection and timeline on those records should be read. A
+        # reader shown "3 accounts" who cannot see that two of the owners are
+        # believed to be the same person has been given a misleading number.
+        Permission.RESOLUTION_READ,
     }
 )
 
@@ -98,6 +118,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
         Permission.EVIDENCE_LINK,
         Permission.ANALYTICS_RUN,
         Permission.ASSERTION_WRITE,
+        Permission.RESOLUTION_DECIDE,
     },
     Role.INVESTIGATOR: _READ_INTELLIGENCE
     | {
@@ -109,6 +130,8 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
         Permission.ANALYTICS_RUN,
         Permission.ASSERTION_WRITE,
         Permission.ASSERTION_RETRACT,
+        Permission.RESOLUTION_DECIDE,
+        Permission.RESOLUTION_MANAGE,
     },
     Role.SUPERVISOR: _READ_INTELLIGENCE
     | {
@@ -123,6 +146,8 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
         Permission.INGEST_MANAGE,
         Permission.SCENARIO_GENERATE,
         Permission.AUDIT_READ,
+        Permission.RESOLUTION_DECIDE,
+        Permission.RESOLUTION_MANAGE,
     },
     # No intelligence-read permissions. Deliberate: see the module docstring.
     #

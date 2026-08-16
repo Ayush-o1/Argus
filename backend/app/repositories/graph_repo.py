@@ -35,6 +35,7 @@ async def get_node_by_human_id(driver: AsyncDriver, human_id: str) -> dict | Non
     query = f"""
     MATCH (n:{info.label} {{{info.id_field}: $human_id}})
     OPTIONAL MATCH (n)-[r]-()
+    WHERE type(r) <> 'SAME_AS'
     RETURN n, labels(n)[0] AS label, count(r) AS degree
     """
     async with driver.session() as session:
@@ -55,6 +56,7 @@ async def get_one_hop_neighbors(driver: AsyncDriver, human_id: str, limit: int =
 
     query = f"""
     MATCH (n:{info.label} {{{info.id_field}: $human_id}})-[r]-(m)
+    WHERE type(r) <> 'SAME_AS'
     RETURN n, r, m, labels(m)[0] AS other_label, type(r) AS rel_type,
            startNode(r) = n AS outgoing
     LIMIT $limit
@@ -282,7 +284,8 @@ async def shortest_path(driver: AsyncDriver, from_id: str, to_id: str) -> dict |
     query = f"""
     MATCH (a:{from_info.label} {{{from_info.id_field}: $from_id}})
     MATCH (b:{to_info.label} {{{to_info.id_field}: $to_id}})
-    MATCH path = shortestPath((a)-[*..8]-(b))
+    MATCH path = shortestPath((a)-[rels*..8]-(b))
+    WHERE none(rel IN rels WHERE type(rel) = 'SAME_AS')
     RETURN path
     """
     async with driver.session() as session:
@@ -313,6 +316,7 @@ async def get_overview_subgraph(driver: AsyncDriver, seed_limit: int = 25, edge_
     MATCH (seed) WHERE (seed:Person OR seed:Organization) AND seed.risk_score > 0
     WITH seed ORDER BY seed.risk_score DESC LIMIT $seed_limit
     MATCH (seed)-[r]-(m)
+    WHERE type(r) <> 'SAME_AS'
     RETURN seed, r, m, labels(seed)[0] AS seed_label, labels(m)[0] AS other_label,
            type(r) AS rel_type, startNode(r) = seed AS outgoing
     LIMIT $edge_limit
