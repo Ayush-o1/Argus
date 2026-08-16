@@ -110,9 +110,36 @@ npm install
 npm run dev
 ```
 
-- Frontend: http://localhost:3000 — sign in with the account from step 3
-- Backend API docs: http://localhost:8000/docs
-- Neo4j Browser: http://localhost:7474
+Or with `make`, which does the same thing in fewer keystrokes:
+
+```bash
+make setup      # .env, both virtualenvs, npm install
+make infra-up   # Neo4j + Redis + PostgreSQL, waits for health
+make seed       # generate the world and attribute it to its source
+make backend    # terminal 2
+make frontend   # terminal 3
+```
+
+| What | Where |
+|---|---|
+| Frontend | http://localhost:3000 — sign in with the account from step 3 |
+| Backend API | http://localhost:8000 |
+| API documentation | http://localhost:8000/docs (OpenAPI at `/openapi.json`) |
+| Health check | http://localhost:8000/api/health · liveness `/livez` · readiness `/readyz` |
+| Neo4j Browser | http://localhost:7474 |
+
+**There are no default credentials.** No account exists until you create one with
+`create-user`, and the password is read from a prompt or `ARGUS_NEW_USER_PASSWORD`,
+never from the command line where it would land in your shell history. That is
+deliberate: a shipped default account is a shipped vulnerability, and one that
+survives into production more often than not.
+
+**Stopping and resetting.** `make stop` stops the backend, the frontend and the
+databases, keeping all data. `make reset` destroys the local volumes — the graph,
+every account, the audit chain and the provenance store — and is named separately
+so it cannot be run by reflex.
+
+For a step-by-step manual test pass, see [docs/LOCAL_TESTING.md](docs/LOCAL_TESTING.md).
 
 > Roles are least-privilege and separated on purpose: an **administrator** manages users and cannot
 > read intelligence, and an **auditor** reads the audit log and cannot change anything. If a page
@@ -129,6 +156,7 @@ Every environment variable, its default, and what it affects is documented in [d
 - Backend: `ruff check .` / `mypy app` / `pytest` from `backend/` (dev extras: `pip install -e ".[dev]"`).
 - Frontend: `npm run lint`, `npx tsc --noEmit`, `npm run build` from `frontend/`.
 - `make lint` / `make typecheck` / `make test` run the equivalent checks from the repo root.
+- `make ci` runs **everything CI runs, in CI's order** — ruff, mypy, pytest, pip-audit, bandit, eslint, tsc, npm audit and the production build — so a red pipeline can be reproduced before pushing rather than after. Note that the integration tests need the databases up (`make infra-up`); CI treats a *skipped* integration test as a failure, because a green run that exercised nothing is worse than a red one.
 - GitHub Actions (`.github/workflows/ci.yml`) runs all of the above on every push and PR to `main`.
 - Schema changes are numbered, forward-only migrations applied at startup — Neo4j in `backend/app/database/migrations/`, PostgreSQL in `backend/app/database/pg_migrations/`. They are deliberately not a side effect of running the generator, whose default path rewrites the graph.
 - `python -m app.cli verify-audit` recomputes the audit hash chain; it is the check that makes the log tamper-*evident* rather than merely tamper-resistant.

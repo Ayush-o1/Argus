@@ -97,7 +97,33 @@ async def test_application_role_may_insert_but_not_mutate(pg: asyncpg.Connection
 
 async def test_triggers_block_mutation_even_for_the_superuser(pg_admin: asyncpg.Connection) -> None:
     """Privilege alone is not the only guard: the triggers apply to every role,
-    so erasing a record takes two deliberate acts rather than one."""
+    so erasing a record takes two deliberate acts rather than one.
+
+    The row is written first, and that is not incidental. `UPDATE` and `DELETE`
+    triggers are `FOR EACH ROW`, so on an empty table they never fire and the
+    statement succeeds trivially — the assertion passes or fails depending on
+    whether the database happened to have data. Locally it always did; in CI,
+    against a freshly migrated database, this test failed on every run from the
+    moment the audit log was introduced.
+    """
+    from app.database.postgres import close_postgres, connect_postgres
+
+    await connect_postgres()
+    try:
+        await audit.record(
+            audit.AuditEvent(
+                action=f"test.trigger.{uuid.uuid4().hex[:8]}",
+                outcome="success",
+                actor_username="pytest",
+                resource_type="Probe",
+                resource_id="trigger-guard",
+            )
+        )
+    finally:
+        await close_postgres()
+
+    assert await pg_admin.fetchval("SELECT count(*) FROM audit_events") > 0
+
     for statement in (
         "UPDATE audit_events SET action = 'tampered'",
         "DELETE FROM audit_events WHERE true",
@@ -229,3 +255,86 @@ async def test_verification_detects_a_removed_row(
         assert (await audit.verify_chain()).ok, "restoring the exact row must repair the chain"
     finally:
         await close_postgres()
+
+
+async def test_audit_log_filters_combine_and_ignore_blanks(pg: asyncpg.Connection) -> None:
+    """The audit listing's filters, against a real database.
+
+    Covers the endpoint's query directly. It was previously assembled with
+    f-strings — safely, but in a shape that made safety a matter of reading the
+    loop rather than of the code's form. Rewriting it to static SQL is only an
+    improvement if the behaviour it replaced is pinned, and nothing pinned it.
+    """
+    from app.api.routes.admin import read_audit_log
+    from app.database.postgres import close_postgres, connect_postgres
+
+    marker = f"test.filter.{uuid.uuid4().hex[:8]}"
+    other = f"test.other.{uuid.uuid4().hex[:8]}"
+
+    await connect_postgres()
+    try:
+        for index in range(3):
+            await audit.record(
+                audit.AuditEvent(
+                    action=marker,
+                    outcome="success",
+                    actor_username="filter-probe",
+                    resource_type="Probe",
+                    resource_id=f"res-{index}",
+                )
+            )
+        await audit.record(
+            audit.AuditEvent(
+                action=other,
+                outcome="success",
+                actor_username="someone-else",
+                resource_type="Probe",
+                resource_id="res-0",
+            )
+        )
+    finally:
+        await close_postgres()
+
+    # Called directly rather than over HTTP, so FastAPI's `Query(...)` defaults
+    # are never resolved — every parameter has to be passed explicitly.
+    async def read(
+        action: str | None = None,
+        resource_id: str | None = None,
+        actor_username: str | None = None,
+        page: int = 1,
+        page_size: int = 50,
+    ):
+        return await read_audit_log(
+            action=action,
+            resource_id=resource_id,
+            actor_username=actor_username,
+            page=page,
+            page_size=page_size,
+            conn=pg,
+            _=None,  # type: ignore[arg-type]
+        )
+
+    by_action = await read(action=marker)
+    assert by_action.meta is not None and by_action.meta.total == 3
+    assert {row["action"] for row in by_action.data} == {marker}
+
+    # Filters combine with AND rather than OR.
+    combined = await read(action=marker, resource_id="res-0")
+    assert combined.meta is not None and combined.meta.total == 1
+
+    # A filter that matches nothing returns nothing, not everything.
+    assert (await read(action=marker, actor_username="someone-else")).meta.total == 0  # type: ignore[union-attr]
+
+    # A blank filter means "no filter", not "match the empty string" — the
+    # behaviour the previous `if value:` guard gave, preserved deliberately.
+    blank = await read(action="", resource_id="")
+    unfiltered = await read()
+    assert blank.meta is not None and unfiltered.meta is not None
+    assert blank.meta.total == unfiltered.meta.total > 0
+
+    # Paging returns distinct rows, newest first.
+    page1 = await read(action=marker, page=1, page_size=2)
+    page2 = await read(action=marker, page=2, page_size=2)
+    assert len(page1.data) == 2 and len(page2.data) == 1
+    assert {r["seq"] for r in page1.data}.isdisjoint({r["seq"] for r in page2.data})
+    assert page1.data[0]["seq"] > page1.data[1]["seq"]

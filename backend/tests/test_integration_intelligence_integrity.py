@@ -149,18 +149,42 @@ async def test_timeline_is_deterministic_and_complete(graph: AsyncDriver) -> Non
     assert totals["value"] == sum(first["totals"]["by_lane"].values())
 
 
-async def test_timeline_day_series_is_contiguous(graph: AsyncDriver) -> None:
+async def test_timeline_day_series_is_contiguous(graph: AsyncDriver, tag: str) -> None:
     """B-18. Days with no activity were omitted, so the mean was computed over
-    non-empty days only, inflating it and suppressing genuine bursts."""
+    non-empty days only, inflating it and suppressing genuine bursts.
+
+    The gap is created here rather than borrowed from whatever the graph
+    happens to hold. Two events three days apart guarantee two empty days in
+    between, so zero-filling is actually exercised — where previously the test
+    skipped itself on a graph with too little spread, which against a freshly
+    migrated database meant it never ran at all.
+    """
     from datetime import date, timedelta
 
+    async with graph.session() as session:
+        await session.run(
+            """
+            UNWIND $stamps AS stamp
+            CREATE (e:Event {event_id: 'EVT-' + stamp, type: 'test', timestamp: stamp,
+                             flagged: false, _test_tag: $tag})
+            """,
+            stamps=["2019-03-01T09:00:00", "2019-03-04T09:00:00"],
+            tag=tag,
+        )
+
     buckets = (await timeline_repo.get_global_timeline(graph))["buckets"]
-    if len(buckets) < 2:
-        pytest.skip("graph has too little temporal spread to test contiguity")
+    assert len(buckets) >= 4, "the seeded events must produce a spread to check"
 
     days = [date.fromisoformat(b["day"]) for b in buckets]
     expected = [days[0] + timedelta(days=i) for i in range((days[-1] - days[0]).days + 1)]
     assert days == expected, "day series must be zero-filled and contiguous"
+
+    # The two days between the seeded events must be present and empty — the
+    # exact case B-18 was about.
+    seeded = {b["day"]: b for b in buckets}
+    for empty_day in ("2019-03-02", "2019-03-03"):
+        assert empty_day in seeded, f"{empty_day} was omitted instead of zero-filled"
+        assert seeded[empty_day]["total"] == 0
 
 
 async def test_timeline_bucket_totals_equal_lane_totals(graph: AsyncDriver) -> None:

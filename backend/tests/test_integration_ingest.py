@@ -23,15 +23,23 @@ from app.database.postgres import acquire, close_postgres, connect_postgres
 from app.ingestion.connectors import INGEST_ROOT_ENV
 from app.models.provenance import Reliability, Source, SourceType
 from app.repositories import ingest_repo, provenance_repo
-from app.repositories import resolution_graph_repo as graph_repo
 from app.services import ingest
 
 pytestmark = pytest.mark.asyncio
 
-# A real person in the graph. It has to be real: since Phase 4, ingestion
-# checks that a subject *exists* rather than only that its id has a recognised
-# prefix, so a fabricated ref would now — correctly — be dead-lettered.
-SUBJECT = "PRS-0000001"
+# Since Phase 4, ingestion checks that a subject *exists* rather than only that
+# its id has a recognised prefix, so these tests need a real node to point at.
+#
+# The fixture creates it rather than relying on one being there. Depending on
+# seeded generator data made the whole file skip against a freshly migrated
+# graph — which is exactly what CI has — and CI correctly treats a skipped
+# integration test as a failure, because a green run that exercised nothing is
+# worse than a red one.
+#
+# The id sits far outside the generator's allocations so it can never collide
+# with, or be mistaken for, a real record.
+SUBJECT = "PRS-9910001"
+SUBJECT_MARKER = "argus-ingest-test"
 
 
 @pytest_asyncio.fixture
@@ -53,9 +61,18 @@ async def feed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncIterator
     except Exception:
         await close_neo4j()
         pytest.skip("No Neo4j reachable; skipping ingestion integration tests")
-    if not await graph_repo.entity_exists(driver, SUBJECT):
-        await close_neo4j()
-        pytest.skip(f"{SUBJECT} is not in the graph; skipping ingestion integration tests")
+
+    async with driver.session() as session:
+        await session.run(
+            """
+            MERGE (p:Person {person_id: $ref})
+            SET p.id = coalesce(p.id, randomUUID()),
+                p.name = 'Ingest Fixture Subject',
+                p.marker = $marker
+            """,
+            ref=SUBJECT,
+            marker=SUBJECT_MARKER,
+        )
 
     await connect_postgres()
 
@@ -139,6 +156,10 @@ async def feed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncIterator
         finally:
             await admin.close()
         await close_postgres()
+        async with driver.session() as session:
+            await session.run(
+                "MATCH (n {marker: $marker}) DETACH DELETE n", marker=SUBJECT_MARKER
+            )
         await close_neo4j()
 
 

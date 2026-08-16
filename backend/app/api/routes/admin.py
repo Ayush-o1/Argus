@@ -164,34 +164,45 @@ async def read_audit_log(
     conn: asyncpg.Connection = Depends(get_pg),
     _: AuthenticatedUser = Depends(require_permission(Permission.AUDIT_READ)),
 ) -> Envelope[list]:
-    """Read the audit log. Filters are optional and combine with AND."""
-    where: list[str] = []
-    params: list[object] = []
+    """Read the audit log. Filters are optional and combine with AND.
 
-    for column, value in (
-        ("action", action),
-        ("resource_id", resource_id),
-        ("actor_username", actor_username),
-    ):
-        if value:
-            params.append(value)
-            where.append(f"{column} = ${len(params)}")
+    The SQL is static. It was previously assembled with f-strings — safely, in
+    that only hard-coded column names and integer placeholder indices were ever
+    interpolated — but "safely" was a property of reading the loop carefully
+    rather than of the code's shape, and bandit was right to refuse to take that
+    on trust. A query with no interpolation at all cannot be got wrong by a
+    later edit, and it matches the `($n::text IS NULL OR col = $n)` form the
+    repositories already use.
+    """
+    # An absent filter and an empty one mean the same thing to a caller, so
+    # blanks are normalised to NULL rather than searched for literally.
+    filters = [value or None for value in (action, resource_id, actor_username)]
 
-    clause = f"WHERE {' AND '.join(where)}" if where else ""
+    total = await conn.fetchval(
+        """
+        SELECT count(*) FROM audit_events
+         WHERE ($1::text IS NULL OR action = $1)
+           AND ($2::text IS NULL OR resource_id = $2)
+           AND ($3::text IS NULL OR actor_username = $3)
+        """,
+        *filters,
+    )
 
-    total = await conn.fetchval(f"SELECT count(*) FROM audit_events {clause}", *params)
-
-    params.extend([page_size, (page - 1) * page_size])
     rows = await conn.fetch(
-        f"""
+        """
         SELECT seq, id, occurred_at, actor_username, actor_role, action,
                resource_type, resource_id, outcome, before_state, after_state,
                request_id, host(ip_address) AS ip_address, detail, entry_hash
-        FROM audit_events {clause}
+        FROM audit_events
+         WHERE ($1::text IS NULL OR action = $1)
+           AND ($2::text IS NULL OR resource_id = $2)
+           AND ($3::text IS NULL OR actor_username = $3)
         ORDER BY seq DESC
-        LIMIT ${len(params) - 1} OFFSET ${len(params)}
+        LIMIT $4 OFFSET $5
         """,
-        *params,
+        *filters,
+        page_size,
+        (page - 1) * page_size,
     )
 
     return Envelope(
