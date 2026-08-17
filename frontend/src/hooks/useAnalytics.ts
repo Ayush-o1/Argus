@@ -19,7 +19,12 @@ export interface CommunityEntity {
 export interface Community {
   community_id: number;
   size: number;
-  avg_risk_score: number;
+  /** Counts, not an average. Averaging assessment scores across a community
+   * mixes subjects whose scores have different evidence denominators and
+   * produces a figure that looks comparable between communities when it is
+   * not. */
+  assessed_members: number;
+  flagged_members: number;
   top_entity: CommunityEntity;
 }
 
@@ -39,7 +44,8 @@ export interface RiskPropagationSeed {
   id: string;
   name: string;
   label: string;
-  risk_score: number;
+  band: string | null;
+  score: number | null;
 }
 
 export interface RiskPropagationEntry {
@@ -47,6 +53,16 @@ export interface RiskPropagationEntry {
   name: string;
   label: string;
   propagated_risk: number;
+}
+
+export interface RiskPropagationResult {
+  seeds: RiskPropagationSeed[];
+  /** Seeds ARGUS has no assessment for. They are excluded from propagation
+   * rather than defaulted to a starting value, and named so the analyst knows
+   * their pick contributed nothing. */
+  unusable_seeds: RiskPropagationSeed[];
+  propagated: RiskPropagationEntry[];
+  note: string;
 }
 
 export interface RiskPropagationResult {

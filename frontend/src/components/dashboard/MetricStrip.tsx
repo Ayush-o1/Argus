@@ -41,9 +41,11 @@ function Metric({ label, value, suffix, href, tone = "neutral" }: MetricProps) {
 }
 
 export function MetricStrip({ summary }: { summary: DashboardSummary }) {
-  const criticalCount = summary.risk_distribution.find((r) => r.level === "Critical")?.count ?? 0;
-  const highCount = summary.risk_distribution.find((r) => r.level === "High")?.count ?? 0;
-  const elevated = criticalCount + highCount;
+  const elevated = summary.elevated_entities;
+  const unassessable =
+    summary.assessment_distribution.find((b) => b.band === "insufficient_evidence")?.count ?? 0;
+  const unassessed =
+    summary.assessment_distribution.find((b) => b.band === "unassessed")?.count ?? 0;
 
   return (
     <div className={styles.strip}>
@@ -56,12 +58,21 @@ export function MetricStrip({ summary }: { summary: DashboardSummary }) {
       <Metric
         label="Elevated entities"
         value={String(elevated)}
-        suffix="high + critical"
-        href="/search"
+        suffix={`of ${formatCompactNumber(summary.assessed_persons)} assessed`}
+        href="/assessment"
         tone={elevated > 0 ? "high" : "neutral"}
       />
       <Metric label="Active cases" value={String(summary.active_cases)} href="/cases" />
-      <Metric label="Mean risk" value={summary.avg_risk_score.toFixed(1)} suffix="/ 100" />
+      {/* Not a risk figure. The count of people ARGUS could not reach a view
+          on — the honest companion to the one above, and deliberately the same
+          size, because a queue of 27 means something different when 2,700
+          people were never assessable. */}
+      <Metric
+        label="Not assessable"
+        value={formatCompactNumber(unassessable + unassessed)}
+        suffix="too little evidence"
+        href="/assessment"
+      />
 
       <div className={styles.context}>
         <span className={styles.contextRow}>

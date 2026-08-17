@@ -15,7 +15,7 @@ An analyst-facing tool for exploring a connected dataset of people, organization
 ## Key capabilities
 
 - **Command Center** — one workspace rather than a card grid: a situation statement in prose before any figure, a regional strip that *filters* the queue beside it, and a master-detail lead panel that answers "why am I seeing this" from the scorer's own recorded factors, the alerts and cases already referencing the entity, and its real connections.
-- **Graph Explorer** — Cytoscape.js canvas over the live Neo4j graph. Opens on a risk-led overview rather than the whole graph; entity type and risk are encoded as independent channels (fill vs. border ring); labels are gated by zoom and importance; focus mode isolates a neighborhood; clicking an edge explains *why* two entities are connected. Plus neighborhood expansion, shortest-path finding, and multiple layouts.
+- **Graph Explorer** — Cytoscape.js canvas over the live Neo4j graph. Opens on an assessment-led overview rather than the whole graph; entity type and ARGUS's assessment band are encoded as independent channels (fill vs. border ring); labels are gated by zoom and importance; focus mode isolates a neighborhood; clicking an edge explains *why* two entities are connected. Plus neighborhood expansion, shortest-path finding, and multiple layouts.
 - **Analytics Engine** — PageRank, Betweenness, Louvain communities, Node2Vec similarity, custom risk propagation, and cycle detection via Neo4j Graph Data Science; plus Isolation Forest + z-score transaction-anomaly detection that independently rediscovers injected anomalies without reading their ground-truth labels.
 - **Cases & Alerts** — alerts are a triage workspace where the queue selects and the detail argues: what happened, why it matters, what is affected, where it spreads (distinct countries and regions across the involved entities), and which other alerts share its storyline. A case opens with its footprint — reach across countries and regions, plus the alerts involving anything on its evidence board.
 - **Provenance & confidence** — every displayed value resolves to the source that reported it, or is explicitly marked *inferred*, *modified* or *unattributed*. Sources carry Admiralty reliability (A–F) and claims carry credibility (1–6), kept as two independent readings and never averaged into one figure. Contradictory claims render side by side with no automatic winner, and "what did ARGUS believe on date D" is answerable. The synthetic data generator is itself a registered source, flagged as such, so generated ground truth can never be mistaken for discovered intelligence.
@@ -167,11 +167,20 @@ Every environment variable, its default, and what it affects is documented in [d
 ARGUS is a portfolio engineering demonstration on synthetic data, and it is worth being precise about
 the difference between that and an intelligence platform:
 
-- **The risk score is not an assessment.** The generator assigns it from storyline membership — from
-  its own answer key — and nothing recomputes it from evidence. The UI now says so wherever the
-  number appears, marked *inferred* and rated F6 ("cannot be judged"), rather than letting it read as
-  an analytic conclusion. Replacing it with a derived, calibrated, explainable score is planned work,
-  not something already here.
+- **ARGUS's own assessment is measured against one synthetic world.** Risk is now derived from
+  evidence — circular funds movement, activity bursts against a subject's own baseline, manifest
+  discrepancies — by a fingerprinted model that cannot read the generator's answer key, and every
+  finding shows the signals behind it and the share of the model that could be evaluated. Its
+  precision and recall are published on `/assessment`, against ground truth it never saw. That
+  demonstrates the detectors find the structures they were built to find in data they were not
+  tuned against; it is not evidence of field performance, and the report says so.
+- **Some planted phenomena are undetectable, and that is reported rather than hidden.** The
+  identity-overlap storyline exists only as a relationship no baseline record has, and the
+  document-forgery storyline sets a flag without making the documents inconsistent. No admissible
+  signal can reach either, so recall against them is 0 — printed with the reason beside it.
+- **The generator's own risk score is still recorded, and nothing computes from it.** It is kept as
+  a source's claim, marked *inferred* and rated F6 ("cannot be judged"), shown beneath ARGUS's
+  assessment on the entity page. A test fails the build if any application surface reads it.
 - **Correlation is planted, not discovered.** Two alerts are "related" because they share a
   generator-written `storyline_id`, which would not exist in real data.
 - **Single-instance, single-tenant.** Rate limiting is per-process, the job queue is in-process

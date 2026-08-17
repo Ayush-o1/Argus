@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { AssessmentBadge } from "@/components/ui/AssessmentBadge";
+import { useSubjectAssessment } from "@/hooks/useAssessment";
+import { scoreWithCoverage } from "@/lib/assessment";
 import { Clock, MapPin, ShieldHalf, Waypoints } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { RiskBadge, riskLevelFromScore } from "@/components/ui/RiskBadge";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useEntity, useEntityAlerts, useEntityCases } from "@/hooks/useEntities";
 import { formatRelativeTime } from "@/lib/formatters";
@@ -15,16 +17,23 @@ import styles from "./LeadContext.module.css";
  *
  * This is the panel that answers "why am I seeing this?" — the question a
  * ranked list of risk scores cannot. Everything shown is drawn from the graph:
- * the scorer's own recorded factors, the entity's real connection counts, and
- * the alerts and cases that already reference it. Nothing is inferred or
- * invented to fill the panel out.
+ * ARGUS's own assessment signals, the entity's real connection counts, and the
+ * alerts and cases that already reference it. Nothing is inferred or invented
+ * to fill the panel out.
+ *
+ * "Why it surfaced" used to list the generator's `risk_factors` — strings like
+ * "Linked to money routing network (Critical)", which are the storyline the
+ * generator planted, rendered as an analyst's justification. That was the
+ * answer key in its most persuasive possible form. It now lists the signals
+ * that actually fired, each with the numbers behind it.
  */
 export function LeadContext({ lead }: { lead: GraphNode | null }) {
   const entityId = lead?.id ?? "";
-  // The list payload already carries risk_factors and geography, so the detail
-  // fetch is only needed for connection counts — the panel renders useful
-  // content immediately and fills in the rest.
+  // The list payload carries the band and score; the signals behind them come
+  // from the assessment API, so the panel renders the headline immediately and
+  // fills in the working.
   const { data: detail } = useEntity(entityId);
+  const { data: assessment, isError: noAssessment } = useSubjectAssessment(entityId || undefined);
   const { data: alerts } = useEntityAlerts(entityId);
   const { data: cases } = useEntityCases(entityId);
 
@@ -38,7 +47,8 @@ export function LeadContext({ lead }: { lead: GraphNode | null }) {
   }
 
   const p = lead.properties;
-  const factors: string[] = p.risk_factors ?? [];
+  const fired = (assessment?.signals ?? []).filter((s) => s.evaluable && (s.magnitude ?? 0) > 0);
+  const unevaluable = (assessment?.signals ?? []).filter((s) => !s.evaluable);
   const place = [p.city ?? p.registered_city, p.country].filter(Boolean).join(", ");
   const connections = detail?.connections ?? {};
   const connectionEntries = Object.entries(connections).filter(([, n]) => n > 0);
@@ -54,20 +64,32 @@ export function LeadContext({ lead }: { lead: GraphNode | null }) {
             {p.region ? ` · ${p.region}` : ""}
           </p>
         </div>
-        <RiskBadge level={riskLevelFromScore(lead.risk_score)} />
+        <AssessmentBadge assessment={lead.assessment} />
       </header>
 
       <section className={styles.section}>
         <h4 className={styles.sectionTitle}>Why it surfaced</h4>
-        {factors.length > 0 ? (
-          <ul className={styles.factors}>
-            {factors.map((factor) => (
-              <li key={factor}>{factor}</li>
-            ))}
-          </ul>
+        {fired.length > 0 ? (
+          <>
+            <ul className={styles.factors}>
+              {fired.map((signal) => (
+                <li key={signal.signal_id}>{signal.summary}</li>
+              ))}
+            </ul>
+            <p className={styles.muted}>
+              {scoreWithCoverage(assessment?.score, assessment?.evidence_coverage)}
+              {unevaluable.length > 0
+                ? ` · ${unevaluable.length} signal${unevaluable.length === 1 ? "" : "s"} could not be evaluated`
+                : ""}
+            </p>
+          </>
         ) : (
           <p className={styles.muted}>
-            Scored {Math.round(lead.risk_score)} with no individual factors recorded against it.
+            {noAssessment || !assessment
+              ? "ARGUS has published no assessment for this entity."
+              : assessment.band === "insufficient_evidence"
+                ? `ARGUS could evaluate only ${Math.round(assessment.evidence_coverage * 100)}% of its model for this entity, which is too little to score. This is not a low-risk finding.`
+                : "No signal fired. ARGUS examined the available evidence and found nothing of note."}
           </p>
         )}
       </section>

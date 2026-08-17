@@ -2,7 +2,7 @@
 
 import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { RISK_COLORS } from "@/lib/theme";
+import { RISK_COLOR_UNKNOWN, RISK_COLORS } from "@/lib/theme";
 import { withinBounds, type MapBounds, type MapScale } from "@/components/map/ArgusMap";
 import type { Corridor, CountryRollup, RegionRollup } from "@/hooks/useMap";
 import styles from "./MapContextPanel.module.css";
@@ -20,10 +20,13 @@ import styles from "./MapContextPanel.module.css";
 
 const MAX_ROWS = 12;
 
-function accentFor(elevated: number, avgRisk: number): string {
+/** Keyed on how many entities ARGUS flagged and how many it could assess at
+ * all — never on an average score. A region ARGUS could barely assess is drawn
+ * as unknown rather than as calm. */
+function accentFor(elevated: number, assessed: number): string {
   if (elevated >= 4) return RISK_COLORS.Critical;
   if (elevated >= 1) return RISK_COLORS.High;
-  if (avgRisk >= 8) return RISK_COLORS.Medium;
+  if (assessed === 0) return RISK_COLOR_UNKNOWN;
   return "#5685D6";
 }
 
@@ -52,15 +55,15 @@ function readingFor(
   visibleCountries: CountryRollup[],
 ): string | null {
   if (scale === "world") {
-    const byAnomaly = [...regions].sort((a, b) => b.anomalous_routes - a.anomalous_routes)[0];
+    const byAnomaly = [...regions].sort((a, b) => b.flagged_routes - a.flagged_routes)[0];
     const byElevated = [...regions].sort((a, b) => b.elevated_count - a.elevated_count)[0];
-    if (byElevated && byAnomaly && byElevated.elevated_count > 0 && byAnomaly.anomalous_routes > 0) {
+    if (byElevated && byAnomaly && byElevated.elevated_count > 0 && byAnomaly.flagged_routes > 0) {
       // The interesting case is when escalation and routing anomalies sit in
       // different places — that mismatch is itself the finding.
       if (byAnomaly.region !== byElevated.region) {
-        return `Elevated entities concentrate in ${byElevated.region}, but off-lane routing peaks on ${byAnomaly.region} (${byAnomaly.anomalous_routes} flagged).`;
+        return `Elevated entities concentrate in ${byElevated.region}, but off-lane routing peaks on ${byAnomaly.region} (${byAnomaly.flagged_routes} flagged).`;
       }
-      return `${byElevated.region} leads on both elevated entities (${byElevated.elevated_count}) and flagged routes (${byAnomaly.anomalous_routes}).`;
+      return `${byElevated.region} leads on both elevated entities (${byElevated.elevated_count}) and flagged routes (${byAnomaly.flagged_routes}).`;
     }
     const busiest = [...corridors].sort((a, b) => b.shipment_count - a.shipment_count)[0];
     if (busiest) {
@@ -109,7 +112,7 @@ export function MapContextPanel({ scale, regions, countries, bounds, corridors, 
           .sort(
             (a, b) =>
               b.elevated_count - a.elevated_count ||
-              b.anomalous_routes - a.anomalous_routes ||
+              b.flagged_routes - a.flagged_routes ||
               b.entity_count - a.entity_count,
           )
           .map((r) => ({
@@ -119,8 +122,8 @@ export function MapContextPanel({ scale, regions, countries, bounds, corridors, 
             // clause truncated mid-word, which lost the anomaly count entirely.
             meta: `${r.entity_count.toLocaleString()} entities`,
             elevated: r.elevated_count,
-            accent: accentFor(r.elevated_count, r.avg_risk),
-            extra: r.anomalous_routes > 0 ? `${r.anomalous_routes} anomalous routes` : null,
+            accent: accentFor(r.elevated_count, r.assessed_count),
+            extra: r.flagged_routes > 0 ? `${r.flagged_routes} flagged routes` : null,
             fly: () => onFlyTo(r.lng, r.lat, r.zoom),
           }))
       : [...visibleCountries]
@@ -131,7 +134,7 @@ export function MapContextPanel({ scale, regions, countries, bounds, corridors, 
             title: c.country,
             meta: `${c.region} · ${c.entity_count.toLocaleString()}`,
             elevated: c.elevated_count,
-            accent: accentFor(c.elevated_count, c.avg_risk),
+            accent: accentFor(c.elevated_count, c.assessed_count),
             extra: null,
             fly: () => onFlyTo(c.lng, c.lat, 6.4),
           }));

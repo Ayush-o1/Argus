@@ -1,6 +1,6 @@
 import { ArrowUpRight } from "lucide-react";
+import { AssessmentBadge } from "@/components/ui/AssessmentBadge";
 import Link from "next/link";
-import { RiskBadge, riskLevelFromScore } from "@/components/ui/RiskBadge";
 import type { GraphNode } from "@/lib/types";
 import { EntityTypeIcon } from "./EntityTypeIcon";
 import styles from "./EntityCard.module.css";
@@ -44,7 +44,7 @@ export function EntityCard({ node }: { node: GraphNode }) {
         </div>
         <span className={styles.meta}>{metaLine(node)}</span>
       </div>
-      {node.risk_score > 0 ? <RiskBadge level={riskLevelFromScore(node.risk_score)} /> : null}
+      <AssessmentBadge assessment={node.assessment} />
       <span className={styles.actions}>
         <ArrowUpRight size={16} color="var(--text-tertiary)" />
       </span>

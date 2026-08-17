@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { bandLabel, formatScore } from "@/lib/assessment";
 import { Globe2, MapPin, ShieldHalf, Waypoints } from "lucide-react";
 import { useMemo } from "react";
 import { Badge } from "@/components/ui/Badge";
@@ -10,7 +11,7 @@ import { useRelatedAlerts } from "@/hooks/useAlerts";
 import { coverageLabel } from "@/lib/aggregate";
 import { entityId, entityName } from "@/lib/entityDisplay";
 import { formatRelativeTime } from "@/lib/formatters";
-import { RISK_COLORS, riskTier } from "@/lib/theme";
+import { RISK_COLOR_UNKNOWN, RISK_COLORS, assessmentTier } from "@/lib/theme";
 import type { Incident } from "@/lib/types";
 import styles from "./AlertDetail.module.css";
 
@@ -129,7 +130,12 @@ export function AlertDetail({ alert, onSelect, onReview, isReviewing }: AlertDet
             const id = entityId(e.label, e.properties);
             const name = entityName(e.label, e.properties);
             const p = e.properties as Record<string, unknown>;
-            const risk = typeof p.risk_score === "number" ? p.risk_score : 0;
+            // ARGUS's own band, carried on the node by the assessment
+            // projection. The previous line read `risk_score` — the generator's
+            // planted number — and drew it beside each involved entity as
+            // though the alert had been triaged against it.
+            const band = typeof p.argus_band === "string" ? p.argus_band : null;
+            const score = typeof p.argus_score === "number" ? p.argus_score : null;
             const place = [p.city ?? p.registered_city, p.country].filter(Boolean).join(", ");
             const body = (
               <>
@@ -143,11 +149,13 @@ export function AlertDetail({ alert, onSelect, onReview, isReviewing }: AlertDet
                     {place ? ` · ${place}` : ""}
                   </span>
                 </span>
-                {risk > 0 ? (
-                  <span className={styles.entityRisk} style={{ color: RISK_COLORS[riskLabel(risk)] }}>
-                    {Math.round(risk)}
-                  </span>
-                ) : null}
+                <span
+                  className={styles.entityRisk}
+                  style={{ color: TIER_COLOR[assessmentTier(band)] }}
+                  title={bandLabel(band)}
+                >
+                  {formatScore(score) ?? "—"}
+                </span>
               </>
             );
             return (
@@ -213,14 +221,13 @@ export function AlertDetail({ alert, onSelect, onReview, isReviewing }: AlertDet
   );
 }
 
-/** riskTier() returns lowercase keys; RISK_COLORS is keyed by display label. */
-function riskLabel(score: number): "Critical" | "High" | "Medium" | "Low" {
-  const map = {
-    critical: "Critical",
-    high: "High",
-    medium: "Medium",
-    low: "Low",
-    none: "Low",
-  } as const;
-  return map[riskTier(score)];
-}
+/** assessmentTier() returns lowercase keys; RISK_COLORS is keyed by display
+ * label. An entity with no assessment gets the unknown grey rather than the
+ * "low" slate: not knowing is not the same as knowing it is fine. */
+const TIER_COLOR: Record<string, string> = {
+  critical: RISK_COLORS.Critical,
+  high: RISK_COLORS.High,
+  medium: RISK_COLORS.Medium,
+  low: RISK_COLORS.Low,
+  none: RISK_COLOR_UNKNOWN,
+};

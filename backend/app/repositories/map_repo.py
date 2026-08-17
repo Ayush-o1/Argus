@@ -54,8 +54,8 @@ async def get_map_shipments(driver: AsyncDriver, limit: int = 1200) -> list[dict
     MATCH (dest:Location {id: s.destination_id})
     OPTIONAL MATCH (via:Location {id: s.via_id})
     RETURN s.shipment_id AS shipment_id, s.carrier AS carrier, s.status AS status,
-           s.route_anomaly AS route_anomaly, s.anomaly_kind AS anomaly_kind,
-           s.risk_score AS risk_score, s.lane AS lane,
+           s.argus_band AS argus_band, s.argus_score AS argus_score,
+           s.argus_coverage AS argus_coverage, s.lane AS lane,
            s.origin_region AS origin_region, s.destination_region AS destination_region,
            s.distance_km AS distance_km, s.detour_ratio AS detour_ratio,
            s.departure AS departure, s.arrival AS arrival, s.manifest AS manifest,
@@ -79,33 +79,41 @@ async def get_region_rollup(driver: AsyncDriver) -> list[dict]:
     WHERE (n:Person OR n:Organization) AND n.region IS NOT NULL
     WITH n.region AS region,
          count(n) AS entity_count,
-         avg(n.risk_score) AS avg_risk,
-         sum(CASE WHEN n.risk_score >= 60 THEN 1 ELSE 0 END) AS elevated_count,
+         // Counts, not an average. A mean over a region where most entities
+         // could not be assessed at all describes nothing, and shading a map by
+         // one is how a sparsely-collected region comes to look calm.
+         sum(CASE WHEN n.argus_band = 'elevated' THEN 1 ELSE 0 END) AS elevated_count,
+         sum(CASE WHEN n.argus_band IS NOT NULL
+                   AND n.argus_band <> 'insufficient_evidence' THEN 1 ELSE 0 END) AS assessed_count,
          sum(CASE WHEN n:Organization THEN 1 ELSE 0 END) AS org_count,
          count(DISTINCT n.country) AS country_count
-    RETURN region, entity_count, avg_risk, elevated_count, org_count, country_count
+    RETURN region, entity_count, elevated_count, assessed_count, org_count, country_count
     ORDER BY entity_count DESC
     """
     async with driver.session() as session:
         result = await session.run(query)
         rows = [dict(record) async for record in result]
 
-    # Anomalous routes are attributed to both endpoints — an off-lane shipment
-    # is a signal about the regions at each end of it, not just the origin.
+    # Routes ARGUS assessed as worth a look, attributed to both endpoints — a
+    # divergent shipment is a signal about the regions at each end of it, not
+    # just the origin.
+    #
+    # Counted from ARGUS's own band, not from the generator's `route_anomaly`
+    # flag. The map used to render the answer key as "anomalous routes", which
+    # is the audit's G-08 finding wearing a cartographic hat.
     anomaly_query = """
-    MATCH (s:Shipment) WHERE s.route_anomaly
+    MATCH (s:Shipment) WHERE s.argus_band IN ['elevated', 'notable']
     UNWIND [s.origin_region, s.destination_region] AS region
-    RETURN region, count(*) AS anomalous_routes
+    RETURN region, count(*) AS flagged_routes
     """
     async with driver.session() as session:
         result = await session.run(anomaly_query)
-        anomalies = {r["region"]: r["anomalous_routes"] async for r in result}
+        flagged = {r["region"]: r["flagged_routes"] async for r in result}
 
     for row in rows:
         center = REGION_CENTERS.get(row["region"])
         row["lat"], row["lng"], row["zoom"] = center if center else (0.0, 0.0, 3.0)
-        row["avg_risk"] = round(row["avg_risk"] or 0.0, 1)
-        row["anomalous_routes"] = anomalies.get(row["region"], 0)
+        row["flagged_routes"] = flagged.get(row["region"], 0)
 
     return rows
 
@@ -118,11 +126,11 @@ async def get_country_rollup(driver: AsyncDriver, region: str | None = None) -> 
       AND ($region IS NULL OR n.region = $region)
     WITH n.country AS country, n.country_code AS country_code, n.region AS region,
          count(n) AS entity_count,
-         avg(n.risk_score) AS avg_risk,
-         sum(CASE WHEN n.risk_score >= 60 THEN 1 ELSE 0 END) AS elevated_count,
+         sum(CASE WHEN n.argus_band = 'elevated' THEN 1 ELSE 0 END) AS elevated_count,
+         sum(CASE WHEN n.argus_band IS NOT NULL
+                   AND n.argus_band <> 'insufficient_evidence' THEN 1 ELSE 0 END) AS assessed_count,
          avg(n.lat) AS lat, avg(n.lng) AS lng
-    RETURN country, country_code, region, entity_count, elevated_count,
-           round(avg_risk * 10) / 10 AS avg_risk, lat, lng
+    RETURN country, country_code, region, entity_count, elevated_count, assessed_count, lat, lng
     ORDER BY entity_count DESC
     """
     async with driver.session() as session:
@@ -148,7 +156,8 @@ async def get_corridors(driver: AsyncDriver) -> list[dict]:
          s
     RETURN a AS from_region, b AS to_region,
            count(s) AS shipment_count,
-           sum(CASE WHEN s.route_anomaly THEN 1 ELSE 0 END) AS anomalous_count
+           sum(CASE WHEN s.argus_band IN ['elevated', 'notable'] THEN 1 ELSE 0 END) AS flagged_count,
+           sum(CASE WHEN s.argus_band IS NULL THEN 1 ELSE 0 END) AS unassessed_count
     ORDER BY shipment_count DESC
     """
     async with driver.session() as session:
@@ -160,6 +169,11 @@ async def get_corridors(driver: AsyncDriver) -> list[dict]:
         to_c = REGION_CENTERS.get(row["to_region"], (0.0, 0.0, 3.0))
         row["from_lat"], row["from_lng"] = from_c[0], from_c[1]
         row["to_lat"], row["to_lng"] = to_c[0], to_c[1]
-        row["anomaly_rate"] = round(row["anomalous_count"] / row["shipment_count"], 3) if row["shipment_count"] else 0.0
+        # The denominator excludes shipments ARGUS has not assessed, so the
+        # rate is a share of what was actually examined rather than a share of
+        # everything that exists — the two differ sharply before a run.
+        examined = row["shipment_count"] - row["unassessed_count"]
+        row["examined_count"] = examined
+        row["flagged_rate"] = round(row["flagged_count"] / examined, 3) if examined else None
 
     return rows

@@ -8,9 +8,12 @@ export interface ShipmentRoute {
   shipment_id: string;
   carrier: string;
   status: string;
-  route_anomaly: boolean;
-  anomaly_kind: AnomalyKind | null;
-  risk_score: number;
+  /** ARGUS's own assessment of the shipment. The generator's `route_anomaly`
+   * flag and `anomaly_kind` label are no longer served: they were the answer
+   * key, and the map rendered them as discovered anomalies. */
+  argus_band: string | null;
+  argus_score: number | null;
+  argus_coverage: number | null;
   lane: string | null;
   origin_region: string | null;
   destination_region: string | null;
@@ -43,9 +46,16 @@ export interface RegionRollup {
   entity_count: number;
   org_count: number;
   country_count: number;
-  avg_risk: number;
+  /** Entities ARGUS assessed as elevated, and how many it could assess at
+   * all. There is no average: a mean over a region ARGUS mostly could not
+   * assess describes nothing, and shading a map by one is how a
+   * sparsely-collected region comes to look calm. */
   elevated_count: number;
-  anomalous_routes: number;
+  assessed_count: number;
+  /** Shipments ARGUS assessed as elevated or notable, attributed to both
+   * endpoints. Counted from ARGUS's own band, not the generator's
+   * `route_anomaly` flag. */
+  flagged_routes: number;
   lat: number;
   lng: number;
   zoom: number;
@@ -57,7 +67,7 @@ export interface CountryRollup {
   region: string;
   entity_count: number;
   elevated_count: number;
-  avg_risk: number;
+  assessed_count: number;
   lat: number;
   lng: number;
 }

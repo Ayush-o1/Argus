@@ -22,14 +22,15 @@ interface SituationBriefProps {
 
 export function SituationBrief({ summary, regions }: SituationBriefProps) {
   const model = useMemo(() => {
-    const critical = summary.risk_distribution.find((b) => b.level === "Critical")?.count ?? 0;
-    const high = summary.risk_distribution.find((b) => b.level === "High")?.count ?? 0;
-    const elevated = critical + high;
+    const elevated = summary.elevated_entities;
+    const unassessable =
+      (summary.assessment_distribution.find((b) => b.band === "insufficient_evidence")?.count ?? 0) +
+      (summary.assessment_distribution.find((b) => b.band === "unassessed")?.count ?? 0);
 
     const active = (regions ?? []).filter((r) => r.elevated_count > 0);
     const ranked = [...active].sort((a, b) => b.elevated_count - a.elevated_count);
     const lead = ranked[0];
-    const anomalyLead = [...(regions ?? [])].sort((a, b) => b.anomalous_routes - a.anomalous_routes)[0];
+    const anomalyLead = [...(regions ?? [])].sort((a, b) => b.flagged_routes - a.flagged_routes)[0];
 
     // A leader by a single entity is not a concentration. Stating "concentrated
     // in X" for a one-entity margin reads as a finding when it is noise, so the
@@ -40,17 +41,22 @@ export function SituationBrief({ summary, regions }: SituationBriefProps) {
       (runnerUp === undefined || lead.elevated_count >= runnerUp.elevated_count * 1.5) &&
       lead.elevated_count > 1;
 
-    return { critical, high, elevated, active, lead, runnerUp, isConcentrated, anomalyLead };
+    return { elevated, unassessable, active, lead, runnerUp, isConcentrated, anomalyLead };
   }, [summary, regions]);
 
-  const { critical, elevated, active, lead, isConcentrated, anomalyLead } = model;
+  const { elevated, unassessable, active, lead, isConcentrated, anomalyLead } = model;
 
   return (
     <section className={styles.brief} aria-label="Situation">
       <p className={styles.statement}>
         {elevated > 0 ? (
           <>
-            <strong>{elevated}</strong> {elevated === 1 ? "entity is" : "entities are"} carrying elevated risk
+            {/* "ARGUS assessed" rather than "carrying elevated risk". The
+                second phrasing makes the band sound like a property of the
+                person; it is a statement about what the evidence supports, and
+                the sentence has to say whose judgement it is. */}
+            ARGUS assessed <strong>{elevated}</strong>{" "}
+            {elevated === 1 ? "entity" : "entities"} as warranting review
             {active.length > 0 ? (
               <>
                 {" "}
@@ -69,7 +75,15 @@ export function SituationBrief({ summary, regions }: SituationBriefProps) {
             .
           </>
         ) : (
-          <>No entity currently exceeds the elevated-risk threshold.</>
+          <>
+            ARGUS assessed no entity as warranting review
+            {unassessable > 0 ? (
+              <>
+                , and could not assess <strong>{unassessable.toLocaleString()}</strong>
+              </>
+            ) : null}
+            .
+          </>
         )}{" "}
         {/* Both figures are full-population counts, so they can be stated as
             parts of one whole. The critical count previously came from a
@@ -81,17 +95,17 @@ export function SituationBrief({ summary, regions }: SituationBriefProps) {
           </>
         ) : null}
         .
-        {anomalyLead && anomalyLead.anomalous_routes > 0 ? (
+        {anomalyLead && anomalyLead.flagged_routes > 0 ? (
           <>
             {" "}
-            Route anomalies cluster on <strong>{anomalyLead.region}</strong> (
-            {anomalyLead.anomalous_routes} flagged).
+            Flagged routes cluster on <strong>{anomalyLead.region}</strong> (
+            {anomalyLead.flagged_routes} of them).
           </>
         ) : null}
       </p>
 
       <dl className={styles.figures}>
-        <Figure label="Critical entities" value={critical} tone={critical > 0 ? "critical" : undefined} />
+        <Figure label="Elevated entities" value={elevated} tone={elevated > 0 ? "critical" : undefined} />
         <Figure
           label={`Incidents · ${summary.window_days}d`}
           value={summary.incidents_in_window}
@@ -99,7 +113,10 @@ export function SituationBrief({ summary, regions }: SituationBriefProps) {
         />
         <Figure label="Open alerts" value={summary.open_alerts} />
         <Figure label="Active cases" value={summary.active_cases} />
-        <Figure label="Mean risk" value={summary.avg_risk_score.toFixed(1)} suffix="/100" />
+        {/* Replaces "Mean risk". An average over a population ARGUS mostly
+            could not assess summarises nothing; the number of subjects it had
+            no view on is the figure that actually qualifies the rest. */}
+        <Figure label="Not assessable" value={unassessable} />
       </dl>
     </section>
   );

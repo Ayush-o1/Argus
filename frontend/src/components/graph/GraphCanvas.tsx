@@ -4,7 +4,7 @@ import cytoscape, { type Core, type ElementDefinition, type Layouts } from "cyto
 import fcose from "cytoscape-fcose";
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import type { GraphEdge, GraphNode } from "@/lib/types";
-import { riskTier } from "@/lib/theme";
+import { assessmentTier } from "@/lib/theme";
 import { buildGraphStylesheet, nodeSize } from "./graphStyle";
 
 if (typeof cytoscape !== "undefined") {
@@ -75,9 +75,13 @@ function toElement(node: GraphNode): ElementDefinition {
       label: node.name,
       displayLabel: truncateLabel(node.name),
       entityLabel: node.label,
-      riskScore: node.risk_score,
-      riskTier: riskTier(node.risk_score),
-      size: nodeSize(node.risk_score),
+      // Sized and tiered by ARGUS's assessment band, not by the generator's
+      // planted score. An unassessed node draws at the base size in the
+      // neutral tier — visibly not a finding, rather than visibly calm.
+      assessmentBand: node.assessment?.band ?? null,
+      assessmentScore: node.assessment?.score ?? null,
+      riskTier: assessmentTier(node.assessment?.band),
+      size: nodeSize(node.assessment?.score ?? 0),
     },
   };
 }

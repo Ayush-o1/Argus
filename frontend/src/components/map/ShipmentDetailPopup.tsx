@@ -1,46 +1,25 @@
 import { ArrowRight, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { RiskBadge, riskLevelFromScore } from "@/components/ui/RiskBadge";
+import { AssessmentBadge } from "@/components/ui/AssessmentBadge";
 import { formatDate } from "@/lib/formatters";
-import type { AnomalyKind, ShipmentRoute } from "@/hooks/useMap";
+import type { ShipmentRoute } from "@/hooks/useMap";
+import { useSubjectAssessment } from "@/hooks/useAssessment";
 import styles from "./ShipmentDetailPopup.module.css";
 
 /**
  * Why the route was flagged, not just that it was.
  *
- * "Route anomaly: Yes" states a conclusion and leaves the analyst to guess the
- * reasoning. Each kind is a different finding with a different follow-up, so
- * each gets its own explanation grounded in the fields that produced it.
+ * This used to render a fixed explanation per `anomaly_kind` — a label the
+ * scenario generator writes onto the shipments it made anomalous. The map was
+ * restating the answer key with a confident heading over it. The finding now
+ * comes from ARGUS's own assessment of that shipment, which names the measured
+ * quantity that produced it: the detour ratio, the corridor's share of traffic,
+ * or the two manifests that disagree.
  */
-const ANOMALY_EXPLANATION: Record<AnomalyKind, { title: string; detail: string }> = {
-  off_lane: {
-    title: "Off-lane routing",
-    detail: "These two regions have no established freight relationship in this dataset.",
-  },
-  circuitous: {
-    title: "Circuitous detour",
-    detail: "The shipment called at a port well off the direct path between origin and destination.",
-  },
-  manifest_shift: {
-    title: "Manifest discrepancy",
-    detail: "Goods declared at origin do not match what was recorded on arrival.",
-  },
-};
-
-// A route flagged without a recorded kind still has to say something; silently
-// rendering nothing would put the analyst back to reading a red line with no
-// reasoning attached.
-const UNSPECIFIED_ANOMALY = {
-  title: "Route flagged",
-  detail: "This route was flagged as anomalous, but no specific finding was recorded against it.",
-};
-
 export function ShipmentDetailPopup({ shipment, onClose }: { shipment: ShipmentRoute; onClose: () => void }) {
-  const explanation = shipment.anomaly_kind
-    ? ANOMALY_EXPLANATION[shipment.anomaly_kind]
-    : shipment.route_anomaly
-      ? UNSPECIFIED_ANOMALY
-      : null;
+  const { data: assessment } = useSubjectAssessment(shipment.shipment_id);
+  const fired = (assessment?.signals ?? []).filter((s) => s.evaluable && (s.magnitude ?? 0) > 0);
+  const blind = (assessment?.signals ?? []).filter((s) => !s.evaluable);
 
   return (
     <div className={styles.popup}>
@@ -56,13 +35,40 @@ export function ShipmentDetailPopup({ shipment, onClose }: { shipment: ShipmentR
         </Button>
       </div>
 
-      {explanation ? (
+      {shipment.argus_band ? (
         <div className={styles.finding}>
           <div className={styles.findingHead}>
-            <RiskBadge level={riskLevelFromScore(shipment.risk_score)} />
-            <span className={styles.findingTitle}>{explanation.title}</span>
+            <AssessmentBadge
+              assessment={
+                shipment.argus_band
+                  ? {
+                      band: shipment.argus_band as never,
+                      score: shipment.argus_score,
+                      coverage: shipment.argus_coverage,
+                    }
+                  : null
+              }
+            />
+            <span className={styles.findingTitle}>
+              {fired.length > 0
+                ? `${fired.length} signal${fired.length === 1 ? "" : "s"} fired`
+                : assessment
+                  ? "Examined, nothing found"
+                  : "ARGUS assessment"}
+            </span>
           </div>
-          <p className={styles.findingDetail}>{explanation.detail}</p>
+          {fired.map((signal) => (
+            <p key={signal.signal_id} className={styles.findingDetail}>
+              {signal.summary}
+            </p>
+          ))}
+          {/* Stated, not omitted: a shipment whose manifests were never both
+              recorded has not been cleared of a discrepancy. */}
+          {blind.length > 0 ? (
+            <p className={styles.findingDetail}>
+              {blind.length} signal{blind.length === 1 ? "" : "s"} could not be evaluated.
+            </p>
+          ) : null}
           {shipment.via_city ? (
             <p className={styles.findingDetail}>
               Called at <strong>{shipment.via_city}</strong>

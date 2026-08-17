@@ -3,6 +3,7 @@ import {
   BarChart3,
   Clock,
   FlaskConical,
+  Gauge,
   GitMerge,
   LayoutGrid,
   Map,
@@ -60,7 +61,10 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     title: "Analyze",
-    items: [{ label: "Analytics", href: "/analytics", icon: BarChart3, hint: "Graph algorithms and anomaly detection",  permission: "analytics:read",}],
+    items: [
+      { label: "Analytics", href: "/analytics", icon: BarChart3, hint: "Graph algorithms and anomaly detection",  permission: "analytics:read",},
+      { label: "Assessment", href: "/assessment", icon: Gauge, hint: "What ARGUS assessed, how, and how well it performs",  permission: "assessment:read",},
+    ],
   },
   {
     title: "System",

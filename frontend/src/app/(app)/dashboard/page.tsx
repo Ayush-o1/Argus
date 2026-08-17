@@ -20,13 +20,16 @@ import styles from "./page.module.css";
 // which silently excluded every elevated Organization — the label carrying the
 // shell-company and corporate-network findings.
 const LEAD_TYPES = ["Person", "Organization"];
-const LEAD_RISK_FLOOR = 1;
+// Leads are the entities ARGUS assessed as warranting review. Previously a
+// score floor over the generator's planted number, which made the lead queue
+// a tour of the answer key.
+const LEAD_BAND = "elevated";
 const MAX_LEADS = 25;
 
 export default function DashboardPage() {
   const { data: summary, isLoading } = useDashboardSummary();
   const { data: regions } = useMapRegions();
-  const { data: allLeads, isFetching: loadingLeads } = useBrowseEntities(LEAD_TYPES, LEAD_RISK_FLOOR);
+  const { data: allLeads, isFetching: loadingLeads } = useBrowseEntities(LEAD_TYPES, LEAD_BAND);
 
   const [region, setRegion] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);

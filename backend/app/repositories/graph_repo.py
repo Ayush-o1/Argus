@@ -16,6 +16,12 @@ from neo4j import AsyncDriver
 
 from app.repositories.entity_labels import ENTITY_LABELS, resolve_label
 
+# Keyed by Neo4j label rather than by ID prefix. Used for a deterministic
+# secondary sort: ordering by score alone leaves entities that tie — and with a
+# score capped at a reference weight, many do — in whatever order the store
+# happens to return, so two identical requests could paginate differently.
+ENTITY_LABELS_BY_LABEL = {info.label: info for info in ENTITY_LABELS.values()}
+
 logger = logging.getLogger(__name__)
 
 MAX_NEIGHBORHOOD_NODES = 500
@@ -144,8 +150,34 @@ def to_graph_node(props: dict, label: str) -> dict:
         "uuid": props.get("id"),
         "label": label,
         "name": name or human_id or "Unknown",
-        "risk_score": props.get("risk_score", 0.0),
+        # ARGUS's own assessment, or None. It used to be `risk_score` read
+        # straight off the node — the scenario generator's number, assigned
+        # from storyline membership and rendered by every surface as though it
+        # were a finding (audit G-08).
+        #
+        # None is returned for an entity type ARGUS does not assess and for one
+        # it has not assessed yet, and the two are distinguished by `band`
+        # rather than collapsed. The generator's value stays on the node,
+        # reachable through provenance, which is where a source's claim
+        # belongs.
+        "assessment": _assessment_of(props),
         "properties": props,
+    }
+
+
+def _assessment_of(props: dict) -> dict | None:
+    band = props.get("argus_band")
+    if band is None:
+        return None
+    return {
+        "band": band,
+        # Absent rather than zero for an unassessable subject, all the way to
+        # the client, so nothing downstream can sort it next to a subject that
+        # was examined and scored zero.
+        "score": props.get("argus_score"),
+        "coverage": props.get("argus_coverage"),
+        "model": props.get("argus_model"),
+        "assessed_at": props.get("argus_assessed_at"),
     }
 
 
@@ -154,25 +186,41 @@ def to_graph_node(props: dict, label: str) -> dict:
 CITY_FILTERABLE_LABELS = ("Person", "Organization", "Location")
 
 
-def build_browse_filters(label: str, risk_min: float, city: str | None) -> tuple[str, str]:
-    """Cypher fragments for the browse filters, as (risk_filter, city_filter).
+# The bands a caller may filter a browse by. `unassessed` is included and is
+# not a synonym for "clean": it selects entities ARGUS has no opinion about,
+# which is a real thing to want to look at.
+BROWSABLE_BANDS = ("elevated", "notable", "routine", "insufficient_evidence", "unassessed")
 
-    The risk filter applies to every browsable label. Restricting it to
-    Person/Organization meant "High risk and above" silently returned every
-    Location, Vehicle and Device on the page — unfiltered rows presented as
-    matching the filter. All five labels carry a non-null risk_score, so
-    applying it uniformly is simply the honest answer, including when that
-    answer is no results at all.
+
+def build_browse_filters(label: str, band: str | None, city: str | None) -> tuple[str, str]:
+    """Cypher fragments for the browse filters, as (band_filter, city_filter).
+
+    The filter is a band rather than a minimum score, because the score is a
+    share of whatever could be evaluated for that subject and a threshold
+    across mixed subject types compares numbers with different denominators.
+    Filtering by band asks the question the analyst actually has: show me the
+    ones worth looking at.
+
+    It applies to every browsable label. Restricting it to Person/Organization
+    once meant "High risk and above" silently returned every Location, Vehicle
+    and Device on the page — unfiltered rows presented as matching the filter.
+    Entity types ARGUS does not assess carry no band, so they match only
+    `unassessed`, which is the honest answer including when it means no results.
     """
-    risk_filter = "AND n.risk_score >= $risk_min" if risk_min > 0 else ""
+    if band is None:
+        band_filter = ""
+    elif band == "unassessed":
+        band_filter = "AND n.argus_band IS NULL"
+    else:
+        band_filter = "AND n.argus_band = $band"
     city_filter = "AND n.city = $city" if city and label in CITY_FILTERABLE_LABELS else ""
-    return risk_filter, city_filter
+    return band_filter, city_filter
 
 
 async def list_entities(
     driver: AsyncDriver,
     entity_type: str,
-    risk_min: float = 0,
+    band: str | None = None,
     city: str | None = None,
     page: int = 1,
     page_size: int = 50,
@@ -182,15 +230,22 @@ async def list_entities(
         # unrecognised, so a UI facet for a non-browsable type returned a list
         # of people labelled as that type — wrong data presented as correct.
         raise ValueError(f"Unsupported entity type: {entity_type}")
+    if band is not None and band not in BROWSABLE_BANDS:
+        raise ValueError(f"Unsupported assessment band: {band}")
     label = entity_type
-    risk_filter, city_filter = build_browse_filters(label, risk_min, city)
+    band_filter, city_filter = build_browse_filters(label, band, city)
 
-    count_query = f"MATCH (n:{label}) WHERE true {risk_filter} {city_filter} RETURN count(n) AS total"
+    count_query = f"MATCH (n:{label}) WHERE true {band_filter} {city_filter} RETURN count(n) AS total"
+    # NULLS LAST, so entities ARGUS could not assess sort to the end rather
+    # than to either extreme. Neo4j orders NULL last on DESC by default; it is
+    # stated here because relying on it silently is how a subject with no score
+    # ends up at the top of a queue.
     query = f"""
-    MATCH (n:{label}) WHERE true {risk_filter} {city_filter}
-    RETURN n ORDER BY n.risk_score DESC SKIP $skip LIMIT $limit
+    MATCH (n:{label}) WHERE true {band_filter} {city_filter}
+    RETURN n ORDER BY n.argus_score DESC, n.{ENTITY_LABELS_BY_LABEL[label].id_field}
+    SKIP $skip LIMIT $limit
     """
-    params = {"risk_min": risk_min, "city": city, "skip": (page - 1) * page_size, "limit": page_size}
+    params = {"band": band, "city": city, "skip": (page - 1) * page_size, "limit": page_size}
 
     async with driver.session() as session:
         total_result = await session.run(count_query, params)
@@ -309,12 +364,17 @@ async def shortest_path(driver: AsyncDriver, from_id: str, to_id: str) -> dict |
 
 
 async def get_overview_subgraph(driver: AsyncDriver, seed_limit: int = 25, edge_limit: int = 400) -> dict:
-    """Default Graph Explorer view when no seed entity is chosen: the
-    highest-risk persons and organizations plus their immediate neighbors —
-    a genuinely interesting starting point rather than an arbitrary slice."""
+    """Default Graph Explorer view when no seed entity is chosen: the persons
+    and organizations ARGUS assessed most highly, plus their immediate
+    neighbours — a genuinely interesting starting point rather than an
+    arbitrary slice.
+
+    Seeded from `argus_score`, not from the generator's `risk_score`. Seeding
+    the explorer from the answer key meant the default view was a tour of the
+    planted storylines, which looked like the platform finding things."""
     query = """
-    MATCH (seed) WHERE (seed:Person OR seed:Organization) AND seed.risk_score > 0
-    WITH seed ORDER BY seed.risk_score DESC LIMIT $seed_limit
+    MATCH (seed) WHERE (seed:Person OR seed:Organization) AND seed.argus_score > 0
+    WITH seed ORDER BY seed.argus_score DESC LIMIT $seed_limit
     MATCH (seed)-[r]-(m)
     WHERE type(r) <> 'SAME_AS'
     RETURN seed, r, m, labels(seed)[0] AS seed_label, labels(m)[0] AS other_label,

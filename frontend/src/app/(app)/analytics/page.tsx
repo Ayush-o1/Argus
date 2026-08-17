@@ -263,8 +263,10 @@ function renderResult(algorithm: AlgorithmId, result: AnyResult) {
                 </Link>
               </div>
               <div className={styles.communityMeta}>
-                <span>Avg risk</span>
-                <span>{c.avg_risk_score}</span>
+                <span>Flagged by ARGUS</span>
+                <span>
+                  {c.flagged_members} of {c.assessed_members} assessed
+                </span>
               </div>
             </div>
           ))}

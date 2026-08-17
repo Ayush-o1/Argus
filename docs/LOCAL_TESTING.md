@@ -62,6 +62,9 @@ the environment, so a real deployment supplies its own and never inherits these.
       ```
       Use **analyst** to actually look at intelligence. An `administrator`
       deliberately cannot read any of it.
+- [ ] **Assess the world** — sign in as an investigator and press *Re-assess* on
+      `/assessment`, or leave it: every risk surface will honestly report that
+      nothing has been assessed yet
 - [ ] **Start the frontend** — `make frontend` → http://localhost:3000
 
 ### Verify the stack is actually up
@@ -93,8 +96,9 @@ a single compromised account being catastrophic:
       read what it knows.
 - [ ] `auditor` → can read everything **and** the audit log, can change nothing
 - [ ] `viewer` → reads intelligence, cannot triage, decide or merge
-- [ ] `analyst` → can decide a resolution candidate, **cannot** reverse one
-- [ ] `supervisor` → can reverse a merge and quarantine a feed
+- [ ] `analyst` → can decide a resolution candidate, **cannot** reverse one,
+      and **cannot** trigger an assessment run
+- [ ] `supervisor` → can reverse a merge, quarantine a feed and run an assessment
 
 ---
 
@@ -104,6 +108,9 @@ a single compromised account being catastrophic:
 - [ ] Counts match the database — `active_cases` counts `Open` + `UnderReview`
       (a `Draft` case is not active), `open_alerts` counts open High/Critical
       incidents
+- [ ] "Elevated entities" counts what **ARGUS** assessed, not what the generator
+      flagged, and sits beside "Not assessable" — the figure that qualifies it.
+      There is deliberately no mean risk score
 - [ ] Every windowed figure states its window ("last 7 days") rather than
       presenting a slice as a total
 - [ ] The header shows the **Synthetic** badge — the whole dataset is generated
@@ -171,11 +178,20 @@ a single compromised account being catastrophic:
 ## Entity profile
 
 - [ ] `/entities/PRS-0002001` loads
-- [ ] Risk is visible on arrival, with its provenance
-- [ ] **The risk score is labelled as generator-assigned**, rated F6, with a note
-      saying it came from storyline membership rather than evidence. This is the
-      single most important thing on the page: it is the difference between a
-      number and a conclusion.
+- [ ] **ARGUS assessment** is the first thing in the sidebar, with its band, its
+      score, and the share of the model that could be evaluated — never the
+      score alone
+- [ ] Three states are visually distinct: **what fired**, **could not be
+      evaluated**, and **examined, nothing found**. The middle one is the point:
+      "no device is registered to this person" is not the same as "this person
+      made no calls"
+- [ ] Below it, **Reported by source** shows the generator's own number as a
+      claim — *inferred*, rated F6, with a note saying it came from storyline
+      membership. Look for an entity where the two disagree: PRS-0000590 is
+      assessed elevated by ARGUS from a real funds cycle while the generator
+      scored it 2/100
+- [ ] An entity with no assessment says so plainly and is **not** drawn as low
+      risk
 - [ ] Provenance tab lists observations and assertions
 - [ ] Conflicting values are shown as conflicts, not silently resolved
 
@@ -200,6 +216,26 @@ a single compromised account being catastrophic:
 - [ ] Decide a pair (rationale required) → it leaves the queue
 - [ ] Reverse the decision as a supervisor → both decisions remain in the ledger
 - [ ] A contested cluster, if any, leads the page and is not auto-resolved
+
+## Assessment
+
+- [ ] `/assessment` loads with band counts that sum to the assessed population
+- [ ] Before any run has happened it says so plainly, rather than showing zeros
+      that look like findings
+- [ ] Each queue row states the actual finding with real numbers ("Funds moved
+      through a 6-account ring and returned to the start within 18h, retaining
+      74% of the opening amount"), not a bare score
+- [ ] Every row shows its evidence coverage beside its score
+- [ ] **What ARGUS looks for** lists every signal, its weight, the question it
+      asks and why it counts as evidence
+- [ ] **How well it performs** shows precision and recall against planted
+      storylines, *and* names the two planted phenomena no signal can detect,
+      with the reason. If that table ever hides them, the numbers above it are
+      inflated
+- [ ] Re-assess as an investigator → a run is queued; an analyst gets 403
+- [ ] Stop Neo4j and trigger a run → the run is recorded as **failed** with the
+      reason, the previous generation of assessments is untouched, and the page
+      says the counts may be out of date rather than reporting "saw 0 transfers"
 
 ## Settings
 
@@ -248,6 +284,13 @@ to make sure that has not come back:
       ```
 - [ ] Generated risk scores are `inferred` assertions rated `F6` with method
       `generator.risk_scorer@v1`, not bare numbers on the node
+- [ ] **No surface computes anything from the generator's risk score.** The
+      dashboard distribution, the browse filter, the map shading, the graph
+      seeds and the lead queue all read ARGUS's own band
+- [ ] Every score is displayed with its evidence coverage. A score without a
+      denominator anywhere is a regression
+- [ ] The band counts sum to the population, `insufficient_evidence` included —
+      it is usually the largest bucket, and it is not a low-risk finding
 - [ ] No surface presents `storyline_id` or `flagged` as a discovered finding
 
 ---

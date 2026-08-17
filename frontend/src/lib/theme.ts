@@ -47,3 +47,26 @@ export function riskTier(riskScore: number): RiskTier {
   if (riskScore > 0) return "low";
   return "none";
 }
+
+/**
+ * Visual tier for an ARGUS assessment band.
+ *
+ * Takes the band rather than the score, because the score is a share of
+ * whatever could be evaluated for that subject and colouring by it directly
+ * would paint two subjects the same shade when their numbers mean different
+ * things. `insufficient_evidence` and an absent assessment both come back as
+ * "none": neither is a finding, and colouring either one as calm is what this
+ * phase set out to stop.
+ */
+export function assessmentTier(band: string | null | undefined): RiskTier {
+  switch (band) {
+    case "elevated":
+      return "critical";
+    case "notable":
+      return "medium";
+    case "routine":
+      return "low";
+    default:
+      return "none";
+  }
+}

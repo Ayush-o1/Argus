@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { formatScore } from "@/lib/assessment";
 import { Globe2, ShieldHalf } from "lucide-react";
 import { useMemo } from "react";
 import { Badge } from "@/components/ui/Badge";
@@ -37,13 +38,18 @@ export function CaseFootprint({
     const countries = new Set<string>();
     const regions = new Set<string>();
     const byLabel = new Map<string, number>();
-    let peakRisk = 0;
+    // Null until an assessed entity is seen, so "no assessed entity on this
+    // board" cannot render as a peak of 0 — which would read as a case full of
+    // cleared entities rather than one ARGUS has no view on.
+    let peakScore: number | null = null;
 
     for (const e of entities) {
       const p = e.properties;
       if (typeof p.country === "string") countries.add(p.country);
       if (typeof p.region === "string") regions.add(p.region);
-      if (typeof p.risk_score === "number") peakRisk = Math.max(peakRisk, p.risk_score);
+      if (typeof p.argus_score === "number") {
+        peakScore = peakScore === null ? p.argus_score : Math.max(peakScore, p.argus_score);
+      }
       byLabel.set(e.label, (byLabel.get(e.label) ?? 0) + 1);
     }
 
@@ -59,12 +65,12 @@ export function CaseFootprint({
       countries: [...countries],
       regions: [...regions],
       composition: [...byLabel.entries()].sort((a, b) => b[1] - a[1]),
-      peakRisk,
+      peakScore,
       related,
     };
   }, [entities, alerts]);
 
-  const { countries, regions, composition, peakRisk, related } = model;
+  const { countries, regions, composition, peakScore, related } = model;
 
   return (
     <div className={styles.wrap}>
@@ -78,7 +84,11 @@ export function CaseFootprint({
               <Stat label="Entities" value={entities.length} />
               <Stat label="Countries" value={countries.length || "—"} />
               <Stat label="Regions" value={regions.length || "—"} />
-              <Stat label="Peak risk" value={peakRisk > 0 ? Math.round(peakRisk) : "—"} tone={peakRisk >= 80} />
+              <Stat
+                label="Peak assessment"
+                value={formatScore(peakScore) ?? "—"}
+                tone={(peakScore ?? 0) >= 60}
+              />
             </div>
 
             {countries.length > 0 ? (

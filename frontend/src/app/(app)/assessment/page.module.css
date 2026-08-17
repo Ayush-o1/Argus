@@ -1,0 +1,300 @@
+.bands {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+/* Every band gets the same card. The insufficient-evidence bucket is usually
+   the largest one, and shrinking it would let the page read as a summary of a
+   world ARGUS has mostly not seen. */
+.bandCard {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-3);
+  border: 1px solid var(--surface-border-faint);
+  border-radius: var(--card-radius);
+  background: var(--surface-raised);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.bandCard:hover {
+  border-color: var(--surface-border);
+}
+
+.bandCardSelected {
+  border-color: var(--accent-primary);
+}
+
+.bandCount {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xl);
+  font-weight: var(--font-semibold);
+}
+
+.bandLabel {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.bandShare {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.runLine {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  color: var(--text-tertiary);
+  line-height: 1.6;
+}
+
+.warn {
+  color: var(--risk-high);
+}
+
+.queue {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border-subtle);
+  text-decoration: none;
+  color: inherit;
+}
+
+.row:hover {
+  background: var(--surface-hover);
+}
+
+.rowMain {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.rowRef {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+}
+
+.rowType {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.rowSummary {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.rowScore {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.rowScoreValue {
+  font-family: var(--font-mono);
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+}
+
+/* Directly beneath the score, always rendered. The two are one figure. */
+.rowCoverage {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.empty,
+.note {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.noteSmall {
+  margin: 4px 0 0;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  line-height: 1.5;
+  max-width: 60ch;
+}
+
+.signals {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.signal {
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.signalHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.signalTitle {
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+}
+
+.signalTypes,
+.signalReads {
+  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  color: var(--text-tertiary);
+}
+
+.signalQuestion {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+}
+
+.signalRationale {
+  margin: 4px 0;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.55;
+  max-width: 76ch;
+}
+
+.signalReads {
+  margin: 4px 0 0;
+}
+
+.evaluation {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--space-3);
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.metricValue {
+  font-family: var(--font-mono);
+  font-size: var(--text-xl);
+  font-weight: var(--font-semibold);
+}
+
+.metricLabel {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.metricDetail {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.table th {
+  text-align: left;
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--surface-border-faint);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+  font-weight: var(--font-medium);
+}
+
+.table td {
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+  vertical-align: top;
+}
+
+/* Undetectable phenomena stay in the table rather than being filtered out of
+   it. A recall figure computed over only the detectable subset would be an
+   average across a denominator chosen to flatter. */
+.undetectable td {
+  color: var(--text-tertiary);
+}
+
+.undetectableTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--risk-unknown);
+}
+
+.caveats {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--surface-border-faint);
+  border-radius: var(--card-radius);
+  background: var(--surface-base);
+}
+
+.caveatTitle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+}
+
+.caveat {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.6;
+  max-width: 88ch;
+}
+
+.runError {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+}

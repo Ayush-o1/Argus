@@ -168,3 +168,29 @@
   border-color: var(--text-tertiary);
   color: var(--text-primary);
 }
+
+/* The assessment-band filter. A select rather than the range slider it
+   replaced: the slider ranged over a planted score, and a continuous control
+   implied a precision that number never had. */
+.filterLabel {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+}
+
+.filterSelect {
+  width: 100%;
+  padding: var(--space-2);
+  border: 1px solid var(--surface-border-faint);
+  border-radius: 6px;
+  background: var(--surface-base);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-family: inherit;
+}
+
+.filterSelect:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 1px;
+}

@@ -69,14 +69,15 @@ async def projection(driver: AsyncDriver) -> AsyncIterator[str]:
 
 
 async def owner_lookup(driver: AsyncDriver, account_ids: list[str]) -> dict[str, dict]:
-    """Maps Account.id (uuid) -> {account_id, owner_id, owner_label, owner_name, risk_score}."""
+    """Maps Account.id (uuid) -> {account_id, owner_id, owner_label, owner_name, band}."""
     async with driver.session() as session:
         result = await session.run(
             """
             MATCH (a:Account) WHERE a.id IN $ids
             OPTIONAL MATCH (owner) WHERE owner.id = a.owner_id
             RETURN a.id AS uuid, a.account_id AS account_id, a.owner_id AS owner_id,
-                   a.owner_type AS owner_label, a.risk_score AS account_risk_score,
+                   a.owner_type AS owner_label, a.argus_band AS account_band,
+                   a.argus_score AS account_score,
                    coalesce(owner.name, a.account_id) AS owner_name,
                    coalesce(labels(owner)[0], a.owner_type) AS resolved_label,
                    CASE WHEN owner IS NOT NULL THEN
@@ -147,22 +148,34 @@ async def run_louvain(driver: AsyncDriver) -> dict:
 
     summary: list[dict[str, Any]] = []
     for community_id, members in communities.items():
-        risk_scores = [m["account_risk_score"] or 0 for m in members]
-        avg_risk = sum(risk_scores) / len(risk_scores) if risk_scores else 0
-        top_member = max(members, key=lambda m: m["account_risk_score"] or 0)
+        # Counts rather than an average score. Averaging assessment scores
+        # across a community mixes subjects whose scores have different
+        # evidence denominators, and produces a number that looks comparable
+        # between communities when it is not. How many members ARGUS flagged,
+        # out of how many it could assess at all, is the claim the data
+        # supports.
+        assessed = [m for m in members if m["account_band"] not in (None, "insufficient_evidence")]
+        flagged = [m for m in assessed if m["account_band"] in ("elevated", "notable")]
+        scored = [m for m in members if m["account_score"] is not None]
+        top_member = (
+            max(scored, key=lambda m: m["account_score"]) if scored else members[0]
+        )
         summary.append(
             {
                 "community_id": community_id,
                 "size": len(members),
-                "avg_risk_score": round(avg_risk, 1),
+                "assessed_members": len(assessed),
+                "flagged_members": len(flagged),
                 "top_entity": {
                     "id": top_member["owner_human_id"],
                     "name": top_member["owner_name"],
                     "label": top_member["resolved_label"],
+                    "band": top_member["account_band"],
+                    "score": top_member["account_score"],
                 },
             }
         )
-    summary.sort(key=lambda c: c["avg_risk_score"], reverse=True)
+    summary.sort(key=lambda c: (c["flagged_members"], c["size"]), reverse=True)
     return {"communities": summary, "total_communities": len(summary)}
 
 
@@ -277,7 +290,8 @@ async def run_risk_propagation(driver: AsyncDriver, seed_ids: list[str], max_hop
             """
             MATCH (n) WHERE n.person_id IN $seeds OR n.org_id IN $seeds OR n.account_id IN $seeds
             RETURN n.id AS uuid, coalesce(n.person_id, n.org_id, n.account_id, n.device_id, n.vehicle_id) AS human_id,
-                   coalesce(n.name, n.account_id) AS name, labels(n)[0] AS label, n.risk_score AS risk_score
+                   coalesce(n.name, n.account_id) AS name, labels(n)[0] AS label,
+                   n.argus_score AS argus_score, n.argus_band AS argus_band
             """,
             seeds=seed_ids,
         )
@@ -285,7 +299,25 @@ async def run_risk_propagation(driver: AsyncDriver, seed_ids: list[str], max_hop
         if not seeds:
             return {"seeds": [], "propagated": []}
 
-        frontier = {s["uuid"]: s["risk_score"] or 50.0 for s in seeds}
+        # Seeds with no assessment are excluded rather than defaulted. The
+        # previous `or 50.0` invented a starting value for any entity that had
+        # no score, so an analyst could seed propagation from an entity ARGUS
+        # knows nothing about and receive a confident-looking cascade computed
+        # from a number nobody chose.
+        usable = [s for s in seeds if s["argus_score"] is not None]
+        unusable = [s for s in seeds if s["argus_score"] is None]
+        if not usable:
+            return {
+                "seeds": [_seed_payload(s) for s in seeds],
+                "unusable_seeds": [_seed_payload(s) for s in unusable],
+                "propagated": [],
+                "note": (
+                    "None of the seed entities has an ARGUS assessment to propagate. "
+                    "Propagation starts from an assessed score; there is nothing to start from."
+                ),
+            }
+
+        frontier = {s["uuid"]: s["argus_score"] for s in usable}
         visited = set(frontier.keys())
         accumulated: dict[str, float] = {}
 
@@ -341,11 +373,24 @@ async def run_risk_propagation(driver: AsyncDriver, seed_ids: list[str], max_hop
     propagated.sort(key=lambda p: p["propagated_risk"], reverse=True)
 
     return {
-        "seeds": [
-            {"id": s["human_id"], "name": s["name"], "label": s["label"], "risk_score": s["risk_score"]}
-            for s in seeds
-        ],
+        "seeds": [_seed_payload(s) for s in usable],
+        "unusable_seeds": [_seed_payload(s) for s in unusable],
         "propagated": propagated,
+        "note": (
+            "Propagated values are a distance-attenuated echo of the seeds' own assessment "
+            "scores. They are not assessments: no evidence about the receiving entity was "
+            "examined to produce them."
+        ),
+    }
+
+
+def _seed_payload(seed: dict) -> dict:
+    return {
+        "id": seed["human_id"],
+        "name": seed["name"],
+        "label": seed["label"],
+        "band": seed["argus_band"],
+        "score": seed["argus_score"],
     }
 
 

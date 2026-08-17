@@ -26,7 +26,7 @@ export function RegionStrip({
   const ranked = [...regions].sort(
     (a, b) =>
       b.elevated_count - a.elevated_count ||
-      b.anomalous_routes - a.anomalous_routes ||
+      b.flagged_routes - a.flagged_routes ||
       b.entity_count - a.entity_count,
   );
   const maxEntities = Math.max(1, ...ranked.map((r) => r.entity_count));
@@ -58,7 +58,7 @@ export function RegionStrip({
             className={cn(styles.cell, isActive && styles.cellActive)}
             onClick={() => onSelect(isActive ? null : region.region)}
             aria-pressed={isActive}
-            title={`${region.region} — ${region.entity_count.toLocaleString()} entities, ${region.elevated_count} elevated, ${region.anomalous_routes} anomalous routes`}
+            title={`${region.region} — ${region.entity_count.toLocaleString()} entities, ${region.elevated_count} elevated, ${region.flagged_routes} flagged routes`}
           >
             <span className={styles.name}>{region.region}</span>
             <span className={styles.signals}>
@@ -69,10 +69,10 @@ export function RegionStrip({
               ) : (
                 <span className={styles.quiet}>—</span>
               )}
-              {region.anomalous_routes > 0 ? (
+              {region.flagged_routes > 0 ? (
                 // Spelled out: "21r" saved eight pixels at the cost of the
                 // reader knowing what the number counts.
-                <span className={styles.routes}>{region.anomalous_routes} routes</span>
+                <span className={styles.routes}>{region.flagged_routes} routes</span>
               ) : null}
             </span>
             {/* Volume as a hairline: present for comparison, never competing

@@ -79,3 +79,12 @@
   border-radius: 50%;
   background: var(--text-tertiary);
 }
+
+/* The claim is deliberately quieter than ARGUS's own assessment above it. It
+   is kept for auditability, not for triage. */
+.disclaimer {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  line-height: 1.5;
+}

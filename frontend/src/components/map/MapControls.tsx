@@ -10,18 +10,22 @@ import styles from "./MapControls.module.css";
 export type EntityTypeFilter = "all" | "Person" | "Organization";
 export type RouteFilter = "anomalies" | "all";
 
-const RISK_FILTERS = [
-  { value: 0, label: "All risk levels" },
-  { value: 35, label: "Medium and above" },
-  { value: 60, label: "High and above" },
-  { value: 80, label: "Critical only" },
+// Bands, not score thresholds. "Not assessable" is offered as its own choice
+// rather than folded into "all": an analyst asking which entities ARGUS could
+// not reach a view on is asking a real question, and it is one no score filter
+// could express.
+const BAND_FILTERS = [
+  { value: "", label: "All entities" },
+  { value: "elevated", label: "Elevated only" },
+  { value: "notable", label: "Notable and above" },
+  { value: "insufficient_evidence", label: "Not assessable" },
 ];
 
 interface MapControlsProps {
   entityType: EntityTypeFilter;
   onEntityTypeChange: (value: EntityTypeFilter) => void;
-  riskFilter: number;
-  onRiskFilterChange: (value: number) => void;
+  bandFilter: string;
+  onBandFilterChange: (value: string) => void;
   routeFilter: RouteFilter;
   onRouteFilterChange: (value: RouteFilter) => void;
   showEntities: boolean;
@@ -43,8 +47,8 @@ const SCALE_COPY: Record<MapScale, { label: string; hint: string }> = {
 export function MapControls({
   entityType,
   onEntityTypeChange,
-  riskFilter,
-  onRiskFilterChange,
+  bandFilter,
+  onBandFilterChange,
   routeFilter,
   onRouteFilterChange,
   showEntities,
@@ -74,11 +78,11 @@ export function MapControls({
 
       <SelectControl
         icon={ShieldAlert}
-        value={riskFilter}
-        active={riskFilter > 0}
-        onChange={(e) => onRiskFilterChange(Number(e.target.value))}
-        aria-label="Minimum risk level"
-        options={RISK_FILTERS}
+        value={bandFilter}
+        active={bandFilter !== ""}
+        onChange={(e) => onBandFilterChange(e.target.value)}
+        aria-label="Assessment band"
+        options={BAND_FILTERS}
       />
 
       <SelectControl

@@ -1,6 +1,9 @@
 "use client";
 
 import { ArrowLeftRight, Calendar, Clock, Map as MapIcon, Phone, ShieldHalf, Sparkles, Waypoints } from "lucide-react";
+import { AssessmentPanel } from "@/components/entity/AssessmentPanel";
+import { AssessmentBadge } from "@/components/ui/AssessmentBadge";
+import { SourceReportedRisk } from "@/components/entity/SourceReportedRisk";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useState } from "react";
@@ -9,8 +12,6 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Spinner } from "@/components/ui/Spinner";
-import { RiskBadge, riskLevelFromScore } from "@/components/ui/RiskBadge";
-import { RiskScoreWidget } from "@/components/entity/RiskScoreWidget";
 import { EntityTypeIcon } from "@/components/entity/EntityTypeIcon";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { IdentityNotice } from "@/components/resolution/IdentityNotice";
@@ -121,7 +122,6 @@ export default function EntityProfilePage() {
   }
 
   const fields = DISPLAY_FIELDS[entity.label] ?? [];
-  const riskFactors: string[] = entity.properties.risk_factors ?? [];
   const connections = entity.connections ?? {};
   const p = entity.properties;
   const place = [p.city ?? p.registered_city, p.country].filter(Boolean).join(", ");
@@ -140,7 +140,7 @@ export default function EntityProfilePage() {
               {place ? ` · ${place}` : ""}
             </div>
           </div>
-          {entity.risk_score > 0 ? <RiskBadge level={riskLevelFromScore(entity.risk_score)} /> : null}
+          <AssessmentBadge assessment={entity.assessment} />
         </div>
         <div className={styles.actions}>
           <Link href={`/graph?seed=${entity.id}`}>
@@ -202,13 +202,21 @@ export default function EntityProfilePage() {
               first thing in the sidebar now, and permanently on screen while
               the analyst moves between tabs. */}
           <div className={styles.sidebarBlock}>
-            <span className={styles.sidebarTitle}>Risk</span>
-            <RiskScoreWidget
-              score={entity.risk_score}
-              factors={riskFactors}
-              provenance={provenance?.attributes.risk_score}
-            />
+            <span className={styles.sidebarTitle}>ARGUS assessment</span>
+            <AssessmentPanel subjectRef={entity.id} />
           </div>
+
+          {/* The source's own risk figure, kept and clearly separated.
+              Deleting it would destroy a claim the provenance store holds an
+              assertion about; promoting it would be the audit's G-08 finding
+              all over again. It sits below ARGUS's own assessment, labelled as
+              what it is: something a source said. */}
+          {provenance?.attributes.risk_score ? (
+            <div className={styles.sidebarBlock}>
+              <span className={styles.sidebarTitle}>Reported by source</span>
+              <SourceReportedRisk provenance={provenance.attributes.risk_score} />
+            </div>
+          ) : null}
 
           <span className={styles.sidebarTitle}>Connections</span>
           {Object.keys(connections).length === 0 ? (

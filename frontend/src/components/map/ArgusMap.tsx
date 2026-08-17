@@ -1,6 +1,7 @@
 "use client";
 
 import { MapboxOverlay } from "@deck.gl/mapbox";
+import { bandLabel } from "@/lib/assessment";
 import type { Layer } from "@deck.gl/core";
 import { ArcLayer, ScatterplotLayer, TextLayer } from "@deck.gl/layers";
 import * as maplibregl from "maplibre-gl";
@@ -8,9 +9,17 @@ import type { Map as MapLibreMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import type { GraphNode } from "@/lib/types";
-import { riskTier } from "@/lib/theme";
+import { assessmentTier } from "@/lib/theme";
 import type { Corridor, CountryRollup, RegionRollup, ShipmentRoute } from "@/hooks/useMap";
 import styles from "./ArgusMap.module.css";
+
+/** A route ARGUS assessed as worth a look. Replaces the generator's
+ * `route_anomaly` flag, which the map drew as a discovered anomaly when it was
+ * the label the generator had written on the shipment in the first place. */
+function isFlaggedRoute(shipment: ShipmentRoute): boolean {
+  return shipment.argus_band === "elevated" || shipment.argus_band === "notable";
+}
+
 
 const DARK_STYLE = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
 
@@ -78,16 +87,19 @@ const FONT_STACK = "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', system
 const PERSON_MAP_COLOR: [number, number, number] = [148, 163, 184];
 
 function entityColor(node: GraphNode): [number, number, number] {
-  const tier = riskTier(node.risk_score);
+  const tier = assessmentTier(node.assessment?.band);
   if (tier === "critical" || tier === "high") return RISK_TIER_COLOR[tier];
   return node.label === "Organization" ? ORG_COLOR : PERSON_MAP_COLOR;
 }
 
-/** Aggregate colour: elevated entities are the signal, volume is just context. */
-function rollupColor(elevated: number, avgRisk: number): [number, number, number] {
+/** Aggregate colour: entities ARGUS assessed as elevated are the signal,
+ * volume is just context. The third tier now keys on how much of the region
+ * was assessable at all rather than on an average score — a region ARGUS could
+ * barely assess should not read as a calm one. */
+function rollupColor(elevated: number, assessed: number): [number, number, number] {
   if (elevated >= 4) return RISK_TIER_COLOR.critical;
   if (elevated >= 1) return RISK_TIER_COLOR.high;
-  if (avgRisk >= 8) return RISK_TIER_COLOR.medium;
+  if (assessed === 0) return RISK_TIER_COLOR.none;
   return [86, 133, 214];
 }
 
@@ -225,7 +237,7 @@ export const ArgusMap = forwardRef<ArgusMapHandle, ArgusMapProps>(function Argus
   // as one origin->destination arc would hide the detour, which is the entire
   // reason the route was flagged.
   const routeSegments = useMemo(() => {
-    let visible = routeFilter === "all" ? shipments : shipments.filter((s) => s.route_anomaly);
+    let visible = routeFilter === "all" ? shipments : shipments.filter(isFlaggedRoute);
     // Once zoomed in, keep only routes that actually touch the visible extent.
     // Long intercontinental arcs merely transiting the viewport — both ends
     // off-screen — carry no information about the area being examined, and at
@@ -313,7 +325,7 @@ export const ArgusMap = forwardRef<ArgusMapHandle, ArgusMapProps>(function Argus
         layers.push(
           new ArcLayer<Segment>({
             id: "shipments-normal",
-            data: routeSegments.filter((s) => !s.shipment.route_anomaly),
+            data: routeSegments.filter((s) => !isFlaggedRoute(s.shipment)),
             getSourcePosition: (d) => d.from,
             getTargetPosition: (d) => d.to,
             getSourceColor: NORMAL_ARC,
@@ -330,7 +342,7 @@ export const ArgusMap = forwardRef<ArgusMapHandle, ArgusMapProps>(function Argus
       layers.push(
         new ArcLayer<Segment>({
           id: "shipments-anomaly",
-          data: routeSegments.filter((s) => s.shipment.route_anomaly),
+          data: routeSegments.filter((s) => isFlaggedRoute(s.shipment)),
           getSourcePosition: (d) => d.from,
           getTargetPosition: (d) => d.to,
           getSourceColor: ANOMALY_ARC,
@@ -355,7 +367,7 @@ export const ArgusMap = forwardRef<ArgusMapHandle, ArgusMapProps>(function Argus
                 y: info.y,
                 kind: "route",
                 title: `${s.origin_city} → ${s.dest_city}`,
-                subtitle: `${s.carrier} · ${ANOMALY_LABEL[s.anomaly_kind ?? ""] ?? "anomalous route"}`,
+                subtitle: `${s.carrier} · ${bandLabel(s.argus_band)}`,
               });
             } else {
               setHovered((prev) => (prev?.kind === "route" ? null : prev));
@@ -377,7 +389,7 @@ export const ArgusMap = forwardRef<ArgusMapHandle, ArgusMapProps>(function Argus
           getPosition: (d) => [d.lng, d.lat],
           getRadius: (d) => bubbleRadius(d.entity_count, 0.85),
           radiusUnits: "pixels",
-          getFillColor: (d) => rollupColor(d.elevated_count, d.avg_risk),
+          getFillColor: (d) => rollupColor(d.elevated_count, d.assessed_count),
           getLineColor: [11, 12, 15, 200],
           getLineWidth: 1.5,
           lineWidthUnits: "pixels",
@@ -417,7 +429,7 @@ export const ArgusMap = forwardRef<ArgusMapHandle, ArgusMapProps>(function Argus
           getPosition: (d) => [d.lng, d.lat],
           getRadius: (d) => bubbleRadius(d.entity_count, 1.5),
           radiusUnits: "pixels",
-          getFillColor: (d) => rollupColor(d.elevated_count, d.avg_risk),
+          getFillColor: (d) => rollupColor(d.elevated_count, d.assessed_count),
           getLineColor: [11, 12, 15, 200],
           getLineWidth: 1.5,
           lineWidthUnits: "pixels",
@@ -434,7 +446,7 @@ export const ArgusMap = forwardRef<ArgusMapHandle, ArgusMapProps>(function Argus
                 y: info.y,
                 kind: "aggregate",
                 title: d.country,
-                subtitle: `${d.entity_count.toLocaleString()} entities · ${d.elevated_count} elevated · avg risk ${d.avg_risk}`,
+                subtitle: `${d.entity_count.toLocaleString()} entities · ${d.elevated_count} elevated of ${d.assessed_count} assessed`,
               });
             } else {
               setHovered((prev) => (prev?.kind === "aggregate" ? null : prev));
@@ -455,7 +467,8 @@ export const ArgusMap = forwardRef<ArgusMapHandle, ArgusMapProps>(function Argus
           id: "entities",
           data: entities,
           getPosition: (d) => [d.properties.lng, d.properties.lat],
-          getRadius: (d) => (d.id === selectedEntityId ? 8 : d.risk_score >= 60 ? 6 : 3.5),
+          getRadius: (d) =>
+            d.id === selectedEntityId ? 8 : d.assessment?.band === "elevated" ? 6 : 3.5,
           radiusUnits: "pixels",
           getFillColor: entityColor,
           getLineColor: (d) => (d.id === selectedEntityId ? [240, 242, 247, 255] : [11, 12, 15, 180]),
@@ -478,9 +491,9 @@ export const ArgusMap = forwardRef<ArgusMapHandle, ArgusMapProps>(function Argus
                 y: info.y,
                 kind: "entity",
                 title: info.object.name,
-                subtitle: `${info.object.label}${info.object.properties.country ? ` · ${info.object.properties.country}` : ""}${
-                  info.object.risk_score > 0 ? ` · risk ${info.object.risk_score}` : ""
-                }`,
+                subtitle: `${info.object.label}${info.object.properties.country ? ` · ${info.object.properties.country}` : ""} · ${bandLabel(
+                  info.object.assessment?.band,
+                )}`,
               });
             } else {
               setHovered((prev) => (prev?.kind === "entity" ? null : prev));
@@ -496,7 +509,9 @@ export const ArgusMap = forwardRef<ArgusMapHandle, ArgusMapProps>(function Argus
         layers.push(
           new TextLayer<GraphNode>({
             id: "entity-labels",
-            data: entities.filter((e) => e.id === selectedEntityId || riskTier(e.risk_score) === "critical"),
+            data: entities.filter(
+              (e) => e.id === selectedEntityId || e.assessment?.band === "elevated",
+            ),
             getPosition: (d) => [d.properties.lng, d.properties.lat],
             getText: (d) => d.name,
             getSize: 12,
@@ -553,9 +568,3 @@ export const ArgusMap = forwardRef<ArgusMapHandle, ArgusMapProps>(function Argus
     </div>
   );
 });
-
-export const ANOMALY_LABEL: Record<string, string> = {
-  off_lane: "off-lane routing",
-  circuitous: "circuitous detour",
-  manifest_shift: "manifest discrepancy",
-};

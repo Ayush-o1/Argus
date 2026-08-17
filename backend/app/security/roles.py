@@ -74,6 +74,16 @@ class Permission(StrEnum):
     # is: undoing a colleague's decision is a judgement about their work.
     RESOLUTION_MANAGE = "resolution:manage"
 
+    # ARGUS's own risk assessment. Reading one is reading intelligence — it
+    # states what ARGUS concluded about a named entity and why — so it travels
+    # with the read set and an administrator does not get it.
+    ASSESSMENT_READ = "assessment:read"
+    # Re-running the assessor over the whole graph, and publishing the
+    # evaluation of the model against ground truth. Above analyst: a run
+    # rewrites what every risk surface in the product displays, and an
+    # evaluation report is a published claim about how good ARGUS is.
+    ASSESSMENT_RUN = "assessment:run"
+
     # Expensive or graph-mutating operations
     ANALYTICS_RUN = "analytics:run"
     SCENARIO_GENERATE = "scenario:generate"
@@ -105,6 +115,11 @@ _READ_INTELLIGENCE = frozenset(
         # reader shown "3 accounts" who cannot see that two of the owners are
         # believed to be the same person has been given a misleading number.
         Permission.RESOLUTION_READ,
+        # A risk band with no way to see the signals behind it is the number
+        # this phase was built to remove. The assessment and its working are
+        # one permission, so no reader can be shown the conclusion without
+        # access to the evidence for it.
+        Permission.ASSESSMENT_READ,
     }
 )
 
@@ -132,6 +147,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
         Permission.ASSERTION_RETRACT,
         Permission.RESOLUTION_DECIDE,
         Permission.RESOLUTION_MANAGE,
+        Permission.ASSESSMENT_RUN,
     },
     Role.SUPERVISOR: _READ_INTELLIGENCE
     | {
@@ -148,6 +164,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
         Permission.AUDIT_READ,
         Permission.RESOLUTION_DECIDE,
         Permission.RESOLUTION_MANAGE,
+        Permission.ASSESSMENT_RUN,
     },
     # No intelligence-read permissions. Deliberate: see the module docstring.
     #

@@ -27,7 +27,7 @@ export function GlobalPosture() {
     .sort(
       (a, b) =>
         b.elevated_count - a.elevated_count ||
-        b.anomalous_routes - a.anomalous_routes ||
+        b.flagged_routes - a.flagged_routes ||
         b.entity_count - a.entity_count,
     )
     .slice(0, MAX_REGIONS);
@@ -57,8 +57,8 @@ export function GlobalPosture() {
                       {region.elevated_count} elevated
                     </span>
                   ) : null}
-                  {region.anomalous_routes > 0 ? (
-                    <span className={styles.routes}>{region.anomalous_routes} routes</span>
+                  {region.flagged_routes > 0 ? (
+                    <span className={styles.routes}>{region.flagged_routes} routes</span>
                   ) : null}
                 </span>
               </span>

@@ -1,0 +1,133 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.headline {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.score {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  margin-left: auto;
+}
+
+.scoreValue {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xl);
+  font-weight: var(--font-semibold);
+}
+
+.scoreMax {
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+}
+
+/* Deliberately the same weight as a score, not smaller. "No score" is a
+   finding, and setting it in a quieter style than a number would make the
+   absence of an assessment read as a lesser kind of answer. */
+.noScore {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-lg);
+  color: var(--text-secondary);
+}
+
+.coverage {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.meaning {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+  line-height: 1.5;
+}
+
+.absent {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.sectionTitle {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+}
+
+.signal {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+}
+
+.signalBody {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.signalSummary {
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  line-height: 1.45;
+}
+
+.signalMeta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.fired {
+  color: var(--risk-critical);
+  display: flex;
+  padding-top: 2px;
+}
+
+.clean {
+  color: var(--status-ok, #22c55e);
+  display: flex;
+  padding-top: 2px;
+}
+
+/* Neutral, never green. A signal ARGUS could not evaluate is an absence of
+   knowledge, and colouring it like a passed check is the reassurance this
+   whole phase exists to remove. */
+.blind {
+  color: var(--risk-unknown);
+  display: flex;
+  padding-top: 2px;
+}
+
+.footer {
+  margin: 0;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  word-break: break-word;
+}

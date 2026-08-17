@@ -1,13 +1,13 @@
 "use client";
 
 import { Search as SearchIcon, X } from "lucide-react";
+import { matchesBand } from "@/lib/assessment";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useMemo, useState } from "react";
 import { EntityCard } from "@/components/entity/EntityCard";
 import { EntityTypeIcon } from "@/components/entity/EntityTypeIcon";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { RangeSlider } from "@/components/ui/RangeSlider";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { PageShell } from "@/components/layout/PageShell";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
@@ -20,15 +20,18 @@ import styles from "./page.module.css";
  * Person; Device is browse-only (it has no human name to full-text match). */
 const FACET_TYPES = ["Person", "Organization", "Location", "Vehicle", "Device"];
 
-const RISK_TICKS = ["0", "35", "60", "80", "100"];
-
-function riskLabel(value: number): string {
-  if (value === 0) return "Any";
-  if (value >= 80) return "Critical only";
-  if (value >= 60) return "High and above";
-  if (value >= 35) return "Medium and above";
-  return `${value}+`;
-}
+// A band filter replaces the minimum-risk slider. The slider ranged over the
+// generator's planted score, and a continuous control implied a precision the
+// number never had. "Not assessable" is offered explicitly, because asking
+// which entities ARGUS could not reach a view on is a real question a
+// threshold could not express.
+const BAND_OPTIONS = [
+  { value: "", label: "Any" },
+  { value: "elevated", label: "Elevated" },
+  { value: "notable", label: "Notable and above" },
+  { value: "routine", label: "Examined, nothing found" },
+  { value: "insufficient_evidence", label: "Not assessable" },
+];
 
 export default function SearchPage() {
   return (
@@ -43,21 +46,21 @@ function SearchPageInner() {
   const [query, setQuery] = useState("");
   const [activeTypes, setActiveTypes] = useState<string[]>([]);
   const [activeRegions, setActiveRegions] = useState<string[]>([]);
-  // Entering from the dashboard's risk ladder pre-seeds the threshold, so the
-  // click lands on a filtered result set rather than an empty search box.
-  const [riskMin, setRiskMin] = useState(() => Number(params.get("risk") ?? 0) || 0);
+  // Entering from the dashboard pre-seeds the band, so the click lands on a
+  // filtered result set rather than an empty search box.
+  const [band, setBand] = useState(() => params.get("band") ?? "");
   const debouncedQuery = useDebouncedValue(query, 250);
 
   const hasQuery = debouncedQuery.trim().length > 0;
-  const hasFilters = activeTypes.length > 0 || activeRegions.length > 0 || riskMin > 0;
-  // With no typed name, the type/risk filters used to render but do nothing —
+  const hasFilters = activeTypes.length > 0 || activeRegions.length > 0 || band !== "";
+  // With no typed name, the type/band filters used to render but do nothing —
   // the page just showed "type a name" regardless of what was checked. Now,
   // as soon as a filter is active, that becomes a real server-side browse
-  // across the selected types (or all facet types if only risk is set).
+  // across the selected types (or all facet types if only the band is set).
   const browseMode = !hasQuery && hasFilters;
 
   const textSearch = useSearch(hasQuery ? debouncedQuery : "");
-  const browse = useBrowseEntities(browseMode ? (activeTypes.length > 0 ? activeTypes : FACET_TYPES) : [], riskMin);
+  const browse = useBrowseEntities(browseMode ? (activeTypes.length > 0 ? activeTypes : FACET_TYPES) : [], band);
 
   const isFetching = hasQuery ? textSearch.isFetching : browse.isFetching;
 
@@ -75,10 +78,10 @@ function SearchPageInner() {
     const results = textSearch.data?.data ?? [];
     return results.filter((node) => {
       if (activeTypes.length > 0 && !activeTypes.includes(node.label)) return false;
-      if (node.risk_score < riskMin) return false;
+      if (!matchesBand(node.assessment?.band, band)) return false;
       return inRegion(node);
     });
-  }, [browseMode, browseData, textSearch.data, activeTypes, activeRegions, riskMin]);
+  }, [browseMode, browseData, textSearch.data, activeTypes, activeRegions, band]);
 
   // Counts come from the result set actually on screen, so a facet never
   // advertises a number the current query can't deliver.
@@ -97,12 +100,12 @@ function SearchPageInner() {
     const counts: Record<string, number> = {};
     for (const node of source) {
       if (activeTypes.length > 0 && !activeTypes.includes(node.label)) continue;
-      if (!browseMode && node.risk_score < riskMin) continue;
+      if (!browseMode && !matchesBand(node.assessment?.band, band)) continue;
       const region = node.properties.region;
       if (region) counts[String(region)] = (counts[String(region)] ?? 0) + 1;
     }
     return counts;
-  }, [browseMode, browseData, textSearch.data, activeTypes, riskMin]);
+  }, [browseMode, browseData, textSearch.data, activeTypes, band]);
 
   const availableRegions = useMemo(
     () => Object.keys(regionCounts).sort((a, b) => regionCounts[b] - regionCounts[a]),
@@ -120,7 +123,7 @@ function SearchPageInner() {
   function resetFilters() {
     setActiveTypes([]);
     setActiveRegions([]);
-    setRiskMin(0);
+    setBand("");
   }
 
   return (
@@ -181,14 +184,21 @@ function SearchPageInner() {
           ) : null}
 
           <div className={styles.filterGroup}>
-            <RangeSlider
-              label="Minimum risk"
-              value={riskMin}
-              valueLabel={riskLabel(riskMin)}
-              ticks={RISK_TICKS}
-              riskRamp
-              onChange={(e) => setRiskMin(Number(e.target.value))}
-            />
+            <label className={styles.filterLabel} htmlFor="assessment-band">
+              ARGUS assessment
+            </label>
+            <select
+              id="assessment-band"
+              className={styles.filterSelect}
+              value={band}
+              onChange={(e) => setBand(e.target.value)}
+            >
+              {BAND_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </div>
         </aside>
 
@@ -201,11 +211,16 @@ function SearchPageInner() {
                 entity profile with its relationships, geography, and timeline.
               </p>
               <div className={styles.chipRow}>
-                <button type="button" className={styles.chip} onClick={() => setRiskMin(80)}>
-                  <span style={{ color: "var(--risk-critical)" }}>●</span> Critical-risk entities
+                <button type="button" className={styles.chip} onClick={() => setBand("elevated")}>
+                  <span style={{ color: "var(--risk-critical)" }}>●</span> Elevated by ARGUS
                 </button>
-                <button type="button" className={styles.chip} onClick={() => setRiskMin(60)}>
-                  <span style={{ color: "var(--risk-high)" }}>●</span> High risk and above
+                <button
+                  type="button"
+                  className={styles.chip}
+                  onClick={() => setBand("insufficient_evidence")}
+                >
+                  <span style={{ color: "var(--risk-unknown)" }}>●</span> Too little evidence to
+                  assess
                 </button>
                 {["Organization", "Location", "Vehicle"].map((t) => (
                   <button key={t} type="button" className={styles.chip} onClick={() => toggleType(t)}>

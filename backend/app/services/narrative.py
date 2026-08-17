@@ -1,7 +1,13 @@
 """Deterministic template-based narrative generation (ARGUS_PLAN.md Phase 10,
-Local Feature 2). Every clause maps 1:1 to a queried fact — properties, risk
-factors already computed by the generator's rule-based scorer, and direct
-connection counts. No LLM, no network call, no dependency beyond stdlib."""
+Local Feature 2). Every clause maps 1:1 to a queried fact. No LLM, no network
+call, no dependency beyond stdlib.
+
+The risk clause used to read the generator's `risk_score` and `risk_factors`
+and render them as prose — "Risk score: 87/100 (critical). The risk assessment
+cites: linked to money routing network." That was the answer key, restated in
+the confident voice of an analyst's summary, which is the most misleading form
+it could take. It now describes ARGUS's own assessment, and says plainly when
+there is not one."""
 
 from datetime import UTC, date, datetime
 
@@ -24,14 +30,14 @@ def _age(dob_iso: str) -> int:
     return today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
 
 
-def _risk_band(score: float) -> str:
-    if score >= 80:
-        return "critical"
-    if score >= 60:
-        return "high"
-    if score >= 35:
-        return "moderate"
-    return "low"
+# Phrasing per band. Deliberately not adjectives about the subject: ARGUS
+# assesses evidence, and "critical person" is a claim it cannot support.
+BAND_PHRASING = {
+    "elevated": "ARGUS assessed this as warranting review",
+    "notable": "ARGUS found something worth noting",
+    "routine": "ARGUS examined the available evidence and found nothing of note",
+    "insufficient_evidence": "ARGUS does not have enough evidence to assess this",
+}
 
 
 def _bio_sentence(label: str, name: str, properties: dict) -> str:
@@ -67,20 +73,33 @@ def _connections_sentence(name: str, connections: dict[str, int]) -> str | None:
     return f"{name} is directly connected to {joined}."
 
 
+def _assessment_sentence(properties: dict) -> str:
+    """One sentence about ARGUS's assessment, including its absence.
+
+    The coverage is stated alongside the score wherever there is one, because a
+    score without its denominator is the number this module used to print.
+    """
+    band = properties.get("argus_band")
+    if band is None:
+        return (
+            "ARGUS has published no risk assessment for this entity — either its type is not "
+            "assessed or no assessment run has covered it yet."
+        )
+    phrasing = BAND_PHRASING.get(band, f"ARGUS assessed this as {band}")
+    score = properties.get("argus_score")
+    coverage = properties.get("argus_coverage")
+    if score is None:
+        return f"{phrasing}; no score is published where the evidence does not support one."
+    coverage_clause = (
+        f", over the {coverage * 100:.0f}% of its model it could evaluate" if coverage else ""
+    )
+    return f"{phrasing} (score {score:.0f} of 100{coverage_clause})."
+
+
 def compose_entity_narrative(label: str, name: str, properties: dict, connections: dict[str, int]) -> str:
     sentences = [_bio_sentence(label, name, properties)]
 
-    risk_score = properties.get("risk_score", 0)
-    band = _risk_band(risk_score)
-    sentences.append(f"Risk score: {risk_score:.0f}/100 ({band}).")
-
-    risk_factors: list[str] = properties.get("risk_factors") or []
-    if risk_factors:
-        if len(risk_factors) == 1:
-            sentences.append(f"The risk assessment cites: {risk_factors[0].lower()}")
-        else:
-            cited = "; ".join(f.lower() for f in risk_factors[:4])
-            sentences.append(f"The risk assessment cites {len(risk_factors)} factors: {cited}.")
+    sentences.append(_assessment_sentence(properties))
 
     connections_sentence = _connections_sentence(name, connections)
     if connections_sentence:

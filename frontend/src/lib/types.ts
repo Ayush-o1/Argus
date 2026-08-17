@@ -1,11 +1,19 @@
 import type { Aggregate } from "@/lib/aggregate";
+import type { NodeAssessment } from "@/lib/assessment";
 
 export interface GraphNode {
   id: string;
   uuid: string;
   label: string;
   name: string;
-  risk_score: number;
+  /** ARGUS's own assessment, or null where it has none.
+   *
+   * Replaces `risk_score: number`, which carried the scenario generator's
+   * planted value and defaulted to 0 — so an entity nobody had assessed was
+   * indistinguishable from one assessed and found unremarkable. The optionality
+   * is the point: every consumer now has to decide what to show when ARGUS has
+   * no opinion. */
+  assessment: NodeAssessment | null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   properties: Record<string, any>;
   degree?: number;
@@ -55,7 +63,10 @@ export interface Incident {
     /** Bounded list for display; `country_count` is the authority. */
     countries: string[];
     regions: string[];
-    peak_risk: number | null;
+    /** Null when ARGUS has assessed none of the involved entities — which is a
+     * different statement from "none of them scored". */
+    peak_assessment_score: number | null;
+    elevated_entities: number;
   };
 }
 
@@ -78,7 +89,9 @@ export interface DashboardSummary {
   total_persons: number;
   total_organizations: number;
   total_transactions: number;
-  flagged_entities: number;
+  /** Entities ARGUS assessed as warranting review. Renamed from
+   * `flagged_entities`, which counted entities the *generator* had marked. */
+  elevated_entities: number;
   active_cases: number;
   open_alerts: number;
   /** Counted across every incident, so it may safely be stated in the same
@@ -88,8 +101,11 @@ export interface DashboardSummary {
   incidents_in_window: number;
   critical_incidents_in_window: number;
   window_days: number;
-  avg_risk_score: number;
-  risk_distribution: { level: Severity; count: number }[];
+  /** Counts across every band, including `unassessed`, so they sum to the
+   * population. There is deliberately no mean: an average over a population
+   * ARGUS mostly could not assess summarises nothing. */
+  assessment_distribution: { band: string; count: number }[];
+  assessed_persons: number;
   /** Display list only — never a source for counts. */
   recent_incidents: Incident[];
   recent_cases: CaseSummary[];

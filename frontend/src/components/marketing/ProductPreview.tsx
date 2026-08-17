@@ -1,6 +1,7 @@
 "use client";
 
 import { useDashboardSummary } from "@/hooks/useDashboard";
+import { formatScore } from "@/lib/assessment";
 import { useMapRegions } from "@/hooks/useMap";
 import { useBrowseEntities } from "@/hooks/useEntities";
 import { RISK_COLORS } from "@/lib/theme";
@@ -23,17 +24,15 @@ const LEAD_ROWS = 4;
 export function ProductPreview() {
   const { data: summary } = useDashboardSummary();
   const { data: regions } = useMapRegions();
-  const { data: leads } = useBrowseEntities(["Person", "Organization"], 60);
+  const { data: leads } = useBrowseEntities(["Person", "Organization"], "elevated");
 
   const rankedRegions = [...(regions ?? [])]
-    .sort((a, b) => b.elevated_count - a.elevated_count || b.anomalous_routes - a.anomalous_routes)
+    .sort((a, b) => b.elevated_count - a.elevated_count || b.flagged_routes - a.flagged_routes)
     .slice(0, REGION_ROWS);
   const maxEntities = Math.max(1, ...rankedRegions.map((r) => r.entity_count));
   const topLeads = (leads ?? []).slice(0, LEAD_ROWS);
 
-  const elevated =
-    (summary?.risk_distribution.find((b) => b.level === "Critical")?.count ?? 0) +
-    (summary?.risk_distribution.find((b) => b.level === "High")?.count ?? 0);
+  const elevated = summary?.elevated_entities ?? 0;
   const leadRegion = rankedRegions[0]?.region;
 
   return (
@@ -47,7 +46,7 @@ export function ProductPreview() {
 
       <div className={styles.body}>
         <p className={styles.statement}>
-          <strong>{elevated || "—"}</strong> entities carrying elevated risk
+          <strong>{elevated || "—"}</strong> entities ARGUS assessed as warranting review
           {leadRegion ? (
             <>
               , concentrated in <strong>{leadRegion}</strong>
@@ -94,7 +93,7 @@ export function ProductPreview() {
                   .filter(Boolean)
                   .join(", ")}
               </span>
-              <span className={styles.leadScore}>{Math.round(lead.risk_score)}</span>
+              <span className={styles.leadScore}>{formatScore(lead.assessment?.score) ?? "—"}</span>
             </div>
           ))}
           {topLeads.length === 0

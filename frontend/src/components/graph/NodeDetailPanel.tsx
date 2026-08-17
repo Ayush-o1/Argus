@@ -1,10 +1,11 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { AssessmentBadge } from "@/components/ui/AssessmentBadge";
+import { scoreWithCoverage } from "@/lib/assessment";
 import { Crosshair, Waypoints, X } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
-import { RiskBadge, riskLevelFromScore } from "@/components/ui/RiskBadge";
 import { EntityTypeIcon } from "@/components/entity/EntityTypeIcon";
 import { useEntity } from "@/hooks/useEntities";
 import type { NeighborConnection } from "./GraphCanvas";
@@ -76,12 +77,15 @@ export function NodeDetailPanel({
         </Button>
       </div>
 
-      {entity.risk_score > 0 && (
-        <div className={styles.section}>
-          <span className={styles.sectionTitle}>Risk</span>
-          <RiskBadge level={riskLevelFromScore(entity.risk_score)} />
-        </div>
-      )}
+      <div className={styles.section}>
+        <span className={styles.sectionTitle}>ARGUS assessment</span>
+        <AssessmentBadge assessment={entity.assessment} />
+        {entity.assessment ? (
+          <span className={styles.propertyValue}>
+            {scoreWithCoverage(entity.assessment.score, entity.assessment.coverage)}
+          </span>
+        ) : null}
+      </div>
 
       {keys.length > 0 && (
         <div className={styles.section}>

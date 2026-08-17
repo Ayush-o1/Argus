@@ -1,9 +1,10 @@
 "use client";
 
 import { EntityTypeIcon } from "@/components/entity/EntityTypeIcon";
+import { formatScore, scoreWithCoverage } from "@/lib/assessment";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { cn } from "@/lib/cn";
-import { RISK_COLORS, riskTier } from "@/lib/theme";
+import { RISK_COLORS, assessmentTier } from "@/lib/theme";
 import type { GraphNode } from "@/lib/types";
 import styles from "./LeadQueue.module.css";
 
@@ -53,7 +54,7 @@ export function LeadQueue({
   return (
     <ul className={styles.list} role="listbox" aria-label="Investigation leads">
       {leads.map((lead, i) => {
-        const tier = riskTier(lead.risk_score);
+        const tier = assessmentTier(lead.assessment?.band);
         const selected = lead.id === selectedId;
         const place = [lead.properties.city ?? lead.properties.registered_city, lead.properties.country]
           .filter(Boolean)
@@ -75,8 +76,12 @@ export function LeadQueue({
                 <span className={styles.name}>{lead.name}</span>
                 <span className={styles.meta}>{place || lead.label}</span>
               </span>
-              <span className={styles.score} style={{ color: TIER_COLOR[tier] }}>
-                {Math.round(lead.risk_score)}
+              <span
+                className={styles.score}
+                style={{ color: TIER_COLOR[tier] }}
+                title={scoreWithCoverage(lead.assessment?.score, lead.assessment?.coverage)}
+              >
+                {formatScore(lead.assessment?.score) ?? "—"}
               </span>
             </button>
           </li>

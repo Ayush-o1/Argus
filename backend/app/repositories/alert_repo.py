@@ -64,7 +64,9 @@ async def list_alerts(
                  count(DISTINCT entity.region) AS region_count,
                  collect(DISTINCT entity.country) AS countries,
                  collect(DISTINCT entity.region) AS regions,
-                 max(entity.risk_score) AS peak_risk
+                 max(entity.argus_score) AS peak_assessment_score,
+                 sum(CASE WHEN entity.argus_band = 'elevated' THEN 1 ELSE 0 END)
+                     AS elevated_entities
 
             RETURN i,
                    involved_total,
@@ -72,7 +74,8 @@ async def list_alerts(
                    region_count,
                    [c IN countries WHERE c IS NOT NULL] AS countries,
                    [r IN regions WHERE r IS NOT NULL] AS regions,
-                   peak_risk,
+                   peak_assessment_score,
+                   elevated_entities,
                    [e IN entities[0..$preview_limit] | {{label: labels(e)[0], properties: e}}] AS involved
             """,
             params,
@@ -107,7 +110,10 @@ async def list_alerts(
                 # Bounded for display; country_count remains the authority.
                 "countries": sorted(record["countries"])[:8],
                 "regions": sorted(record["regions"]),
-                "peak_risk": record["peak_risk"],
+                # NULL when ARGUS has assessed none of the involved entities,
+                # which is a different statement from "none of them scored".
+                "peak_assessment_score": record["peak_assessment_score"],
+                "elevated_entities": record["elevated_entities"],
             }
             alerts.append(alert)
 

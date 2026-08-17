@@ -39,7 +39,7 @@ export default function SettingsPage() {
                   <span className={styles.statLabel}>Transactions</span>
                 </div>
                 <div className={styles.statCard}>
-                  <span className={styles.statValue}>{summary?.flagged_entities ?? "—"}</span>
+                  <span className={styles.statValue}>{summary?.elevated_entities ?? "—"}</span>
                   <span className={styles.statLabel}>Flagged Entities</span>
                 </div>
               </div>

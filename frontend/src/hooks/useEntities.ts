@@ -4,7 +4,10 @@ import type { CaseSummary, GraphNode, Incident, Subgraph, TimelineItem } from "@
 
 interface ListEntitiesParams {
   type?: string;
-  risk_min?: number;
+  /** An assessment band, not a score floor. A score is a share of whatever
+   * could be evaluated for that subject, so a numeric threshold across mixed
+   * subject types compares numbers with different denominators. */
+  band?: string;
   city?: string;
   page?: number;
   page_size?: number;
@@ -16,7 +19,7 @@ export function useEntities(params: ListEntitiesParams) {
     queryFn: async () => {
       const search = new URLSearchParams();
       if (params.type) search.set("type", params.type);
-      if (params.risk_min) search.set("risk_min", String(params.risk_min));
+      if (params.band) search.set("band", params.band);
       if (params.city) search.set("city", params.city);
       search.set("page", String(params.page ?? 1));
       search.set("page_size", String(params.page_size ?? 50));
@@ -25,29 +28,37 @@ export function useEntities(params: ListEntitiesParams) {
   });
 }
 
-/** Browse entities across multiple types with a shared risk floor and no name
- * text — /api/entities only accepts a single `type`, so this fans out one
+/** Browse entities across multiple types with a shared assessment band and no
+ * name text — /api/entities only accepts a single `type`, so this fans out one
  * request per type and merges. Used by Search's filter-only mode (the audit
  * flagged that the type/risk filter UI previously did nothing until the user
  * also typed a name). */
-export function useBrowseEntities(types: string[], riskMin: number) {
+export function useBrowseEntities(types: string[], band: string | null) {
   const queries = useQueries({
     queries: types.map((type) => ({
-      queryKey: ["entities", { type, risk_min: riskMin, page_size: 50 }],
+      queryKey: ["entities", { type, band, page_size: 50 }],
       queryFn: async () => {
         const search = new URLSearchParams({ type, page: "1", page_size: "50" });
-        if (riskMin) search.set("risk_min", String(riskMin));
+        if (band) search.set("band", band);
         return (await apiFetch<GraphNode[]>(`/api/entities?${search.toString()}`)).data;
       },
     })),
   });
 
   const isFetching = queries.some((q) => q.isFetching);
-  const data = queries
-    .flatMap((q) => q.data ?? [])
-    .sort((a, b) => b.risk_score - a.risk_score);
+  // Unassessed entities sort last rather than to either extreme: they are not
+  // the most interesting and they are not the least, because nothing is known.
+  const data = queries.flatMap((q) => q.data ?? []).sort(byAssessmentScore);
 
   return { data, isFetching };
+}
+
+export function byAssessmentScore(a: GraphNode, b: GraphNode): number {
+  const left = a.assessment?.score;
+  const right = b.assessment?.score;
+  if (left === null || left === undefined) return right === null || right === undefined ? 0 : 1;
+  if (right === null || right === undefined) return -1;
+  return right - left;
 }
 
 export function useEntity(entityId: string | undefined) {

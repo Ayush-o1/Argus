@@ -18,14 +18,16 @@ router = APIRouter(
 @router.get("")
 async def list_entities(
     type: str = "Person",
-    risk_min: float = Query(0, ge=0, le=100),
+    # A band, not a minimum score. See `build_browse_filters` for why a numeric
+    # threshold across mixed subject types compares incomparable numbers.
+    band: str | None = Query(None),
     city: str | None = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
     driver: AsyncDriver = Depends(get_db),
 ) -> Envelope[list]:
     try:
-        nodes, total = await graph_repo.list_entities(driver, type, risk_min, city, page, page_size)
+        nodes, total = await graph_repo.list_entities(driver, type, band, city, page, page_size)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return Envelope(data=nodes, meta=Meta(total=total, page=page, page_size=page_size))

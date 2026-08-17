@@ -47,12 +47,14 @@ async def _build_context(driver: AsyncDriver) -> str:
         f"Total persons: {summary['total_persons']}",
         f"Total organizations: {summary['total_organizations']}",
         f"Total transactions: {summary['total_transactions']}",
-        f"Flagged entities: {summary['flagged_entities']}",
+        f"Entities ARGUS assessed as elevated: {summary['elevated_entities']}",
         f"Active cases: {summary['active_cases']}",
         f"Open alerts: {summary['open_alerts']}",
-        f"Average risk score: {summary['avg_risk_score']}",
-        "Risk distribution: "
-        + ", ".join(f"{b['level']}={b['count']}" for b in summary["risk_distribution"]),
+        # Given as counts across every band, `unassessed` included, so the model
+        # cannot describe the population as low-risk when most of it was never
+        # examined. There is deliberately no average to quote.
+        "Assessment distribution (persons): "
+        + ", ".join(f"{b['band']}={b['count']}" for b in summary["assessment_distribution"]),
         "Recent incidents: "
         + "; ".join(f"{i['type']} ({i['severity']}): {i['description']}" for i in summary["recent_incidents"][:5]),
     ]

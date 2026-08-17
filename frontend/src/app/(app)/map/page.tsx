@@ -1,6 +1,7 @@
 "use client";
 
 import { Map as MapIcon } from "lucide-react";
+import { matchesBand } from "@/lib/assessment";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { ArgusMap, type ArgusMapHandle, type MapBounds, type MapScale } from "@/components/map/ArgusMap";
@@ -36,7 +37,7 @@ function MapPageInner() {
   const regionParam = searchParams.get("region");
 
   const [entityType, setEntityType] = useState<EntityTypeFilter>("all");
-  const [riskFilter, setRiskFilter] = useState(0);
+  const [bandFilter, setBandFilter] = useState("");
   const [routeFilter, setRouteFilter] = useState<RouteFilter>("anomalies");
   const [showEntities, setShowEntities] = useState(true);
   const [showShipments, setShowShipments] = useState(true);
@@ -48,8 +49,8 @@ function MapPageInner() {
   const { data: corridors } = useMapCorridors();
 
   const entities = useMemo(
-    () => (rawEntities ?? []).filter((e) => e.risk_score >= riskFilter),
-    [rawEntities, riskFilter],
+    () => (rawEntities ?? []).filter((e) => matchesBand(e.assessment?.band, bandFilter)),
+    [rawEntities, bandFilter],
   );
 
   // undefined = no manual selection yet, so the URL-focused entity (if any)
@@ -125,8 +126,8 @@ function MapPageInner() {
             <MapControls
               entityType={entityType}
               onEntityTypeChange={setEntityType}
-              riskFilter={riskFilter}
-              onRiskFilterChange={setRiskFilter}
+              bandFilter={bandFilter}
+              onBandFilterChange={setBandFilter}
               routeFilter={routeFilter}
               onRouteFilterChange={setRouteFilter}
               showEntities={showEntities}

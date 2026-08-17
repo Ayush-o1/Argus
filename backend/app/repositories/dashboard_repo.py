@@ -17,18 +17,16 @@ RECENT_WINDOW_DAYS = 7
 # counting query — this list is never a source for aggregates.
 RECENT_INCIDENT_PREVIEW = 6
 
-# Half-open [low, high) so adjacent bands can't double-count — except the top
-# band, which must include the 100 endpoint. Storyline-injected entities are
-# scored at exactly 100.0, so an exclusive upper bound silently dropped every
-# genuinely critical entity from the distribution: the dashboard reported
-# "Critical: 0" while simultaneously reporting 4 flagged entities, and the
-# buckets summed to 3996 of 4000 persons.
-RISK_BUCKETS = [
-    ("Critical", 80, None),
-    ("High", 60, 80),
-    ("Medium", 35, 60),
-    ("Low", 0, 35),
-]
+# The bands ARGUS's own assessor produces, plus the bucket for everyone it has
+# not assessed. `unassessed` is listed here rather than being dropped because
+# the four bands do not cover the population: a person with no accounts and no
+# device is not low-risk, and a distribution that omitted them would present an
+# opinion about a fraction of the world as an opinion about all of it.
+#
+# This replaces a distribution computed from `Person.risk_score` — the scenario
+# generator's own number, assigned from storyline membership. The dashboard was
+# reporting the answer key back as a finding (audit G-08).
+ASSESSMENT_BANDS = ("elevated", "notable", "routine", "insufficient_evidence", "unassessed")
 
 
 async def get_dashboard_summary(driver: AsyncDriver) -> dict:
@@ -40,40 +38,39 @@ async def get_dashboard_summary(driver: AsyncDriver) -> dict:
         # count to zero for the rest of the query — .single() then returns None and
         # every downstream `counts["..."]` lookup raises. OPTIONAL MATCH keeps the
         # row alive with a 0 count instead. Confirmed via direct Cypher reproduction.
-        counts = await (
+        counts_row = await (
             await session.run(
                 """
                 MATCH (p:Person) WITH count(p) AS persons
                 OPTIONAL MATCH (o:Organization) WITH persons, count(o) AS orgs
                 OPTIONAL MATCH ()-[t:TRANSACTED_WITH]->() WITH persons, orgs, count(t) AS transactions
-                OPTIONAL MATCH (p2:Person) WHERE p2.risk_score >= 80
-                WITH persons, orgs, transactions, count(p2) AS flagged
+                OPTIONAL MATCH (p2:Person) WHERE p2.argus_band = 'elevated'
+                WITH persons, orgs, transactions, count(p2) AS elevated
                 OPTIONAL MATCH (a:Case) WHERE a.status IN ['Open', 'UnderReview']
-                WITH persons, orgs, transactions, flagged, count(a) AS active_cases
+                WITH persons, orgs, transactions, elevated, count(a) AS active_cases
                 OPTIONAL MATCH (i:Incident) WHERE i.status = 'Open' AND i.severity IN ['High', 'Critical']
-                RETURN persons, orgs, transactions, flagged, active_cases, count(i) AS open_alerts
+                RETURN persons, orgs, transactions, elevated, active_cases, count(i) AS open_alerts
                 """
             )
         ).single()
-        assert counts is not None, "aggregate query always returns exactly one row"
+        assert counts_row is not None, "aggregate query always returns exactly one row"
 
-        avg_risk_record = await (
-            await session.run("MATCH (p:Person) RETURN avg(p.risk_score) AS avg_risk")
-        ).single()
-        assert avg_risk_record is not None, "aggregate query always returns exactly one row"
-
-        risk_distribution = []
-        for label, low, high in RISK_BUCKETS:
-            upper_clause = "AND p.risk_score < $high" if high is not None else ""
-            record = await (
-                await session.run(
-                    f"MATCH (p:Person) WHERE p.risk_score >= $low {upper_clause} RETURN count(p) AS count",
-                    low=low,
-                    high=high,
-                )
-            ).single()
-            assert record is not None, "aggregate query always returns exactly one row"
-            risk_distribution.append({"level": label, "count": record["count"]})
+        # One grouped query rather than a count per band. The previous form ran
+        # a query per bucket, and the buckets were half-open ranges over a
+        # score, which is why a boundary mistake once dropped every entity at
+        # exactly 100 from the distribution while the totals still looked
+        # plausible. Grouping makes the counts sum to the population by
+        # construction.
+        band_result = await session.run(
+            """
+            MATCH (p:Person)
+            RETURN coalesce(p.argus_band, 'unassessed') AS band, count(p) AS count
+            """
+        )
+        counts = {record["band"]: record["count"] async for record in band_result}
+        assessment_distribution = [
+            {"band": band, "count": counts.get(band, 0)} for band in ASSESSMENT_BANDS
+        ]
 
         # Counted over every incident, not over the six-row display list below.
         #
@@ -122,20 +119,29 @@ async def get_dashboard_summary(driver: AsyncDriver) -> dict:
         recent_cases = [dict(record) async for record in recent_cases_result]
 
     return {
-        "total_persons": counts["persons"],
-        "total_organizations": counts["orgs"],
-        "total_transactions": counts["transactions"],
-        "flagged_entities": counts["flagged"],
-        "active_cases": counts["active_cases"],
-        "open_alerts": counts["open_alerts"],
+        "total_persons": counts_row["persons"],
+        "total_organizations": counts_row["orgs"],
+        "total_transactions": counts_row["transactions"],
+        # Renamed from `flagged_entities`, and it is not a rename only. The old
+        # figure counted people the generator had marked; this one counts
+        # people ARGUS assessed as warranting review, which is a different
+        # claim about a different thing.
+        "elevated_entities": counts_row["elevated"],
+        "active_cases": counts_row["active_cases"],
+        "open_alerts": counts_row["open_alerts"],
         # Full-population figures the UI can safely put in one sentence with
         # open_alerts, because they share its denominator.
         "critical_open_alerts": period_result["critical_open"] or 0,
         "incidents_in_window": period_result["incidents_in_window"] or 0,
         "critical_incidents_in_window": period_result["critical_in_window"] or 0,
         "window_days": RECENT_WINDOW_DAYS,
-        "avg_risk_score": round(avg_risk_record["avg_risk"] or 0.0, 1),
-        "risk_distribution": risk_distribution,
+        # No average. A mean over a population where most subjects could not be
+        # assessed at all is not a summary of anything, and putting one on a
+        # dashboard invites exactly the false authority this phase removed.
+        "assessment_distribution": assessment_distribution,
+        "assessed_persons": sum(
+            row["count"] for row in assessment_distribution if row["band"] != "unassessed"
+        ),
         # A display list only. Nothing derives a count from this.
         "recent_incidents": recent_incidents,
         "recent_cases": recent_cases,
