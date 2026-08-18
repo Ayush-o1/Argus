@@ -167,4 +167,15 @@ Scenario generation uses `start_job_with_progress` instead, because it needs to 
 
 ## Testing
 
-`backend/tests/` holds unit tests for the pure-logic pieces that don't require a live Neo4j/Redis connection: human-ID label resolution (`entity_labels.py`), the deterministic narrative templates (`narrative.py`), the anomaly-detection sliding-window/z-score math (`anomaly.py`), and the `Envelope`/`Meta` response models. Run with `pytest` from `backend/` (config lives in `pyproject.toml`'s `[tool.pytest.ini_options]`). Repository functions that require a live database are exercised by manual/`curl` verification and the frontend's integration paths rather than mocked unit tests — mocking the Neo4j driver would test the mock, not the Cypher.
+`backend/tests/` holds 593 tests. Run them with `pytest` from `backend/` (config lives in `pyproject.toml`'s `[tool.pytest.ini_options]`).
+
+Most are pure-logic tests over the pieces that carry the intelligence: the matching, scoring and correlation measures, the isolation scans that fail the build if an application surface reads a generator-planted field, and the response models. The rest are integration tests that run against a **real** Neo4j and a **real** PostgreSQL, because the defects the production audit found all lived in code no test had executed, and a mocked driver reproduces that gap exactly — it cannot tell you that `collect(...)[0..5]` truncates a count, that `count(*) + 1` races, or that a lookup is a label scan.
+
+Both stores are isolated rather than mocked, by different means:
+
+- **Neo4j** — Community edition permits only one database, so every node a test creates carries a `_test_tag` and the `graph` fixture deletes exactly those afterwards. Running the suite against a populated development graph is therefore not destructive.
+- **PostgreSQL** — redirected wholesale to a separate database (`argus_test` by default, `ARGUS_TEST_POSTGRES_DB` to change it), created and migrated by a session fixture. Tagging does not work here: `audit_events` is append-only by trigger, so rows a test writes cannot be removed afterwards by anyone. `conftest.py` refuses to start if the test database and the configured working database are the same name.
+
+Because the test database is created from empty, a normal run also exercises the migrations from zero — which running them only against a long-lived working database never does.
+
+Integration tests **skip** rather than fail when a database is unreachable, so `pytest` still works on a laptop with nothing running. CI treats any skip as a failure, since a green run that silently exercised nothing is worse than a red one.

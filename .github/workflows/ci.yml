@@ -134,7 +134,7 @@ jobs:
           output=$(pytest -q -m "" --no-header 2>&1)
           echo "$output"
           if echo "$output" | grep -qE "[0-9]+ skipped"; then
-            echo "::error::Integration tests were skipped in CI — the Neo4j service is not reachable."
+            echo "::error::Integration tests were skipped in CI — the Neo4j or PostgreSQL service is not reachable."
             exit 1
           fi
 

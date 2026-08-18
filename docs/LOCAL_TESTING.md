@@ -31,6 +31,40 @@ most often need attention:
 | `POSTGRES_PORT` | `55432` | Non-standard on purpose, so it cannot collide with a PostgreSQL you already run |
 | `ARGUS_INGEST_ROOT` | unset | Required only to use the filesystem connector; every path is confined beneath it |
 
+### Using a PostgreSQL you already run
+
+The compose stack is a convenience, not a requirement. To use an existing
+server instead, point the Postgres variables at it and skip the `postgres`
+service:
+
+```bash
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5432          # wherever your server listens
+POSTGRES_DB=argus           # created by you; ARGUS never creates a database
+POSTGRES_SUPERUSER=<your superuser>
+POSTGRES_SUPERUSER_PASSWORD=<their password>
+POSTGRES_APP_USER=argus_app
+POSTGRES_APP_PASSWORD=<generate one>
+```
+
+Create the database first — `CREATE DATABASE argus;` — and let the migrations
+do the rest. They create `argus_app`, grant it exactly what it needs, and set
+its password from `POSTGRES_APP_PASSWORD` on every startup, so rotating that
+value is a restart rather than a migration.
+
+Two things are worth checking on a server you did not configure for ARGUS:
+
+- **`pg_hba.conf` must not be `trust` for the connections ARGUS uses.** Under
+  `trust`, PostgreSQL ignores passwords entirely: the least-privilege split
+  still holds, because `argus_app`'s *privileges* are enforced regardless, but
+  any local process can connect as the superuser and the audit log's
+  tamper-resistance is only as good as who can reach the port. A Homebrew or
+  distribution default install is frequently `trust` on loopback. Use
+  `scram-sha-256` for `host` lines.
+- **Do not point `POSTGRES_APP_USER` at the superuser.** The audit log survives
+  compromise of the API precisely because the application's role cannot UPDATE
+  or DELETE an audit row. A superuser DSN makes that property decorative.
+
 **The `.env` defaults are development credentials and are safe to be public** —
 they exist in `.env.example` in the repository. They are not production
 credentials and cannot become them: `docker-compose.yml` reads every one from
