@@ -1,71 +1,45 @@
-"""Graph Data Science-backed analytics (ARGUS_PLAN.md Phase 9).
+"""Graph Data Science-backed analytics.
 
-The projection runs over the Account/TRANSACTED_WITH subgraph — per the
-Phase 7 implementation note, transactions are edges (not nodes), so
-Account->Account *is* the money-movement graph, and it's exactly the shape
-PageRank, Betweenness, Louvain, Node2Vec, and cycle detection need. Each
-Account is denormalized with `owner_id`/`owner_type`, so results are joined
-back to the owning Person/Organization for display without extra traversal.
+Every algorithm here runs against a **named projection** declared in
+`app/correlation/projection.py`, and every result says which one it ran on.
+
+That is a Phase 6 change, and it fixes something that was quietly misleading.
+All of these used to share one hard-coded projection — `Account` nodes joined by
+`TRANSACTED_WITH` — and none of them mentioned it. A PageRank score appeared on
+the analytics page as "influence" with no indication that the graph in question
+contained no people, no organisations and no devices, so "influence" actually
+meant "receives money from accounts that receive money". An analyst comparing a
+PageRank rank against a Louvain community was comparing answers to two different
+questions with no way to know it.
+
+Two projections are available. `money` is the original account-only graph, kept
+unchanged so results from before this phase remain comparable with results from
+after it. `entity` spans people, organisations, accounts and devices with
+per-type weights, and is what most questions about "who is central here"
+actually mean.
+
+Each Account is denormalised with `owner_id`/`owner_type`, so results are joined
+back to the owning Person or Organization for display without extra traversal.
 """
 
 import logging
-import uuid
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
 from typing import Any
 
 from neo4j import AsyncDriver
 
+from app.correlation.projection import WEIGHT_ALIAS, ProjectionSpec, projection, spec_for
+
 logger = logging.getLogger(__name__)
 
-PROJECTION_PREFIX = "entityGraph"
 
+def _with_provenance(spec: ProjectionSpec, results: list[dict] | dict) -> dict:
+    """Attach the projection to its own output.
 
-@asynccontextmanager
-async def projection(driver: AsyncDriver) -> AsyncIterator[str]:
-    """Creates a private GDS projection for the duration of one job, and drops it
-    afterwards. Yields the projection name.
-
-    Every analytics entry point previously shared a single projection named
-    `entityGraph` and began by dropping it if it existed (audit B-06). Because
-    these run as concurrent background jobs, triggering PageRank and Louvain
-    together — trivially done from the Analytics page — meant one job dropped the
-    projection out from under the other mid-stream, and the second failed with an
-    opaque GDS error surfaced as a generic job failure.
-
-    A per-job name removes the shared mutable resource entirely, which is
-    simpler and more robust than locking around it. The cost is one projection
-    build per job; at this scale (~2.8K accounts, ~40K transactions) that is
-    a fraction of a second.
+    Returned as one object rather than two so a caller cannot render the numbers
+    without the graph that produced them — which is exactly what every one of
+    these endpoints did before.
     """
-    name = f"{PROJECTION_PREFIX}_{uuid.uuid4().hex[:12]}"
-    async with driver.session() as session:
-        await session.run(
-            """
-            CALL gds.graph.project(
-                $name,
-                'Account',
-                {
-                    TRANSACTED_WITH: {
-                        orientation: 'NATURAL',
-                        properties: { amount: { property: 'amount', defaultValue: 0.0 } }
-                    }
-                }
-            )
-            """,
-            name=name,
-        )
-    try:
-        yield name
-    finally:
-        # In a finally block so a failed or cancelled job cannot leak a
-        # projection, which would otherwise hold heap until the database
-        # restarts. Best-effort: a drop failure must not mask the original error.
-        try:
-            async with driver.session() as session:
-                await session.run("CALL gds.graph.drop($name, false) YIELD graphName RETURN graphName", name=name)
-        except Exception:
-            logger.warning("failed to drop GDS projection %s", name, exc_info=True)
+    return {"projection": spec.provenance(), "results": results}
 
 
 async def owner_lookup(driver: AsyncDriver, account_ids: list[str]) -> dict[str, dict]:
@@ -90,11 +64,51 @@ async def owner_lookup(driver: AsyncDriver, account_ids: list[str]) -> dict[str,
     return {row["uuid"]: row for row in rows}
 
 
-async def run_pagerank(driver: AsyncDriver, top_k: int = 50) -> list[dict]:
-    async with projection(driver) as name, driver.session() as session:
+async def node_lookup(driver: AsyncDriver, uuids: list[str]) -> dict[str, dict]:
+    """Resolve any projected node to something displayable.
+
+    The account-only version of this could assume every result was an Account
+    and reach for its owner. The entity projection returns people,
+    organisations and devices too, so the resolution has to be general —
+    otherwise every non-account result would be silently dropped by the shaping
+    step below and the ranking would appear to contain only accounts.
+
+    An Account still resolves through to its owner's name, because "the account
+    ranked third" is less useful than "the account ranked third, owned by X".
+    """
+    if not uuids:
+        return {}
+    async with driver.session() as session:
         result = await session.run(
             """
-            CALL gds.pageRank.stream($name, { relationshipWeightProperty: 'amount' })
+            MATCH (n) WHERE n.id IN $ids
+            OPTIONAL MATCH (owner) WHERE n:Account AND owner.id = n.owner_id
+            RETURN n.id AS uuid,
+                   labels(n)[0] AS label,
+                   n.account_id AS account_id,
+                   n.argus_band AS account_band,
+                   n.argus_score AS account_score,
+                   coalesce(owner.name, n.name, n.account_id, n.device_id) AS owner_name,
+                   coalesce(labels(owner)[0], labels(n)[0]) AS resolved_label,
+                   coalesce(
+                       owner.person_id, owner.org_id,
+                       n.person_id, n.org_id, n.account_id, n.device_id
+                   ) AS owner_human_id
+            """,
+            ids=uuids,
+        )
+        rows = [dict(record) async for record in result]
+    return {row["uuid"]: row for row in rows}
+
+
+async def run_pagerank(
+    driver: AsyncDriver, top_k: int = 50, projection_name: str | None = None
+) -> dict:
+    spec = spec_for(projection_name)
+    async with projection(driver, spec) as name, driver.session() as session:
+        result = await session.run(
+            f"""
+            CALL gds.pageRank.stream($name, {{ relationshipWeightProperty: '{WEIGHT_ALIAS}' }})
             YIELD nodeId, score
             RETURN gds.util.asNode(nodeId).id AS uuid, score
             ORDER BY score DESC LIMIT $top_k
@@ -104,12 +118,15 @@ async def run_pagerank(driver: AsyncDriver, top_k: int = 50) -> list[dict]:
         )
         rows = [dict(record) async for record in result]
 
-    owners = await owner_lookup(driver, [r["uuid"] for r in rows])
-    return _shape_rows(rows, owners, "score")
+    nodes = await node_lookup(driver, [r["uuid"] for r in rows])
+    return _with_provenance(spec, _shape_rows(rows, nodes, "score"))
 
 
-async def run_betweenness(driver: AsyncDriver, top_k: int = 50) -> list[dict]:
-    async with projection(driver) as name, driver.session() as session:
+async def run_betweenness(
+    driver: AsyncDriver, top_k: int = 50, projection_name: str | None = None
+) -> dict:
+    spec = spec_for(projection_name)
+    async with projection(driver, spec) as name, driver.session() as session:
         result = await session.run(
             """
             CALL gds.betweenness.stream($name)
@@ -122,12 +139,13 @@ async def run_betweenness(driver: AsyncDriver, top_k: int = 50) -> list[dict]:
         )
         rows = [dict(record) async for record in result]
 
-    owners = await owner_lookup(driver, [r["uuid"] for r in rows])
-    return _shape_rows(rows, owners, "score")
+    nodes = await node_lookup(driver, [r["uuid"] for r in rows])
+    return _with_provenance(spec, _shape_rows(rows, nodes, "score"))
 
 
-async def run_louvain(driver: AsyncDriver) -> dict:
-    async with projection(driver) as name, driver.session() as session:
+async def run_louvain(driver: AsyncDriver, projection_name: str | None = None) -> dict:
+    spec = spec_for(projection_name)
+    async with projection(driver, spec) as name, driver.session() as session:
         result = await session.run(
             """
             CALL gds.louvain.stream($name)
@@ -138,7 +156,7 @@ async def run_louvain(driver: AsyncDriver) -> dict:
         )
         rows = [dict(record) async for record in result]
 
-    owners = await owner_lookup(driver, [r["uuid"] for r in rows])
+    owners = await node_lookup(driver, [r["uuid"] for r in rows])
     communities: dict[int, list[dict]] = {}
     for row in rows:
         owner = owners.get(row["uuid"])
@@ -176,7 +194,9 @@ async def run_louvain(driver: AsyncDriver) -> dict:
             }
         )
     summary.sort(key=lambda c: (c["flagged_members"], c["size"]), reverse=True)
-    return {"communities": summary, "total_communities": len(summary)}
+    return _with_provenance(
+        spec, {"communities": summary, "total_communities": len(summary)}
+    )
 
 
 # node2vec walks the graph randomly, so without a fixed seed the same request
@@ -188,8 +208,14 @@ async def run_louvain(driver: AsyncDriver) -> dict:
 NODE2VEC_SEED = 42
 
 
-async def run_node2vec_similarity(driver: AsyncDriver, seed_human_id: str, top_k: int = 10) -> list[dict]:
-    async with projection(driver) as name, driver.session() as session:
+async def run_node2vec_similarity(
+    driver: AsyncDriver,
+    seed_human_id: str,
+    top_k: int = 10,
+    projection_name: str | None = None,
+) -> dict:
+    spec = spec_for(projection_name)
+    async with projection(driver, spec) as name, driver.session() as session:
         result = await session.run(
             """
             CALL gds.node2vec.stream($name, {
@@ -206,25 +232,37 @@ async def run_node2vec_similarity(driver: AsyncDriver, seed_human_id: str, top_k
         )
         rows = [dict(record) async for record in result]
 
+        # In the money projection the only projected nodes are accounts, so the
+        # seed entity has to be reached through the account it owns. In the
+        # entity projection the person is in the graph directly. Both are tried,
+        # person first, so the same endpoint works against either without the
+        # caller having to know which.
         seed_result = await session.run(
             """
             MATCH (owner) WHERE owner.person_id = $seed OR owner.org_id = $seed
-            MATCH (owner)-[:OWNS_ACCOUNT]->(a:Account)
-            RETURN a.id AS uuid LIMIT 1
+            OPTIONAL MATCH (owner)-[:OWNS_ACCOUNT]->(a:Account)
+            RETURN owner.id AS owner_uuid, a.id AS account_uuid LIMIT 1
             """,
             seed=seed_human_id,
         )
         seed_record = await seed_result.single()
 
     if seed_record is None or not rows:
-        return []
+        return _with_provenance(spec, [])
 
-    seed_uuid = seed_record["uuid"]
     embeddings = {row["uuid"]: row["embedding"] for row in rows}
-    seed_vector = embeddings.get(seed_uuid)
-    if seed_vector is None:
-        return []
+    seed_uuid = next(
+        (
+            candidate
+            for candidate in (seed_record["owner_uuid"], seed_record["account_uuid"])
+            if candidate in embeddings
+        ),
+        None,
+    )
+    if seed_uuid is None:
+        return _with_provenance(spec, [])
 
+    seed_vector = embeddings[seed_uuid]
     similarities = []
     for node_uuid, vector in embeddings.items():
         if node_uuid == seed_uuid:
@@ -233,7 +271,7 @@ async def run_node2vec_similarity(driver: AsyncDriver, seed_human_id: str, top_k
     similarities.sort(key=lambda pair: pair[1], reverse=True)
     top = similarities[:top_k]
 
-    owners = await owner_lookup(driver, [node_uuid for node_uuid, _ in top])
+    owners = await node_lookup(driver, [node_uuid for node_uuid, _ in top])
     shaped = []
     for node_uuid, sim in top:
         owner = owners.get(node_uuid)
@@ -247,7 +285,7 @@ async def run_node2vec_similarity(driver: AsyncDriver, seed_human_id: str, top_k
                 "similarity": round(sim, 4),
             }
         )
-    return shaped
+    return _with_provenance(spec, shaped)
 
 
 def _cosine_similarity(a: list[float], b: list[float]) -> float:
@@ -395,28 +433,56 @@ def _seed_payload(seed: dict) -> dict:
 
 
 async def run_cycle_detection(
-    driver: AsyncDriver, min_length: int = 3, max_length: int = 6, limit: int = 25
+    driver: AsyncDriver,
+    min_length: int = 3,
+    max_length: int = 6,
+    limit: int = 25,
+    min_retention: float = 0.85,
 ) -> list[dict]:
-    """Finds circular money-movement paths (A -> B -> ... -> A) in the
-    transaction graph — the classic laundering-ring signature. Bounded by
-    length and result count since cycle enumeration is combinatorially
-    expensive; scoped to flagged transactions first since that's where
-    real injected storylines live, then falls back to the full graph."""
+    """Circular money-movement paths (A -> B -> ... -> A) — the layering signature.
+
+    This used to begin `WHERE any(r IN rels WHERE r.flagged = true)`, with a
+    comment explaining that flagged transactions are "where real injected
+    storylines live". That is precisely the problem: `flagged` is written by the
+    scenario generator's storyline injector, so the detector was not finding
+    laundering rings — it was filtering the graph down to the rings the
+    generator had already labelled and then reporting them as a discovery. Every
+    cycle it returned was guaranteed to be a plant, and every unplanted cycle
+    was guaranteed to be invisible.
+
+    The filter is now the property that actually distinguishes a laundering ring
+    from an accounting coincidence: **value preservation**. Each hop must pass on
+    at least `min_retention` of what arrived, and no hop may exceed it, which is
+    the same test `app/assessment/detectors.py` applies for the funds-cycle
+    signal. Cycles are found on their own merits, and whether one happens to be
+    planted is a question for the evaluation harness, not for the query.
+
+    Bounded by length and result count because cycle enumeration is
+    combinatorially expensive.
+    """
     # Variable-length relationship bounds must be literals in Cypher (not query
-    # parameters) — safe to interpolate here since both are typed ints, never
-    # raw user input.
+    # parameters) — safe to interpolate since both are typed ints, never raw
+    # user input. `min_retention` is a parameter, as it can be.
     async with driver.session() as session:
         result = await session.run(
             f"""
             MATCH path = (a:Account)-[rels:TRANSACTED_WITH*{min_length}..{max_length}]->(a)
-            WHERE any(r IN rels WHERE r.flagged = true)
+            WHERE all(
+                      i IN range(0, size(rels) - 2)
+                      WHERE rels[i].amount > 0
+                        AND rels[i + 1].amount <= rels[i].amount
+                        AND rels[i + 1].amount >= rels[i].amount * $min_retention
+                  )
             WITH path, rels LIMIT $limit
             RETURN [n IN nodes(path) | n.account_id] AS account_ids,
                    [n IN nodes(path) | n.id] AS uuids,
                    length(path) AS length,
-                   reduce(total = 0.0, r IN rels | total + r.amount) AS total_amount
+                   reduce(total = 0.0, r IN rels | total + r.amount) AS total_amount,
+                   CASE WHEN head(rels).amount > 0
+                        THEN last(rels).amount / head(rels).amount ELSE null END AS retention
             """,
             limit=limit,
+            min_retention=min_retention,
         )
         rows = [dict(record) async for record in result]
 
@@ -434,5 +500,15 @@ async def run_cycle_detection(
             }
             for uuid in row["uuids"]
         ]
-        cycles.append({"length": row["length"], "total_amount": round(row["total_amount"], 2), "members": members})
+        cycles.append(
+            {
+                "length": row["length"],
+                "total_amount": round(row["total_amount"], 2),
+                # What survived the loop. A ring that returns 97% of what set
+                # out is a different claim from one that returns 12%, and the
+                # previous version reported both as simply "a cycle".
+                "retention": round(row["retention"], 4) if row["retention"] is not None else None,
+                "members": members,
+            }
+        )
     return cycles

@@ -21,6 +21,7 @@ from app.api.routes import (
     assessment,
     auth,
     cases,
+    correlation,
     dashboard,
     entities,
     graph,
@@ -89,6 +90,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # handler; without the import the worker would start with no known kinds and
     # quietly consume nothing — a stall that looks exactly like an empty queue.
     from app.services import assessment as _assessment  # noqa: F401  (handler registration)
+    from app.services import correlation as _correlation  # noqa: F401  (handler registration)
     from app.services import ingest as _ingest  # noqa: F401  (handler registration)
     from app.services import resolution as _resolution  # noqa: F401  (handler registration)
 
@@ -251,6 +253,7 @@ app.include_router(provenance.router)
 app.include_router(ingest.router)
 app.include_router(resolution.router)
 app.include_router(assessment.router)
+app.include_router(correlation.router)
 app.include_router(graph.router)
 app.include_router(analytics.router)
 app.include_router(cases.router)

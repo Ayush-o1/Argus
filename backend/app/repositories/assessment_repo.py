@@ -381,6 +381,67 @@ async def current_band_counts() -> dict[str, int]:
         return {row["band"]: row["count"] for row in rows}
 
 
+async def anchors_for_correlation(limit: int) -> list[dict[str, Any]]:
+    """Subjects whose current assessment fired at least one signal.
+
+    Correlation runs over ARGUS's own findings, so the set of subjects worth
+    correlating is decided by what ARGUS found — not by band, and never by what
+    the generator planted.
+
+    Deliberately not restricted to the published bands. A subject with one weak
+    signal sits in `routine`, but a routine finding linked to two elevated ones
+    by a rare shared counterparty is exactly the quiet member of a ring that
+    correlation exists to surface. Excluding them would mean the only groups
+    ARGUS could find are groups it had already flagged member by member, which
+    is not correlation — it is a second rendering of the assessment queue.
+
+    Subjects banded `insufficient_evidence` cannot appear here regardless: a
+    signal that fired implies a signal that was evaluable, and that band means
+    almost nothing was.
+    """
+    async with acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT a.subject_ref, a.subject_type, a.band, a.score,
+                   array_agg(s.signal_id ORDER BY s.signal_id) AS signal_ids
+              FROM assessment_current a
+              JOIN assessment_signals s ON s.assessment_id = a.assessment_id
+             WHERE s.evaluable AND s.magnitude > 0
+             GROUP BY a.subject_ref, a.subject_type, a.band, a.score
+             ORDER BY a.score DESC NULLS LAST, a.subject_ref
+             LIMIT $1
+            """,
+            limit,
+        )
+        return [
+            {
+                "subject_ref": row["subject_ref"],
+                "subject_type": row["subject_type"],
+                "band": row["band"],
+                "score": float(row["score"]) if row["score"] is not None else None,
+                "signal_ids": list(row["signal_ids"] or []),
+            }
+            for row in rows
+        ]
+
+
+async def count_anchors_for_correlation() -> int:
+    """How many subjects *would* be anchors, before the cap is applied.
+
+    Kept separate from the fetch so a run that hit its ceiling can say how much
+    it left out, rather than reporting a truncated population as the population.
+    """
+    async with acquire() as conn:
+        return await conn.fetchval(
+            """
+            SELECT count(DISTINCT a.subject_ref)
+              FROM assessment_current a
+              JOIN assessment_signals s ON s.assessment_id = a.assessment_id
+             WHERE s.evaluable AND s.magnitude > 0
+            """
+        )
+
+
 async def all_current_for_projection() -> list[dict[str, Any]]:
     """Every current assessment, in the shape the graph projection consumes.
 

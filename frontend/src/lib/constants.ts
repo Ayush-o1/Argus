@@ -7,6 +7,7 @@ import {
   GitMerge,
   LayoutGrid,
   Map,
+  Network,
   Radio,
   Search,
   Settings,
@@ -64,6 +65,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "Analytics", href: "/analytics", icon: BarChart3, hint: "Graph algorithms and anomaly detection",  permission: "analytics:read",},
       { label: "Assessment", href: "/assessment", icon: Gauge, hint: "What ARGUS assessed, how, and how well it performs",  permission: "assessment:read",},
+      { label: "Correlation", href: "/correlation", icon: Network, hint: "Findings ARGUS connected, and on what grounds",  permission: "correlation:read",},
     ],
   },
   {

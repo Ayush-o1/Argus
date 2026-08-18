@@ -1,0 +1,108 @@
+.note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.6;
+  max-width: 84ch;
+}
+
+.cluster {
+  padding-bottom: var(--space-3);
+  margin-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.clusterHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.clusterFamilies {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.clusterBasis {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+
+.links {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.link {
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.link:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.icon {
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.ref {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  text-decoration: none;
+}
+
+.ref:hover {
+  text-decoration: underline;
+}
+
+.strength {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  white-space: nowrap;
+}
+
+/* Beside the strength, always. The two are one figure. */
+.coverage {
+  font-weight: var(--font-normal);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.reason {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* Same size as a reason, deliberately. What could not be evaluated is a
+   finding, and shrinking it would make the visible evidence look more
+   unanimous than it was. */
+.blind {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-sm);
+  color: var(--risk-unknown);
+  line-height: 1.5;
+}

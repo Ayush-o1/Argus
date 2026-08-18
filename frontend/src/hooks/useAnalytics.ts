@@ -97,6 +97,36 @@ export interface TransactionAnomaly {
   z_score: number;
 }
 
+/**
+ * A projection, as it travels with every graph-algorithm result.
+ *
+ * Before Phase 6 all of these ran on one hard-coded account-only graph and none
+ * of them said so, which made "influence" mean "receives money from accounts
+ * that receive money" while reading as something much broader. Every result now
+ * carries the graph it was computed on.
+ */
+export interface ProjectionProvenance {
+  projection: string;
+  title: string;
+  description: string;
+  fingerprint: string;
+  node_labels: string[];
+  relationships: {
+    type: string;
+    orientation: string;
+    weight: number;
+    weight_property: string | null;
+    rationale: string;
+  }[];
+  caveats: string[];
+}
+
+/** What the projection-based algorithms return: the numbers, and the graph. */
+export interface ProjectedResult<T> {
+  projection: ProjectionProvenance;
+  results: T;
+}
+
 export type AnalyticsResult =
   | RankedEntity[]
   | LouvainResult

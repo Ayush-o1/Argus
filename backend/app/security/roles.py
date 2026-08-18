@@ -84,6 +84,17 @@ class Permission(StrEnum):
     # evaluation report is a published claim about how good ARGUS is.
     ASSESSMENT_RUN = "assessment:run"
 
+    # Correlation between ARGUS's own findings. Reading one is reading
+    # intelligence about two named entities at once — arguably more sensitive
+    # than either assessment alone, since the claim is that they are connected —
+    # so it travels with the read set and an administrator does not get it.
+    CORRELATION_READ = "correlation:read"
+    # Re-running the correlator, and publishing the evaluation of the model.
+    # Above analyst for the same reasons as ASSESSMENT_RUN: a run rewrites every
+    # link the product displays, and an evaluation is a published claim about
+    # how good ARGUS is at connecting people to each other.
+    CORRELATION_RUN = "correlation:run"
+
     # Expensive or graph-mutating operations
     ANALYTICS_RUN = "analytics:run"
     SCENARIO_GENERATE = "scenario:generate"
@@ -120,6 +131,11 @@ _READ_INTELLIGENCE = frozenset(
         # one permission, so no reader can be shown the conclusion without
         # access to the evidence for it.
         Permission.ASSESSMENT_READ,
+        # A link with no way to see the dimensions behind it is the same defect
+        # as a risk band with no signals. The link and its working are one
+        # permission, so no reader can be shown "these two are connected"
+        # without access to the evidence that says why.
+        Permission.CORRELATION_READ,
     }
 )
 
@@ -148,6 +164,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
         Permission.RESOLUTION_DECIDE,
         Permission.RESOLUTION_MANAGE,
         Permission.ASSESSMENT_RUN,
+        Permission.CORRELATION_RUN,
     },
     Role.SUPERVISOR: _READ_INTELLIGENCE
     | {
@@ -165,6 +182,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
         Permission.RESOLUTION_DECIDE,
         Permission.RESOLUTION_MANAGE,
         Permission.ASSESSMENT_RUN,
+        Permission.CORRELATION_RUN,
     },
     # No intelligence-read permissions. Deliberate: see the module docstring.
     #

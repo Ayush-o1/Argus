@@ -198,3 +198,63 @@
   justify-content: center;
   padding: var(--space-8) 0;
 }
+
+/* ── Projection provenance ─────────────────────────────────────────────────
+   Rendered above every graph-algorithm result. A centrality rank is a
+   statement about one specific graph, and the same algorithm over a different
+   set of relationships gives a different and equally valid answer. Before
+   Phase 6 these all ran on an account-only graph and none of them said so. */
+.projectionNote {
+  padding: var(--space-3);
+  margin-bottom: var(--space-4);
+  border: 1px solid var(--surface-border-faint);
+  border-radius: var(--card-radius);
+  background: var(--surface-base);
+}
+
+.projectionHead {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.projectionFingerprint {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.projectionDescription {
+  margin: 4px 0 var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.55;
+  max-width: 92ch;
+}
+
+.projectionWeights {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: var(--space-2);
+}
+
+.projectionWeight {
+  display: inline-flex;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  padding: 2px 6px;
+  border: 1px solid var(--surface-border-faint);
+  border-radius: 4px;
+  color: var(--text-secondary);
+}
+
+.projectionCaveat {
+  margin: 0 0 4px;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  line-height: 1.5;
+  max-width: 92ch;
+}

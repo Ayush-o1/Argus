@@ -167,7 +167,14 @@ a single compromised account being catastrophic:
 
 - [ ] Page loads
 - [ ] Run a job → it completes and results render
-- [ ] Every graph result names the projection it came from
+- [ ] Every graph result names the projection it came from: the graph's title,
+      its fingerprint, every relationship type with its weight, and the caveats
+      saying what that graph cannot answer
+- [ ] Run PageRank on `money`, then on `entity` (`?projection=entity`). The
+      rankings differ and the top entries change type — accounts on one,
+      organisations on the other. That difference is the point: "influence"
+      means something different depending on which graph was asked
+- [ ] An unknown projection returns 422 naming the two that exist
 - [ ] Restarting the backend mid-job does not leave a job "running" forever
 
 ## Search
@@ -237,6 +244,41 @@ a single compromised account being catastrophic:
       reason, the previous generation of assessments is untouched, and the page
       says the counts may be out of date rather than reporting "saw 0 transfers"
 
+## Correlation
+
+Correlation runs over ARGUS's own findings, so run an assessment first.
+
+- [ ] `/correlation` loads with tier counts that sum to the recorded links
+- [ ] Before any run has happened it says so plainly, and says that correlation
+      needs an assessment first
+- [ ] Each link states the reason with real quantities ("Money moves ORG-0000140
+      ← PRS-0002510 in 1 hop, retaining 100% of its value... that first payment
+      is 42% of everything ACC-0002387 sent"), not a bare similarity score
+- [ ] Every link shows how many dimensions could be evaluated, beside its
+      strength, and names the ones that could not
+- [ ] **Groups** are modularity communities, not chains. No group should be
+      hundreds of members; if one is, it is flagged `over-merged`, which is a
+      report of a threshold problem rather than a finding
+- [ ] Each group states its load-bearing links and the weakest of them, or says
+      that every member is held by at least two independent routes
+- [ ] **The model** lists every dimension, and marks each family as either able
+      to establish a link or corroboration-only. Spatial and temporal must be
+      corroboration-only — otherwise "two people in one city" becomes a finding
+- [ ] **How well this works** shows three precision figures. If it ever shows
+      one, the number is either flattering or falsely modest: an unlabelled link
+      is not a wrong link, and the report has to say so
+- [ ] The storyline table keeps the four planted phenomena correlation cannot
+      reach, with the reason for each. Removing them would inflate every
+      aggregate above
+- [ ] An entity profile shows **ARGUS correlations** under the assessment, with
+      the same reasons and the same blind spots
+- [ ] A subject with no correlations says so, rather than filling the panel with
+      the nearest few entities
+- [ ] Re-correlate as an investigator → a run is queued; an analyst gets 403,
+      an administrator gets 403 even on reads
+- [ ] Stop Neo4j and trigger a run → the run is recorded as **failed** with the
+      reason, and the previous generation of links is untouched
+
 ## Settings
 
 - [ ] Page loads
@@ -292,6 +334,16 @@ to make sure that has not come back:
 - [ ] The band counts sum to the population, `insufficient_evidence` included —
       it is usually the largest bucket, and it is not a low-risk finding
 - [ ] No surface presents `storyline_id` or `flagged` as a discovered finding
+- [ ] **No correlation is drawn from a planted link.** `CONTROLS`,
+      `SHARES_DEVICE`, `INVOLVES` and `LINKED_TO` join exactly the entities a
+      storyline created together, and no dimension may read one. A dimension
+      that did would post near-perfect precision and have discovered nothing
+- [ ] Cycle detection finds rings by value preservation, not by
+      `r.flagged = true`. The old filter returned only planted rings and could
+      not have found an unplanted one
+- [ ] A person is never correlated with an account they hold. That is one
+      subject seen twice, and reporting it as a discovery is how a correlation
+      count gets inflated by an order of magnitude
 
 ---
 

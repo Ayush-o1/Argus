@@ -8,22 +8,9 @@ to remove would be back — quietly, and with a green test suite.
 ## Admissibility
 
 `ADMISSIBLE_INPUTS` is the whitelist of graph data a signal may consult. It is
-narrower than "everything except the risk fields", because two kinds of data
-are disqualified:
-
-  **Answer keys.** `risk_score`, `risk_factors`, `flags`, `flagged`,
-  `storyline_id`, `community_ids`, `route_anomaly`, `inconsistency_type`, and
-  the `Storyline` and `Incident` nodes themselves. These state the conclusion.
-
-  **Structures that exist only because a storyline created them.** In this
-  world the `CONTROLS` and `SHARES_DEVICE` relationships are produced solely by
-  the storyline injector — there is no baseline population of either. A
-  detector keyed on their existence would score near-perfectly and would have
-  discovered nothing: it would be reading the same label through the shape of
-  the graph instead of through a property. `Organization.type` is disqualified
-  for the same reason: the shell-company storyline overwrites it to `Shell` on
-  the organisations it plants, so the attribute is partly an answer key even
-  though shell companies also occur in the baseline.
+narrower than "everything except the risk fields": the reasoning, and the list
+of what is disqualified, live in `app/integrity.py`, which Phase 6 promoted to
+a shared declaration when correlation became the second package that needs it.
 
 The consequence is that some planted phenomena are *not detectable* by any
 admissible signal. That is reported as a finding by `evaluation.py` rather than
@@ -35,6 +22,20 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
+
+from app.integrity import INADMISSIBLE_TOKENS
+
+__all__ = [
+    "ADMISSIBLE_INPUTS",
+    "INADMISSIBLE_TOKENS",
+    "ASSESSED_TYPES",
+    "AccountFact",
+    "Contact",
+    "Directorship",
+    "EvidenceBundle",
+    "ShipmentFact",
+    "Transfer",
+]
 
 # Graph data a signal may read. Anything not named here is out of bounds, and
 # `test_assessment_admissibility.py` asserts every signal's declared `reads` is
@@ -56,24 +57,6 @@ ADMISSIBLE_INPUTS: frozenset[str] = frozenset(
         "Shipment.origin_region",
         "Shipment.destination_region",
     }
-)
-
-# Properties and relationship types that must never appear in an evidence
-# query. Named explicitly so the isolation test can grep for them rather than
-# relying on a reviewer noticing.
-INADMISSIBLE_TOKENS: tuple[str, ...] = (
-    "risk_score",
-    "risk_factors",
-    "flags",
-    "flagged",
-    "storyline_id",
-    "community_ids",
-    "route_anomaly",
-    "inconsistency_type",
-    "Storyline",
-    "Incident",
-    "CONTROLS",
-    "SHARES_DEVICE",
 )
 
 SUBJECT_PERSON = "Person"

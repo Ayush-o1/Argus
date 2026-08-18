@@ -2,6 +2,7 @@
 
 import { ArrowLeftRight, Calendar, Clock, Map as MapIcon, Phone, ShieldHalf, Sparkles, Waypoints } from "lucide-react";
 import { AssessmentPanel } from "@/components/entity/AssessmentPanel";
+import { CorrelationPanel } from "@/components/entity/CorrelationPanel";
 import { AssessmentBadge } from "@/components/ui/AssessmentBadge";
 import { SourceReportedRisk } from "@/components/entity/SourceReportedRisk";
 import { useParams } from "next/navigation";
@@ -204,6 +205,16 @@ export default function EntityProfilePage() {
           <div className={styles.sidebarBlock}>
             <span className={styles.sidebarTitle}>ARGUS assessment</span>
             <AssessmentPanel subjectRef={entity.id} />
+          </div>
+
+          {/* What ARGUS connects this entity to, directly under what it
+              concluded about the entity alone. The order matters: a link is
+              only meaningful once the reader knows what was found at each end
+              of it, and a "related entities" list shown first invites the
+              reader to infer significance from company rather than evidence. */}
+          <div className={styles.sidebarBlock}>
+            <span className={styles.sidebarTitle}>ARGUS correlations</span>
+            <CorrelationPanel subjectRef={entity.id} />
           </div>
 
           {/* The source's own risk figure, kept and clearly separated.

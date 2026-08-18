@@ -91,11 +91,15 @@ def _code_without_prose(path: Path) -> str:
 def test_the_assessment_package_never_names_an_answer_key() -> None:
     """Applies to the whole package, including modules added later.
 
-    `evidence.py` is excluded because it is where the prohibition is *declared*
-    — the list of forbidden tokens is necessarily made of them.
+    Nothing here is excluded any more except `evaluation.py`, which is checked
+    by the test below instead. `evidence.py` used to be exempt because it
+    *declared* the prohibition — a list of forbidden tokens is necessarily made
+    of them. Phase 6 moved that declaration to `app/integrity.py` so both
+    intelligence packages share one boundary, which as a side effect brought
+    `evidence.py` under the same scan as everything else.
     """
     for path in sorted(ASSESSMENT_PACKAGE.glob("*.py")):
-        if path.name in {"evidence.py", "evaluation.py"}:
+        if path.name == "evaluation.py":
             continue
         code = _code_without_prose(path)
         for token in INADMISSIBLE_TOKENS:
@@ -228,6 +232,7 @@ def test_scoring_and_signals_do_not_import_the_evaluation_module() -> None:
 GENERATOR_RISK_FIELDS = ("risk_score", "risk_factors")
 
 PERMITTED_TO_NAME_IT = (
+    "app/integrity.py",
     "app/services/provenance.py",
     "app/repositories/provenance_repo.py",
     "app/api/routes/provenance.py",

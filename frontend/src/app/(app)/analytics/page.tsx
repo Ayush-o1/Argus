@@ -16,6 +16,8 @@ import {
   type Cycle,
   type RankedEntity,
   type RiskPropagationResult,
+  type ProjectedResult,
+  type ProjectionProvenance,
   type SimilarEntity,
   type TransactionAnomaly,
   useAnalyticsJob,
@@ -91,6 +93,7 @@ const ALGORITHMS: AlgorithmDef[] = [
 ];
 
 type AnyResult =
+  | ProjectedResult<unknown>
   | RankedEntity[]
   | { communities: Community[]; total_communities: number }
   | SimilarEntity[]
@@ -134,7 +137,13 @@ export default function AnalyticsPage() {
   };
 
   const status = job.job.data?.status;
-  const result = job.job.data?.result;
+  const raw = job.job.data?.result;
+
+  // The projection-based algorithms return `{ projection, results }`; the
+  // others return their rows directly. Unwrapped here so every renderer below
+  // receives rows, and the graph is rendered once, above them all.
+  const projection = isProjected(raw) ? raw.projection : null;
+  const result = isProjected(raw) ? (raw.results as AnyResult) : raw;
 
   return (
     <PageShell
@@ -207,10 +216,53 @@ export default function AnalyticsPage() {
             />
           )}
 
+          {status === "done" && projection ? <ProjectionNote projection={projection} /> : null}
           {status === "done" && result && renderResult(active, result)}
         </Card>
       </div>
     </PageShell>
+  );
+}
+
+function isProjected(value: unknown): value is ProjectedResult<unknown> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "projection" in value &&
+    "results" in value
+  );
+}
+
+/**
+ * Which graph produced these numbers, rendered above them.
+ *
+ * A centrality rank is a statement about a specific graph, and the same
+ * algorithm over a different set of relationships gives a different and equally
+ * valid answer. Showing the projection is what makes the number interpretable
+ * rather than authoritative.
+ */
+function ProjectionNote({ projection }: { projection: ProjectionProvenance }) {
+  return (
+    <div className={styles.projectionNote}>
+      <div className={styles.projectionHead}>
+        <strong>{projection.title}</strong>
+        <span className={styles.projectionFingerprint}>{projection.fingerprint}</span>
+      </div>
+      <p className={styles.projectionDescription}>{projection.description}</p>
+      <div className={styles.projectionWeights}>
+        {projection.relationships.map((rel) => (
+          <span key={rel.type} className={styles.projectionWeight} title={rel.rationale}>
+            {rel.type}
+            <strong>{rel.weight_property ? `× ${rel.weight_property}` : `× ${rel.weight}`}</strong>
+          </span>
+        ))}
+      </div>
+      {projection.caveats.map((caveat) => (
+        <p key={caveat} className={styles.projectionCaveat}>
+          {caveat}
+        </p>
+      ))}
+    </div>
   );
 }
 
@@ -247,7 +299,7 @@ function renderResult(algorithm: AlgorithmId, result: AnyResult) {
     return (
       <div>
         <p className={styles.resultSubtitle} style={{ marginBottom: "var(--space-3)" }}>
-          {total_communities} communities found, ranked by average risk
+          {total_communities} communities found, ranked by how many members ARGUS flagged
         </p>
         <div className={styles.communityGrid}>
           {communities.slice(0, 24).map((c) => (

@@ -181,8 +181,22 @@ the difference between that and an intelligence platform:
 - **The generator's own risk score is still recorded, and nothing computes from it.** It is kept as
   a source's claim, marked *inferred* and rated F6 ("cannot be judged"), shown beneath ARGUS's
   assessment on the entity page. A test fails the build if any application surface reads it.
-- **Correlation is planted, not discovered.** Two alerts are "related" because they share a
-  generator-written `storyline_id`, which would not exist in real data.
+- **Correlation is derived, and measured two ways because one number would mislead.** ARGUS links its
+  own findings from discovered structure — shared counterparties beyond what chance predicts,
+  value-preserving funds paths, co-attendance, communication, shared corridors — and never from the
+  `storyline_id`, `INVOLVES`, `LINKED_TO`, `CONTROLS` or `SHARES_DEVICE` records that join exactly
+  the entities a storyline created together. Against ground truth it cannot see, precision is 0.93
+  and recall 0.80 over the pairs ground truth can judge. The stricter figure that counts every
+  unlabelled link as wrong is 0.08, and both are published: the baseline world contains real
+  structure the generator never scripted, so an unlabelled link is not a wrong link.
+- **Four of the seven planted storylines cannot be correlated at all.** Two leave no admissible
+  trace, one plants a single subject, and one plants subjects with nothing tying them together.
+  Their recall is 0 by construction, they stay in the report, and removing them would raise every
+  aggregate above.
+- **A link is not a claim about intent.** Groups are called correlated clusters, not campaigns or
+  threat actors. A campaign asserts a plan and a threat actor asserts a someone; ARGUS has evidence
+  for neither, and inventing the most consequential part of a claim is not something an entity type
+  makes acceptable.
 - **Single-instance, single-tenant.** Rate limiting is per-process, the job queue is in-process
   asyncio, and audit logs are stored locally rather than shipped off-host. See
   [docs/deployment.md](docs/deployment.md#what-would-need-to-change-for-a-real-multi-tenanthosted-deployment).
