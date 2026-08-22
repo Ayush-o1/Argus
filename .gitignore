@@ -42,6 +42,10 @@ npm-debug.log*
 # Database backups (never commit)
 backups/
 
+# The generated verification report. A 7 MB binary of a local instance's state,
+# regenerable from .verification/, and not needed to build or run ARGUS.
+ARGUS-Verification-Report.pdf
+
 # Verification evidence: screenshots and captures taken while checking a phase
 # against the running stack. Kept on disk because they are what a claim of
 # "verified" is backed by, and kept out of the repository because they are
