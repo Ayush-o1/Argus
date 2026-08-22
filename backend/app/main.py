@@ -24,6 +24,7 @@ from app.api.routes import (
     correlation,
     dashboard,
     entities,
+    evidence,
     graph,
     ingest,
     investigations,
@@ -263,6 +264,8 @@ app.include_router(analytics.router)
 app.include_router(cases.router)
 app.include_router(investigations.router)
 app.include_router(investigations.assessments_router)
+app.include_router(evidence.router)
+app.include_router(evidence.calibration_router)
 app.include_router(alerts.router)
 app.include_router(patterns.router)
 app.include_router(ai.router)

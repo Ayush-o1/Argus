@@ -4,6 +4,8 @@ import {
   AlertTriangle,
   CheckCircle2,
   Clock,
+  Download,
+  FileCheck2,
   Gavel,
   Link2,
   ScrollText,
@@ -18,11 +20,14 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { Button } from "@/components/ui/Button";
+import { useCreateExport, useExports, useVerifyExport } from "@/hooks/useCalibration";
 import { useInvestigation, useInvestigationHistory } from "@/hooks/useInvestigations";
+import { CLASSIFICATION_TONE, type ClassificationCode } from "@/lib/calibration";
 import { describeState, findingStanding } from "@/lib/investigations";
 import styles from "./page.module.css";
 
-type Tab = "work" | "evidence" | "history";
+type Tab = "work" | "evidence" | "history" | "exports";
 
 function when(iso: string | null): string {
   if (!iso) return "—";
@@ -72,6 +77,12 @@ export default function InvestigationDetailPage() {
         <div className={styles.headRow}>
           <Badge tone={data.state === "closed" ? "neutral" : "accent"}>
             {describeState(data.state, data.outcome)}
+          </Badge>
+          {/* Stated where the material is read, not only where it is exported.
+              A reader who does not know how to handle what is in front of them
+              is the problem a classification exists to solve. */}
+          <Badge tone={CLASSIFICATION_TONE[(data as { classification?: ClassificationCode }).classification ?? "internal"]}>
+            {((data as { classification?: string }).classification ?? "internal").toUpperCase()}
           </Badge>
           <span className={styles.confidence}>
             confidence <strong>{data.confidence}</strong>
@@ -129,6 +140,7 @@ export default function InvestigationDetailPage() {
           { value: "work" as const, label: "Findings", count: data.findings.length },
           { value: "evidence" as const, label: "Evidence", count: liveAlerts.length + liveEntities.length },
           { value: "history" as const, label: "History" },
+          { value: "exports" as const, label: "Exports" },
         ]}
         value={tab}
         onChange={setTab}
@@ -242,6 +254,8 @@ export default function InvestigationDetailPage() {
         </div>
       ) : null}
 
+      {tab === "exports" ? <ExportPanel investigationRef={data.inv_ref} investigationId={data.investigation_id} /> : null}
+
       {tab === "history" ? (
         history ? (
           <>
@@ -286,5 +300,130 @@ export default function InvestigationDetailPage() {
         )
       ) : null}
     </PageShell>
+  );
+}
+
+
+/**
+ * Producing an export, and the custody record on each one.
+ *
+ * The hash is shown because it is the point: a recipient can check the file
+ * they received against this without asking anyone. "Verify" re-hashes what is
+ * stored and says whether it still matches — and that check is itself logged
+ * against the artifact, like every other access.
+ */
+function ExportPanel({
+  investigationRef,
+  investigationId,
+}: {
+  investigationRef: string;
+  investigationId: string;
+}) {
+  const [purpose, setPurpose] = useState("");
+  const [format, setFormat] = useState<"html" | "json">("html");
+  const { data, refetch } = useExports(investigationId);
+  const create = useCreateExport();
+  const verifyExport = useVerifyExport();
+  const rows = data?.data ?? [];
+
+  return (
+    <>
+      <Card className={styles.headCard}>
+        <h2 className={styles.sectionLabel}>Produce an export</h2>
+        {/* Required, and required for a reason worth stating on the form: this
+            is the one operation that moves intelligence beyond ARGUS's
+            controls, and an unexplained one is indistinguishable from
+            exfiltration when the register is reviewed a year later. */}
+        <p className={styles.basis}>
+          A stated purpose is required. It is recorded against the artifact and cannot be
+          changed afterwards.
+        </p>
+        <div className={styles.exportForm}>
+          <input
+            className={styles.exportInput}
+            placeholder="Why is this being exported?"
+            value={purpose}
+            onChange={(e) => setPurpose(e.target.value)}
+          />
+          <select
+            className={styles.exportSelect}
+            value={format}
+            onChange={(e) => setFormat(e.target.value as "html" | "json")}
+            aria-label="Export format"
+          >
+            <option value="html">HTML — for a person</option>
+            <option value="json">JSON — for a machine</option>
+          </select>
+          <Button
+            size="sm"
+            disabled={!purpose.trim() || create.isPending}
+            onClick={() =>
+              create.mutate(
+                { investigation_ref: investigationRef, format, purpose: purpose.trim() },
+                { onSuccess: () => { setPurpose(""); void refetch(); } },
+              )
+            }
+          >
+            {create.isPending ? "Producing…" : "Export"}
+          </Button>
+        </div>
+        {create.isError ? (
+          <p className={styles.exportError}>{(create.error as Error).message}</p>
+        ) : null}
+      </Card>
+
+      {rows.length === 0 ? (
+        <EmptyState
+          icon={Download}
+          title="Nothing has been exported"
+          description="No copy of this investigation has left the system."
+        />
+      ) : (
+        <div className={styles.list}>
+          {rows.map((e) => (
+            <Card key={e.export_id} className={styles.evidence}>
+              <div className={styles.evidenceHead}>
+                <Badge tone={CLASSIFICATION_TONE[e.classification]}>
+                  {e.classification.toUpperCase()}
+                </Badge>
+                <span className={styles.title}>{e.format.toUpperCase()}</span>
+                <span className={styles.reviewWhen}>{e.byte_size} bytes</span>
+                {e.disposed_at ? <Badge tone="neutral">disposed</Badge> : null}
+              </div>
+              <p className={styles.body}>{e.purpose}</p>
+              <div className={styles.meta}>
+                <span>{e.requested_by} ({e.requester_role})</span>
+                <span>{when(e.requested_at)}</span>
+                <span>retained until {when(e.retention_until)}</span>
+              </div>
+              <div className={styles.hash}>sha256 {e.content_sha256}</div>
+              <div className={styles.exportActions}>
+                {!e.disposed_at ? (
+                  <a
+                    className={styles.downloadLink}
+                    href={`/api/exports/${encodeURIComponent(e.export_id)}/content`}
+                  >
+                    <Download size={13} aria-hidden /> Download
+                  </a>
+                ) : null}
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => verifyExport.mutate(e.export_id)}
+                  disabled={verifyExport.isPending}
+                >
+                  <FileCheck2 size={13} aria-hidden /> Verify
+                </Button>
+                {verifyExport.data?.export_id === e.export_id ? (
+                  <span className={verifyExport.data.intact ? styles.intact : styles.notIntact}>
+                    {verifyExport.data.explains}
+                  </span>
+                ) : null}
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+    </>
   );
 }

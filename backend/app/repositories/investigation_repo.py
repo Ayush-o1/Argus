@@ -22,6 +22,7 @@ from datetime import datetime
 from typing import Any
 
 from app.database.postgres import acquire, transaction
+from app.evidence.classification import CLASSIFICATIONS, rank
 
 __all__ = [
     "attach_alert",
@@ -143,9 +144,9 @@ _INSERT_EVENT = """
 _INSERT_INVESTIGATION = """
     INSERT INTO investigations
         (investigation_id, inv_ref, title, hypothesis, confidence, confidence_basis,
-         opened_by, assigned_to)
+         opened_by, assigned_to, classification)
     VALUES ($1, 'INV-' || lpad(nextval('investigation_ref_seq')::text, 7, '0'),
-            $2, $3, $4, $5, $6, $7)
+            $2, $3, $4, $5, $6, $7, $8)
     RETURNING *
 """
 
@@ -160,6 +161,7 @@ async def create_investigation(
     actor_role: str,
     assigned_to: str | None = None,
     alert_keys: tuple[str, ...] = (),
+    classification: str = "internal",
 ) -> dict[str, Any]:
     """Open an investigation, optionally escalating alerts into it.
 
@@ -180,6 +182,7 @@ async def create_investigation(
             confidence_basis,
             opened_by,
             assigned_to,
+            classification,
         )
         created = dict(row)
 
@@ -321,44 +324,71 @@ _SELECT_INVESTIGATION_ASSESSMENTS = """
 # The queue
 # ─────────────────────────────────────────────────────────────────────────────
 
+# Classification is filtered by passing the set of codes the reader may see,
+# never by comparing the strings — `confidential` sorts before `internal`
+# alphabetically, which is the wrong answer and precisely the sort of thing that
+# works in testing and fails on the one level that mattered. The ranks live in
+# `app/evidence/classification.py` and are turned into a set once, above.
 _LIST_ALL = """
     SELECT * FROM investigation_queue
+    WHERE classification = ANY($3::text[])
     ORDER BY (state = 'closed'), opened_at DESC
     LIMIT $1 OFFSET $2
 """
 
 _LIST_BY_STATE = """
     SELECT * FROM investigation_queue
-    WHERE state = $3
+    WHERE state = $4 AND classification = ANY($3::text[])
     ORDER BY opened_at DESC
     LIMIT $1 OFFSET $2
 """
 
-_COUNT_ALL = "SELECT count(*) AS total FROM investigations"
-_COUNT_BY_STATE = "SELECT count(*) AS total FROM investigations WHERE state = $1"
+_COUNT_ALL = """
+    SELECT count(*) AS total FROM investigations WHERE classification = ANY($1::text[])
+"""
+_COUNT_BY_STATE = """
+    SELECT count(*) AS total FROM investigations
+     WHERE state = $1 AND classification = ANY($2::text[])
+"""
 
 
-async def list_investigations(*, state: str | None, limit: int, offset: int) -> list[dict[str, Any]]:
+def visible_classifications(clearance: str) -> list[str]:
+    """Every classification a holder of `clearance` may see.
+
+    Raises on an unrecognised clearance rather than returning an empty list. A
+    typo that silently shows nothing reads as "there are no investigations",
+    which is a lie the reader has no way to detect.
+    """
+    ceiling = rank(clearance)
+    return [c.code for c in CLASSIFICATIONS if c.rank <= ceiling]
+
+
+async def list_investigations(
+    *, state: str | None, limit: int, offset: int, max_classification: str
+) -> list[dict[str, Any]]:
+    allowed = visible_classifications(max_classification)
     async with acquire() as conn:
         if state is None:
-            rows = await conn.fetch(_LIST_ALL, limit, offset)
+            rows = await conn.fetch(_LIST_ALL, limit, offset, allowed)
         else:
-            rows = await conn.fetch(_LIST_BY_STATE, limit, offset, state)
+            rows = await conn.fetch(_LIST_BY_STATE, limit, offset, allowed, state)
     return [dict(r) for r in rows]
 
 
-async def count_investigations(state: str | None) -> int:
-    """The true total, for the label above a page of results.
+async def count_investigations(state: str | None, max_classification: str) -> int:
+    """The true total within the reader's clearance.
 
-    A separate count rather than `len()` of the page. The audit found this exact
-    defect on four surfaces (B-04, B-05), Phase 7 found a fifth in its own new
-    code, and it is cheap enough to simply never do again.
+    A separate count rather than `len()` of the page — the defect the audit found
+    on four surfaces (B-04, B-05) and Phase 7 found once more in its own code.
+    Bounded by clearance for a second reason: a total that included investigations
+    the reader cannot open would tell them exactly how much is being withheld.
     """
+    allowed = visible_classifications(max_classification)
     async with acquire() as conn:
         if state is None:
-            row = await conn.fetchrow(_COUNT_ALL)
+            row = await conn.fetchrow(_COUNT_ALL, allowed)
         else:
-            row = await conn.fetchrow(_COUNT_BY_STATE, state)
+            row = await conn.fetchrow(_COUNT_BY_STATE, state, allowed)
     return int(row["total"]) if row else 0
 
 

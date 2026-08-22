@@ -42,6 +42,11 @@ class AuthenticatedUser:
     display_name: str
     role: str
     session_id: uuid.UUID
+    # Read from the user row on every request rather than stamped into the
+    # session at login. A clearance that was reduced this morning must take
+    # effect on this afternoon's request, not when the session happens to
+    # expire — the whole point of a clearance is that it can be withdrawn.
+    clearance: str = "internal"
 
 
 def generate_token() -> str:
@@ -93,7 +98,8 @@ async def resolve_session(conn: asyncpg.Connection, token: str) -> Authenticated
 
     row = await conn.fetchrow(
         """
-        SELECT s.id AS session_id, u.id AS user_id, u.username, u.display_name, u.role
+        SELECT s.id AS session_id, u.id AS user_id, u.username, u.display_name,
+               u.role, u.clearance
         FROM sessions s
         JOIN users u ON u.id = s.user_id
         WHERE s.token_hash = $1
@@ -124,6 +130,7 @@ async def resolve_session(conn: asyncpg.Connection, token: str) -> Authenticated
         display_name=row["display_name"],
         role=row["role"],
         session_id=row["session_id"],
+        clearance=row["clearance"],
     )
 
 

@@ -102,7 +102,7 @@ class Rule:
     would_be_wrong_if: str
     reads: frozenset[str]
     independent_methods: int
-    evaluate: Callable[[AlertingEvidence], Iterator[RuleFiring]]
+    evaluate: Callable[[AlertingEvidence, RuleParams], Iterator[RuleFiring]]
 
     def identity(self) -> dict[str, object]:
         """The parts that change what a firing means. Used for the fingerprint;
@@ -123,9 +123,51 @@ class Rule:
 ELEVATED_BAND = "elevated"
 
 
-def _elevated_assessment(evidence: AlertingEvidence) -> Iterator[RuleFiring]:
+@dataclass(frozen=True)
+class RuleParams:
+    """The thresholds the rules key on, as data rather than as constants.
+
+    Added by the calibration phase, which needs to answer "what would change if
+    this rule fired at a different threshold" *before* anyone activates the
+    change. A threshold buried in a module constant cannot be simulated — it can
+    only be edited and deployed, which is the tuning-by-guesswork this phase
+    exists to replace.
+
+    The defaults are exactly the values that were constants before, so the
+    published fingerprint and every measured figure are unaffected: calling
+    `evaluate_rules(evidence)` with no params is the same computation it always
+    was, and a test asserts that.
+    """
+
+    elevated_band: str = "elevated"
+    established_tier: str = "established"
+    convergence_min_assessed: int = 2
+    convergence_bands: frozenset[str] = frozenset({"elevated", "notable"})
+    escalation_bands: frozenset[str] = frozenset({"elevated", "notable"})
+
+    def describe_differences(self, other: RuleParams) -> list[str]:
+        """Human-readable diff, for a simulation to state what it changed."""
+        out: list[str] = []
+        for field_name in (
+            "elevated_band",
+            "established_tier",
+            "convergence_min_assessed",
+            "convergence_bands",
+            "escalation_bands",
+        ):
+            mine, theirs = getattr(self, field_name), getattr(other, field_name)
+            if mine != theirs:
+                fmt = (lambda v: ", ".join(sorted(v))) if isinstance(mine, frozenset) else str
+                out.append(f"{field_name}: {fmt(mine)} \u2192 {fmt(theirs)}")
+        return out
+
+
+DEFAULT_PARAMS = RuleParams()
+
+
+def _elevated_assessment(evidence: AlertingEvidence, params: RuleParams) -> Iterator[RuleFiring]:
     for ref, finding in sorted(evidence.assessments.items()):
-        if finding.band != ELEVATED_BAND:
+        if finding.band != params.elevated_band:
             continue
         families = ", ".join(finding.families_fired) or "none recorded"
         yield RuleFiring(
@@ -146,8 +188,7 @@ def _elevated_assessment(evidence: AlertingEvidence) -> Iterator[RuleFiring]:
                 "families_fired": list(finding.families_fired),
                 "evidence_coverage": finding.evidence_coverage,
                 "signals": [
-                    {"signal_id": s, "family": f, "magnitude": m, "summary": t}
-                    for s, f, m, t in finding.signals
+                    {"signal_id": s, "family": f, "magnitude": m, "summary": t} for s, f, m, t in finding.signals
                 ],
             },
         )
@@ -160,9 +201,9 @@ def _elevated_assessment(evidence: AlertingEvidence) -> Iterator[RuleFiring]:
 ESTABLISHED_TIER = "established"
 
 
-def _established_link(evidence: AlertingEvidence) -> Iterator[RuleFiring]:
+def _established_link(evidence: AlertingEvidence, params: RuleParams) -> Iterator[RuleFiring]:
     for link in sorted(evidence.links, key=lambda x: (x.ref_a, x.ref_b)):
-        if link.tier != ESTABLISHED_TIER:
+        if link.tier != params.established_tier:
             continue
         families = ", ".join(link.corroborating_families)
         yield RuleFiring(
@@ -197,7 +238,7 @@ CONVERGENCE_MIN_ASSESSED = 2
 CONVERGENCE_BANDS = frozenset({"elevated", "notable"})
 
 
-def _convergent_cluster(evidence: AlertingEvidence) -> Iterator[RuleFiring]:
+def _convergent_cluster(evidence: AlertingEvidence, params: RuleParams) -> Iterator[RuleFiring]:
     """The strongest thing ARGUS can say, and the reason it can say it.
 
     Assessment looks at each subject alone: transaction structure, contact
@@ -212,12 +253,12 @@ def _convergent_cluster(evidence: AlertingEvidence) -> Iterator[RuleFiring]:
         assessed = [
             evidence.assessments[m]
             for m in cluster.members
-            if m in evidence.assessments and evidence.assessments[m].band in CONVERGENCE_BANDS
+            if m in evidence.assessments and evidence.assessments[m].band in params.convergence_bands
         ]
-        if len(assessed) < CONVERGENCE_MIN_ASSESSED:
+        if len(assessed) < params.convergence_min_assessed:
             continue
 
-        elevated = [a for a in assessed if a.band == ELEVATED_BAND]
+        elevated = [a for a in assessed if a.band == params.elevated_band]
         coverage = sum(a.evidence_coverage for a in assessed) / len(assessed)
         yield RuleFiring(
             rule_id="convergence.assessed_cluster",
@@ -253,7 +294,7 @@ def _convergent_cluster(evidence: AlertingEvidence) -> Iterator[RuleFiring]:
 # --------------------------------------------------------------------------
 
 
-def _escalated_assessment(evidence: AlertingEvidence) -> Iterator[RuleFiring]:
+def _escalated_assessment(evidence: AlertingEvidence, params: RuleParams) -> Iterator[RuleFiring]:
     """Fires on movement, not on level.
 
     A subject sitting at `elevated` across ten runs is rule 1's business and
@@ -271,7 +312,7 @@ def _escalated_assessment(evidence: AlertingEvidence) -> Iterator[RuleFiring]:
         # Only movement *into* a band worth an analyst's time. clear ->
         # notable is movement, but alerting on it would bury the queue in
         # subjects that merely stopped being silent.
-        if finding.band not in CONVERGENCE_BANDS:
+        if finding.band not in params.escalation_bands:
             continue
         yield RuleFiring(
             rule_id="assessment.escalated",
@@ -292,9 +333,7 @@ def _escalated_assessment(evidence: AlertingEvidence) -> Iterator[RuleFiring]:
                 "score": finding.score,
                 "evidence_coverage": finding.evidence_coverage,
                 "previous_computed_at": (
-                    finding.previous_computed_at.isoformat()
-                    if finding.previous_computed_at
-                    else None
+                    finding.previous_computed_at.isoformat() if finding.previous_computed_at else None
                 ),
             },
         )
@@ -431,9 +470,15 @@ def rules_fingerprint() -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def evaluate_rules(evidence: AlertingEvidence) -> list[RuleFiring]:
-    """Run every rule over the evidence, in registry order."""
+def evaluate_rules(evidence: AlertingEvidence, params: RuleParams | None = None) -> list[RuleFiring]:
+    """Run every rule over the evidence, in registry order.
+
+    `params` defaults to the values that were module constants before the
+    calibration phase, so the no-argument call is the identical computation and
+    the published fingerprint is unchanged.
+    """
+    active = params or DEFAULT_PARAMS
     firings: list[RuleFiring] = []
     for rule in RULES:
-        firings.extend(rule.evaluate(evidence))
+        firings.extend(rule.evaluate(evidence, active))
     return firings

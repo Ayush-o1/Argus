@@ -17,6 +17,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 
 from app.api.dependencies import require_permission
+from app.evidence.classification import (
+    DEFAULT_CLASSIFICATION,
+    classification_by_code,
+    may_access,
+)
 from app.investigation.history import TRACKED_FIELDS, reconstruct, verify
 from app.investigation.lifecycle import (
     INVESTIGATION_STATES,
@@ -68,6 +73,13 @@ class Outcome(StrEnum):
     REFERRED = "referred"
 
 
+class ClassificationLevel(StrEnum):
+    UNRESTRICTED = "unrestricted"
+    INTERNAL = "internal"
+    CONFIDENTIAL = "confidential"
+    RESTRICTED = "restricted"
+
+
 class Band(StrEnum):
     ELEVATED = "elevated"
     NOTABLE = "notable"
@@ -85,6 +97,11 @@ class OpenRequest(BaseModel):
     confidence_basis: str = Field(min_length=1, max_length=MAX_TEXT)
     assigned_to: str | None = Field(default=None, max_length=MAX_NAME)
     alert_keys: list[str] = Field(default_factory=list, max_length=200)
+    # Defaults to `internal` rather than `unrestricted`. A default that
+    # under-classifies is a default that leaks, and over-classifying by one
+    # level costs an inconvenience where under-classifying costs the thing the
+    # vocabulary exists to prevent.
+    classification: ClassificationLevel = ClassificationLevel(DEFAULT_CLASSIFICATION)
 
 
 class UpdateRequest(BaseModel):
@@ -232,17 +249,21 @@ async def list_investigations(
     state: InvestigationState | None = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
-    _: AuthenticatedUser = Depends(require_permission(Permission.INVESTIGATION_READ)),
+    user: AuthenticatedUser = Depends(require_permission(Permission.INVESTIGATION_READ)),
 ) -> Envelope[list]:
     rows = await investigation_repo.list_investigations(
         state=state.value if state else None,
         limit=page_size,
         offset=(page - 1) * page_size,
+        max_classification=user.clearance,
     )
-    # Counted over the whole table, never over `rows` — the defect the audit
-    # found on four surfaces (B-04, B-05) and Phase 7 found once more in its own
-    # new code.
-    total = await investigation_repo.count_investigations(state.value if state else None)
+    # Counted over the whole table *within the reader's clearance*, never over
+    # `rows`. Both halves matter: counting the page was the defect the audit
+    # found on four surfaces, and counting rows the reader may not see would
+    # leak the size of what is being withheld.
+    total = await investigation_repo.count_investigations(
+        state.value if state else None, max_classification=user.clearance
+    )
     return Envelope(data=rows, meta=Meta(total=total, page=page, page_size=page_size))
 
 
@@ -288,6 +309,7 @@ async def open_investigation(
         actor_role=user.role,
         assigned_to=payload.assigned_to,
         alert_keys=tuple(payload.alert_keys),
+        classification=payload.classification.value,
     )
     await _audit_investigation(request, user, "investigation.open", created["inv_ref"], after=_auditable(created))
     return Envelope(data=created)
@@ -308,11 +330,12 @@ def _auditable(row: dict[str, Any]) -> dict[str, Any]:
 @router.get("/{ref}")
 async def get_investigation(
     ref: str,
-    _: AuthenticatedUser = Depends(require_permission(Permission.INVESTIGATION_READ)),
+    user: AuthenticatedUser = Depends(require_permission(Permission.INVESTIGATION_READ)),
 ) -> Envelope[dict]:
     found = await investigation_repo.get_investigation(ref)
     if found is None:
         raise HTTPException(status_code=404, detail="Investigation not found")
+    _enforce_clearance(found, user)
     return Envelope(data=found)
 
 
@@ -320,7 +343,7 @@ async def get_investigation(
 async def get_history(
     ref: str,
     at: datetime | None = Query(None, description="Reconstruct the investigation as it stood at this instant."),
-    _: AuthenticatedUser = Depends(require_permission(Permission.INVESTIGATION_READ)),
+    user: AuthenticatedUser = Depends(require_permission(Permission.INVESTIGATION_READ)),
 ) -> Envelope[dict]:
     """The event log, and the investigation as it stood at any past moment.
 
@@ -333,6 +356,7 @@ async def get_history(
     found = await investigation_repo.get_investigation(ref)
     if found is None:
         raise HTTPException(status_code=404, detail="Investigation not found")
+    _enforce_clearance(found, user)
 
     events = await investigation_repo.fetch_events(found["investigation_id"])
     break_found = verify(events)
@@ -373,6 +397,29 @@ async def _require(ref: str) -> dict[str, Any]:
     if found is None:
         raise HTTPException(status_code=404, detail="Investigation not found")
     return found
+
+
+def _enforce_clearance(found: dict[str, Any], user: AuthenticatedUser) -> None:
+    """Refuse a read above the reader's clearance.
+
+    Applied on the read path and not only on export, because an export is a copy
+    of something the person could already see — gating only the copy would be
+    gating the wrong step. The refusal names the classification rather than
+    returning 404: pretending an investigation does not exist would make the
+    system lie about its own contents, and the existence of a case at a given
+    classification is not itself the secret.
+    """
+    classification = found.get("classification") or DEFAULT_CLASSIFICATION
+    clearance = getattr(user, "clearance", None) or DEFAULT_CLASSIFICATION
+    if not may_access(clearance, classification):
+        level = classification_by_code(classification)
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"This investigation is classified {level.label}. Your clearance is "
+                f"{classification_by_code(clearance).label}."
+            ),
+        )
 
 
 @router.patch("/{ref}")

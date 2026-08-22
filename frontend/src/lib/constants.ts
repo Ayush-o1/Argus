@@ -65,6 +65,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: "Map", href: "/map", icon: Map, hint: "Geographic and route intelligence",  permission: "graph:read",},
       { label: "Timeline", href: "/timeline", icon: Clock, hint: "Temporal activity patterns",  permission: "entity:read",},
       { label: "Patterns", href: "/patterns", icon: TrendingUp, hint: "What changed over time, and where activity concentrates",  permission: "analytics:read",},
+      { label: "Calibration", href: "/calibration", icon: Gauge, hint: "How well the rules perform, measured from what analysts decided",  permission: "calibration:read",},
     ],
   },
   {

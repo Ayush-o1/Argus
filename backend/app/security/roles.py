@@ -129,6 +129,24 @@ class Permission(StrEnum):
     # as re-running it over everyone.
     ASSESSMENT_DISSENT = "assessment:dissent"
 
+    # Producing an export — the one operation that moves intelligence outside
+    # this system's controls. Held above analyst deliberately: every other
+    # permission here governs what someone may see or record *inside* ARGUS,
+    # where the audit log still applies. Once bytes have left, nothing in this
+    # codebase governs them again, and the only remaining controls are the
+    # classification on the page and the record of who took it.
+    EXPORT_CREATE = "export:create"
+    # Reading the export register and the access log on each artifact. Travels
+    # with the read set, and an auditor holds it: "who has taken a copy of what"
+    # is exactly the question an audit exists to answer.
+    EXPORT_READ = "export:read"
+
+    # Reading how well ARGUS's own detection is performing. Part of the read
+    # set: an analyst shown an alert without any way to see that its rule has
+    # been dismissed as wrong twenty times has been given the finding without
+    # the context that should change how much weight they put on it.
+    CALIBRATION_READ = "calibration:read"
+
     # Expensive or graph-mutating operations
     ANALYTICS_RUN = "analytics:run"
     SCENARIO_GENERATE = "scenario:generate"
@@ -175,6 +193,8 @@ _READ_INTELLIGENCE = frozenset(
         # the same subject and disagreed has been given the machine's half of a
         # two-sided record, which is the failure G-15 describes.
         Permission.INVESTIGATION_READ,
+        Permission.EXPORT_READ,
+        Permission.CALIBRATION_READ,
     }
 )
 
@@ -213,6 +233,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
         Permission.INVESTIGATION_UPDATE,
         Permission.INVESTIGATION_REVIEW,
         Permission.ASSESSMENT_DISSENT,
+        Permission.EXPORT_CREATE,
     },
     Role.SUPERVISOR: _READ_INTELLIGENCE
     | {
@@ -237,6 +258,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
         Permission.INVESTIGATION_UPDATE,
         Permission.INVESTIGATION_REVIEW,
         Permission.ASSESSMENT_DISSENT,
+        Permission.EXPORT_CREATE,
     },
     # No intelligence-read permissions. Deliberate: see the module docstring.
     #

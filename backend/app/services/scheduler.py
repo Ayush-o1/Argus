@@ -1,4 +1,4 @@
-"""Periodic scheduling for ingestion.
+"""Periodic scheduling: ingestion, and the retention disposal of exports.
 
 A small loop that asks, every so often, which connectors are due and queues a
 run for each. Everything it queues is durable; the scheduler itself holds no
@@ -46,6 +46,7 @@ class IngestScheduler:
 
     async def _loop(self) -> None:
         from app.services.ingest import enqueue_due_connectors
+        from app.services.retention import dispose_due_exports
 
         logger.info("ingest scheduler started", extra={"interval": self.interval})
         while not self._stopping.is_set():
@@ -53,6 +54,15 @@ class IngestScheduler:
                 queued = await enqueue_due_connectors()
                 if queued:
                     logger.info("queued %d connector run(s)", queued)
+
+                # Retention runs on the same tick rather than in a second loop.
+                # It is a cheap indexed query that almost always returns nothing,
+                # and a second scheduler would be a second thing that can silently
+                # stop — which is the failure mode this whole class is written
+                # around.
+                disposed = await dispose_due_exports()
+                if disposed:
+                    logger.info("disposed of %d export(s) past retention", disposed)
             except asyncio.CancelledError:
                 raise
             except Exception:

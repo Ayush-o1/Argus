@@ -702,8 +702,10 @@ async def test_the_total_is_counted_over_the_table_not_the_page(scratch: dict) -
     """The defect the audit found on four surfaces and Phase 7 found on a fifth."""
     for _ in range(3):
         await _open(scratch)
-    page = await investigation_repo.list_investigations(state=None, limit=2, offset=0)
-    total = await investigation_repo.count_investigations(None)
+    page = await investigation_repo.list_investigations(
+        state=None, limit=2, offset=0, max_classification="restricted"
+    )
+    total = await investigation_repo.count_investigations(None, max_classification="restricted")
     assert len(page) == 2
     assert total >= 3, "the total must not be the length of the page"
 
