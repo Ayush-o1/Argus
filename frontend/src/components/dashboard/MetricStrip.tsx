@@ -62,7 +62,7 @@ export function MetricStrip({ summary }: { summary: DashboardSummary }) {
         href="/assessment"
         tone={elevated > 0 ? "high" : "neutral"}
       />
-      <Metric label="Active cases" value={String(summary.active_cases)} href="/cases" />
+      <Metric label="Open investigations" value={String(summary.open_investigations)} href="/investigations" />
       {/* Not a risk figure. The count of people ARGUS could not reach a view
           on — the honest companion to the one above, and deliberately the same
           size, because a queue of 27 means something different when 2,700

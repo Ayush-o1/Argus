@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 
 from neo4j import AsyncDriver
 
-from app.repositories import alert_repo
+from app.repositories import alert_repo, investigation_repo
 
 # Window for the dashboard's "recent activity" figure. Must match the label the
 # UI renders, which reads it from the response rather than hardcoding it.
@@ -49,7 +49,7 @@ async def get_dashboard_summary(driver: AsyncDriver) -> dict:
                 OPTIONAL MATCH (p2:Person) WHERE p2.argus_band = 'elevated'
                 WITH persons, orgs, transactions, count(p2) AS elevated
                 OPTIONAL MATCH (a:Case) WHERE a.status IN ['Open', 'UnderReview']
-                RETURN persons, orgs, transactions, elevated, count(a) AS active_cases
+                RETURN persons, orgs, transactions, elevated, count(a) AS source_reported_cases
                 """
             )
         ).single()
@@ -111,10 +111,12 @@ async def get_dashboard_summary(driver: AsyncDriver) -> dict:
             ORDER BY c.opened_at DESC LIMIT 6
             """
         )
-        recent_cases = [dict(record) async for record in recent_cases_result]
+        source_reported_cases = [dict(record) async for record in recent_cases_result]
 
     alert_counts = await alert_repo.queue_counts()
     high_priority_open = await alert_repo.count_open_high_priority()
+    investigation_counts = await investigation_repo.queue_counts()
+    by_state = investigation_counts["by_state"]
 
     return {
         "total_persons": counts_row["persons"],
@@ -125,7 +127,15 @@ async def get_dashboard_summary(driver: AsyncDriver) -> dict:
         # people ARGUS assessed as warranting review, which is a different
         # claim about a different thing.
         "elevated_entities": counts_row["elevated"],
-        "active_cases": counts_row["active_cases"],
+        # Investigations ARGUS's users opened, from the investigation tables —
+        # not `Case` nodes, every one of which the scenario generator wrote from
+        # a storyline it had just planted, complete with an invented analyst
+        # name. Counting those as "active cases" reported the answer key's size
+        # and called it a workload, which is the same defect Phase 7 removed
+        # from the alert queue and Phase 5 from the risk distribution.
+        "open_investigations": by_state.get("open", 0) + by_state.get("active", 0),
+        "investigations_by_state": by_state,
+        "investigation_outcomes": investigation_counts["by_outcome"],
         # Alerts ARGUS raised, from the alerting tables — not open High/Critical
         # `Incident` nodes, which is what this counted until Phase 7. Those are
         # written by the scenario generator, one per storyline, so the dashboard
@@ -147,7 +157,11 @@ async def get_dashboard_summary(driver: AsyncDriver) -> dict:
         "assessed_persons": sum(
             row["count"] for row in assessment_distribution if row["band"] != "unassessed"
         ),
+        # Case records reported by a source, kept and named for what they are —
+        # the same treatment Phase 7 gave `Incident`. They are not analyst work
+        # and nothing on this dashboard presents them as such.
+        "source_reported_cases": counts_row["source_reported_cases"],
         # A display list only. Nothing derives a count from this.
         "recent_incidents": recent_incidents,
-        "recent_cases": recent_cases,
+        "recent_source_reported_cases": source_reported_cases,
     }

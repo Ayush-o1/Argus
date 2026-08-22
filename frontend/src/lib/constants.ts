@@ -11,6 +11,7 @@ import {
   Radio,
   Search,
   Settings,
+  FileSearch,
   ShieldHalf,
   TrendingUp,
   Waypoints,
@@ -21,7 +22,7 @@ export interface NavItem {
   label: string;
   href: string;
   icon: LucideIcon;
-  badgeKey?: "alerts" | "cases";
+  badgeKey?: "alerts" | "investigations";
   /** One-line purpose, surfaced as the nav tooltip (and the only affordance
    * when the sidebar is collapsed to icons). */
   hint?: string;
@@ -48,8 +49,12 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     title: "Triage",
     items: [
-      { label: "Alerts", href: "/alerts", icon: AlertTriangle, badgeKey: "alerts", hint: "Flagged anomalies awaiting review",  permission: "alert:read",},
-      { label: "Cases", href: "/cases", icon: ShieldHalf, badgeKey: "cases", hint: "Active investigations",  permission: "case:read",},
+      { label: "Alerts", href: "/alerts", icon: AlertTriangle, badgeKey: "alerts", hint: "Findings ARGUS raised for review",  permission: "alert:read",},
+      { label: "Investigations", href: "/investigations", icon: FileSearch, badgeKey: "investigations", hint: "What analysts concluded, and the outcome",  permission: "investigation:read",},
+      // Kept, and no longer described as investigations. Every Case in the
+      // graph was written by the scenario generator from a storyline; calling
+      // them "active investigations" presented the answer key as human work.
+      { label: "Source case records", href: "/cases", icon: ShieldHalf, hint: "Case records reported by a source — not analyst work",  permission: "case:read",},
     ],
   },
   {

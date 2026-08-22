@@ -56,8 +56,8 @@ export function Sidebar() {
               const count =
                 item.badgeKey === "alerts"
                   ? summary?.open_alerts
-                  : item.badgeKey === "cases"
-                    ? summary?.active_cases
+                  : item.badgeKey === "investigations"
+                    ? summary?.open_investigations
                     : undefined;
               return (
                 <Link

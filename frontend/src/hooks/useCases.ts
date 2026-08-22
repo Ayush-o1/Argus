@@ -1,4 +1,15 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+/**
+ * Reads for the source case-record store.
+ *
+ * The mutations that used to live here — create, update, link and unlink
+ * evidence — are gone. Every `Case` in the graph was written by the scenario
+ * generator from a storyline, so analyst work recorded alongside them would be
+ * indistinguishable from planted data a week later. The API returns 410 for
+ * those routes and points at `/api/investigations`, which is a different object
+ * in a different store: hypothesis, evidence, findings, an outcome, and an
+ * append-only history with nothing generator-authored in it.
+ */
+import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import type { CaseDetail, CaseSummary } from "@/lib/types";
 
@@ -21,42 +32,3 @@ export function useCase(caseId: string | undefined) {
   });
 }
 
-export function useCreateCase() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (payload: { title: string; priority: string; notes?: string }) =>
-      (await apiFetch<CaseDetail>("/api/cases", { method: "POST", body: JSON.stringify(payload) })).data,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["cases"] }),
-  });
-}
-
-export function useUpdateCase(caseId: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (payload: Partial<{ status: string; priority: string; notes: string; assigned_analyst: string }>) =>
-      (await apiFetch<CaseDetail>(`/api/cases/${encodeURIComponent(caseId!)}`, { method: "PUT", body: JSON.stringify(payload) })).data,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["case", caseId] });
-      queryClient.invalidateQueries({ queryKey: ["cases"] });
-    },
-  });
-}
-
-export function useAddCaseEntity(caseId: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (payload: { entity_id: string; reason?: string }) =>
-      (await apiFetch<{ linked: boolean }>(`/api/cases/${encodeURIComponent(caseId!)}/entities`, { method: "POST", body: JSON.stringify(payload) }))
-        .data,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["case", caseId] }),
-  });
-}
-
-export function useRemoveCaseEntity(caseId: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (entityId: string) =>
-      (await apiFetch<{ removed: boolean }>(`/api/cases/${encodeURIComponent(caseId!)}/entities/${encodeURIComponent(entityId!)}`, { method: "DELETE" })).data,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["case", caseId] }),
-  });
-}

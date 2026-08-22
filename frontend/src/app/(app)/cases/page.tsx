@@ -1,18 +1,16 @@
 "use client";
 
-import { Plus, ShieldHalf } from "lucide-react";
+import { Info, ShieldHalf } from "lucide-react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useMemo, useState } from "react";
 import { PageShell } from "@/components/layout/PageShell";
 import { Badge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Input, Select, Textarea } from "@/components/ui/Input";
 import { SegmentedControl, type Segment } from "@/components/ui/SegmentedControl";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Table, type TableColumn } from "@/components/ui/Table";
-import { useToast } from "@/components/ui/Toast";
-import { useCases, useCreateCase } from "@/hooks/useCases";
+import { useCases } from "@/hooks/useCases";
 import { formatDate, formatRelativeTime } from "@/lib/formatters";
 import { CASE_STATUS_LABEL, CASE_STATUS_TONE } from "@/lib/caseLabels";
 import type { CaseSummary } from "@/lib/types";
@@ -45,7 +43,7 @@ const STATUS_RANK: Record<CaseSummary["status"], number> = {
 
 export default function CasesPage() {
   return (
-    <Suspense fallback={<PageShell title="Cases" subtitle="Investigation workspaces">{null}</PageShell>}>
+    <Suspense fallback={<PageShell title="Source case records" subtitle="Case records reported by a source">{null}</PageShell>}>
       <CasesPageInner />
     </Suspense>
   );
@@ -54,14 +52,7 @@ export default function CasesPage() {
 function CasesPageInner() {
   const searchParams = useSearchParams();
   const [status, setStatus] = useState<StatusFilter>(() => (searchParams.get("status") as StatusFilter) ?? "All");
-  const [showForm, setShowForm] = useState(false);
-  const [title, setTitle] = useState("");
-  const [priority, setPriority] = useState("Medium");
-  const [notes, setNotes] = useState("");
-
   const { data, isLoading } = useCases(status === "All" ? undefined : status);
-  const createCase = useCreateCase();
-  const { showToast } = useToast();
 
   // Ordered the way an analyst picks up work: live cases first, most urgent
   // within that, newest as the tiebreak. The API returns creation order only.
@@ -84,24 +75,6 @@ function CasesPageInner() {
     };
   }, [data]);
 
-  function handleCreate() {
-    if (!title.trim()) return;
-    createCase.mutate(
-      { title: title.trim(), priority, notes },
-      {
-        onSuccess: (created) => {
-          setTitle("");
-          setNotes("");
-          setPriority("Medium");
-          setShowForm(false);
-          showToast(`Case ${created.case_id} created`, "success");
-        },
-        onError: () => {
-          showToast("Failed to create case — please try again", "error");
-        },
-      },
-    );
-  }
 
   const statusSegments: Segment<StatusFilter>[] = [
     { value: "All", label: "All" },
@@ -146,37 +119,27 @@ function CasesPageInner() {
 
   return (
     <PageShell
-      title="Cases"
-      subtitle="Investigation workspaces — live cases first, most urgent at the top"
-      actions={
-        <Button size="sm" onClick={() => setShowForm((v) => !v)}>
-          <Plus size={16} /> New case
-        </Button>
-      }
+      title="Source case records"
+      subtitle="Case records reported by a source — not this deployment's own investigations"
     >
-      {showForm && (
-        <div className={styles.createForm}>
-          <Input placeholder="Case title" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
-          <div className={styles.formRow}>
-            <Select value={priority} onChange={(e) => setPriority(e.target.value)}>
-              {["Low", "Medium", "High", "Critical"].map((p) => (
-                <option key={p} value={p}>
-                  {p} priority
-                </option>
-              ))}
-            </Select>
-          </div>
-          <Textarea placeholder="Initial notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
-          <div className={styles.formActions}>
-            <Button variant="secondary" size="sm" onClick={() => setShowForm(false)}>
-              Cancel
-            </Button>
-            <Button size="sm" onClick={handleCreate} disabled={!title.trim() || createCase.isPending}>
-              {createCase.isPending ? "Creating…" : "Create case"}
-            </Button>
-          </div>
-        </div>
-      )}
+      {/* Every case in this store was written by the scenario generator from a
+          storyline it had just planted: titled after the storyline, linked to
+          exactly the entities it named, and assigned to one of five invented
+          analyst names. Reading them is fine. Presenting them as analyst work
+          was the defect — the same one Phase 7 removed from the alert queue,
+          in the surface where it does the most damage, because a fabricated
+          human judgement is one a reader has no way to discount. */}
+      <div className={styles.provenanceNote}>
+        <Info size={15} aria-hidden />
+        <span>
+          These records come from a registered source and are shown as reported. They
+          are not investigations opened in this deployment, and nothing here has been
+          concluded by an analyst. Work opened by analysts — with a hypothesis,
+          evidence, findings and an outcome — lives under{" "}
+          <Link href="/investigations">Investigations</Link>.
+        </span>
+      </div>
+
 
       <div className={styles.filterRow}>
         <SegmentedControl segments={statusSegments} value={status} onChange={setStatus} ariaLabel="Filter cases by status" />

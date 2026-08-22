@@ -48,7 +48,7 @@ async def _build_context(driver: AsyncDriver) -> str:
         f"Total organizations: {summary['total_organizations']}",
         f"Total transactions: {summary['total_transactions']}",
         f"Entities ARGUS assessed as elevated: {summary['elevated_entities']}",
-        f"Active cases: {summary['active_cases']}",
+        f"Open investigations: {summary['open_investigations']}",
         f"Open alerts: {summary['open_alerts']}",
         # Given as counts across every band, `unassessed` included, so the model
         # cannot describe the population as low-risk when most of it was never

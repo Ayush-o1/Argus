@@ -114,7 +114,7 @@ export function SituationBrief({ summary, regions }: SituationBriefProps) {
           tone={summary.incidents_in_window > 0 ? "high" : undefined}
         />
         <Figure label="Open alerts" value={summary.open_alerts} />
-        <Figure label="Active cases" value={summary.active_cases} />
+        <Figure label="Open investigations" value={summary.open_investigations} />
         {/* Replaces "Mean risk". An average over a population ARGUS mostly
             could not assess summarises nothing; the number of subjects it had
             no view on is the figure that actually qualifies the rest. */}

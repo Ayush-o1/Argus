@@ -106,6 +106,29 @@ class Permission(StrEnum):
     # sizes of decision and should not be the same permission.
     ALERT_SUPPRESS = "alert:suppress"
 
+    # Investigations — what a person concluded about what ARGUS found.
+    # Reading one is reading intelligence in its most sensitive form: an
+    # attributed human judgement about a named subject, with the reasoning
+    # behind it. It travels with the read set, and an administrator does not
+    # get it.
+    INVESTIGATION_READ = "investigation:read"
+    INVESTIGATION_CREATE = "investigation:create"
+    # Working an investigation: editing it, linking evidence, recording
+    # findings and actions, and closing it with an outcome. One permission
+    # because they are one activity, and an analyst who may open an
+    # investigation but not conclude it would simply never close any.
+    INVESTIGATION_UPDATE = "investigation:update"
+    # Reviewing a closed investigation. Held above analyst for the same reason
+    # ASSERTION_RETRACT is: recording that a colleague's conclusion was wrong
+    # is a judgement about their work, not about the subject.
+    INVESTIGATION_REVIEW = "investigation:review"
+    # Recording one's own assessment of a subject beside ARGUS's, including
+    # disagreeing with it (audit G-15). Separate from ASSERTION_WRITE because
+    # this claim is specifically *about the model's output*, and separate from
+    # ASSESSMENT_RUN because dissenting from a model is not the same authority
+    # as re-running it over everyone.
+    ASSESSMENT_DISSENT = "assessment:dissent"
+
     # Expensive or graph-mutating operations
     ANALYTICS_RUN = "analytics:run"
     SCENARIO_GENERATE = "scenario:generate"
@@ -147,6 +170,11 @@ _READ_INTELLIGENCE = frozenset(
         # permission, so no reader can be shown "these two are connected"
         # without access to the evidence that says why.
         Permission.CORRELATION_READ,
+        # An investigation is the record of a human judgement about a subject.
+        # A reader shown ARGUS's band who cannot see that an analyst examined
+        # the same subject and disagreed has been given the machine's half of a
+        # two-sided record, which is the failure G-15 describes.
+        Permission.INVESTIGATION_READ,
     }
 )
 
@@ -161,6 +189,9 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
         Permission.ANALYTICS_RUN,
         Permission.ASSERTION_WRITE,
         Permission.RESOLUTION_DECIDE,
+        Permission.INVESTIGATION_CREATE,
+        Permission.INVESTIGATION_UPDATE,
+        Permission.ASSESSMENT_DISSENT,
     },
     Role.INVESTIGATOR: _READ_INTELLIGENCE
     | {
@@ -178,6 +209,10 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
         Permission.CORRELATION_RUN,
         Permission.ALERT_RUN,
         Permission.ALERT_SUPPRESS,
+        Permission.INVESTIGATION_CREATE,
+        Permission.INVESTIGATION_UPDATE,
+        Permission.INVESTIGATION_REVIEW,
+        Permission.ASSESSMENT_DISSENT,
     },
     Role.SUPERVISOR: _READ_INTELLIGENCE
     | {
@@ -198,6 +233,10 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
         Permission.CORRELATION_RUN,
         Permission.ALERT_RUN,
         Permission.ALERT_SUPPRESS,
+        Permission.INVESTIGATION_CREATE,
+        Permission.INVESTIGATION_UPDATE,
+        Permission.INVESTIGATION_REVIEW,
+        Permission.ASSESSMENT_DISSENT,
     },
     # No intelligence-read permissions. Deliberate: see the module docstring.
     #

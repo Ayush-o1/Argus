@@ -92,7 +92,19 @@ export interface DashboardSummary {
   /** Entities ARGUS assessed as warranting review. Renamed from
    * `flagged_entities`, which counted entities the *generator* had marked. */
   elevated_entities: number;
-  active_cases: number;
+  /** Investigations this deployment's users opened and have not concluded.
+   *
+   * Replaces `active_cases`, and the rename is not cosmetic: that figure
+   * counted `Case` nodes, every one of which the scenario generator wrote from
+   * a storyline it had just planted, complete with an invented analyst name.
+   * The dashboard was reporting the answer key's size and calling it a
+   * workload — the same defect Phase 7 removed from the alert queue. */
+  open_investigations: number;
+  investigations_by_state: Record<string, number>;
+  investigation_outcomes: Record<string, number>;
+  /** Case records written by a source, named for what they are. Kept, and no
+   * longer presented as analyst work — the treatment Phase 7 gave `Incident`. */
+  source_reported_cases: number;
   /** Alerts ARGUS raised and nobody has closed. Sourced from the alerting
    * tables since Phase 7; it previously counted open High/Critical `Incident`
    * nodes, which the scenario generator writes one of per storyline — so the
@@ -112,7 +124,7 @@ export interface DashboardSummary {
   assessed_persons: number;
   /** Display list only — never a source for counts. */
   recent_incidents: Incident[];
-  recent_cases: CaseSummary[];
+  recent_source_reported_cases: CaseSummary[];
 }
 
 export interface TimelineItem {

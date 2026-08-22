@@ -26,6 +26,7 @@ from app.api.routes import (
     entities,
     graph,
     ingest,
+    investigations,
     patterns,
     provenance,
     resolution,
@@ -216,6 +217,7 @@ async def neo4j_unavailable_handler(request: Request, exc: Exception) -> JSONRes
         headers={"Retry-After": "10"},
     )
 
+
 @app.exception_handler(PostgresConnectionError)
 @app.exception_handler(asyncpg.InterfaceError)
 @app.exception_handler(ConnectionRefusedError)
@@ -259,6 +261,8 @@ app.include_router(correlation.router)
 app.include_router(graph.router)
 app.include_router(analytics.router)
 app.include_router(cases.router)
+app.include_router(investigations.router)
+app.include_router(investigations.assessments_router)
 app.include_router(alerts.router)
 app.include_router(patterns.router)
 app.include_router(ai.router)

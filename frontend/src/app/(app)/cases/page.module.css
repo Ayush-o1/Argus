@@ -66,3 +66,23 @@
   color: var(--text-tertiary);
   white-space: nowrap;
 }
+
+/* Provenance banner. Stated at the top of the page rather than as a footnote:
+   a reader who scrolls past it would otherwise take a list of "Operation Shell
+   Trace" cases assigned to named analysts at face value. */
+.provenanceNote {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  line-height: 1.65;
+}
+
+.provenanceNote a { color: var(--text-primary); text-decoration: underline; }

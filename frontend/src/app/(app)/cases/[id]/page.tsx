@@ -1,27 +1,23 @@
 "use client";
 
-import { Flag, ShieldHalf, Sparkles, X } from "lucide-react";
+import { Info, ShieldHalf, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useState } from "react";
 import { PageShell } from "@/components/layout/PageShell";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { SelectControl } from "@/components/ui/SelectControl";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Spinner } from "@/components/ui/Spinner";
-import { useAddCaseEntity, useCase, useRemoveCaseEntity, useUpdateCase } from "@/hooks/useCases";
+import { useCase } from "@/hooks/useCases";
 import { useCaseSummary } from "@/hooks/useAssistant";
 import { useAlerts } from "@/hooks/useAlerts";
 import { CaseFootprint } from "@/components/cases/CaseFootprint";
 import {
-  CASE_PRIORITIES,
   CASE_PRIORITY_TONE,
   CASE_STATUS_LABEL,
   CASE_STATUS_TONE,
-  CASE_STATUSES,
 } from "@/lib/caseLabels";
 import { entityId, entityName } from "@/lib/entityDisplay";
 import { formatRelativeTime } from "@/lib/formatters";
@@ -32,15 +28,10 @@ export default function CaseWorkspacePage() {
   const caseId = params.id;
 
   const { data: caseDetail, isLoading } = useCase(caseId);
-  const updateCase = useUpdateCase(caseId);
-  const addEntity = useAddCaseEntity(caseId);
-  const removeEntity = useRemoveCaseEntity(caseId);
   const summary = useCaseSummary();
   // One request for the whole alert set; related alerts are matched locally by
   // intersecting involved_entity_ids with the evidence board.
   const { data: alertsPage } = useAlerts();
-
-  const [newEntityId, setNewEntityId] = useState("");
 
   if (isLoading) {
     return (
@@ -58,11 +49,6 @@ export default function CaseWorkspacePage() {
     );
   }
 
-  function handleAddEntity() {
-    if (!newEntityId.trim()) return;
-    addEntity.mutate({ entity_id: newEntityId.trim() }, { onSuccess: () => setNewEntityId("") });
-  }
-
   return (
     <PageShell>
       <div className={styles.header}>
@@ -74,22 +60,19 @@ export default function CaseWorkspacePage() {
             <Badge tone={CASE_PRIORITY_TONE[caseDetail.priority]}>{caseDetail.priority}</Badge>
           </div>
         </div>
-        <div className={styles.controlsRow}>
-          <SelectControl
-            icon={ShieldHalf}
-            value={caseDetail.status}
-            onChange={(e) => updateCase.mutate({ status: e.target.value })}
-            aria-label="Case status"
-            options={CASE_STATUSES.map((v) => ({ value: v, label: CASE_STATUS_LABEL[v] }))}
-          />
-          <SelectControl
-            icon={Flag}
-            value={caseDetail.priority}
-            onChange={(e) => updateCase.mutate({ priority: e.target.value })}
-            aria-label="Case priority"
-            options={CASE_PRIORITIES.map((v) => ({ value: v, label: v }))}
-          />
-        </div>
+      </div>
+
+      {/* Read-only, and said so where it is read rather than only in a commit
+          message. This record was written by a source; the status and priority
+          on it are that source's, not a judgement anyone here made. */}
+      <div className={styles.provenanceNote}>
+        <Info size={15} aria-hidden />
+        <span>
+          Reported by a source and shown as reported. Nothing on this page was
+          concluded by an analyst in this deployment, and it cannot be edited here.
+          To record your own judgement about these entities, open an{" "}
+          <Link href="/investigations">investigation</Link>.
+        </span>
       </div>
 
       <div className={styles.layout}>
@@ -102,12 +85,10 @@ export default function CaseWorkspacePage() {
             />
           </Card>
 
-          <NotesPanel
-            key={caseDetail.case_id}
-            initialNotes={caseDetail.notes}
-            onSave={(notes) => updateCase.mutate({ notes })}
-            saving={updateCase.isPending}
-          />
+          <Card>
+            <div className={styles.panelTitle}>Notes as reported</div>
+            <p className={styles.reportedNotes}>{caseDetail.notes || "No notes on this record."}</p>
+          </Card>
 
           <Card>
             <div className={styles.panelTitle}>Summary</div>
@@ -149,32 +130,10 @@ export default function CaseWorkspacePage() {
                       )}
                       <div className={styles.evidenceLabel}>{entity.label}</div>
                     </div>
-                    {id && (
-                      <button
-                        type="button"
-                        className={styles.removeButton}
-                        onClick={() => removeEntity.mutate(id)}
-                        aria-label={`Remove ${name}`}
-                      >
-                        <X size={14} />
-                      </button>
-                    )}
                   </div>
                 );
               })
             )}
-            <div className={styles.addEntityRow}>
-              <input
-                className={styles.input}
-                placeholder="Entity ID, e.g. PRS-0002858"
-                value={newEntityId}
-                onChange={(e) => setNewEntityId(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleAddEntity()}
-              />
-              <Button size="sm" onClick={handleAddEntity} disabled={!newEntityId.trim() || addEntity.isPending}>
-                Add
-              </Button>
-            </div>
           </Card>
 
           <Card>
@@ -197,35 +156,5 @@ export default function CaseWorkspacePage() {
         </div>
       </div>
     </PageShell>
-  );
-}
-
-function NotesPanel({
-  initialNotes,
-  onSave,
-  saving,
-}: {
-  initialNotes: string;
-  onSave: (notes: string) => void;
-  saving: boolean;
-}) {
-  const [notes, setNotes] = useState(initialNotes);
-  const dirty = notes !== initialNotes;
-
-  return (
-    <Card>
-      <div className={styles.panelTitle}>Notes</div>
-      <textarea
-        className={styles.notesTextarea}
-        value={notes}
-        onChange={(e) => setNotes(e.target.value)}
-        placeholder="Investigation notes…"
-      />
-      <div className={styles.notesActions}>
-        <Button size="sm" disabled={!dirty || saving} onClick={() => onSave(notes)}>
-          {saving ? "Saving…" : "Save Notes"}
-        </Button>
-      </div>
-    </Card>
   );
 }

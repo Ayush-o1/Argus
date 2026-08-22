@@ -24,7 +24,7 @@ export function Hero() {
         { label: "Synthetic persons", value: formatCompactNumber(summary.total_persons) },
         { label: "Organizations", value: formatCompactNumber(summary.total_organizations) },
         { label: "Transactions", value: formatCompactNumber(summary.total_transactions) },
-        { label: "Active cases", value: String(summary.active_cases) },
+        { label: "Open investigations", value: String(summary.open_investigations) },
       ]
     : FALLBACK_STATS;
 
