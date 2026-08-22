@@ -42,6 +42,13 @@ npm-debug.log*
 # Database backups (never commit)
 backups/
 
+# Verification evidence: screenshots and captures taken while checking a phase
+# against the running stack. Kept on disk because they are what a claim of
+# "verified" is backed by, and kept out of the repository because they are
+# large binaries of a local instance rather than anything needed to build or
+# run ARGUS.
+.verification/
+
 # Internal audit and phase records. Kept on disk because they are the working
 # record of what was found, decided and deliberately left undone — and kept out
 # of the repository because they are an unsparing internal assessment of this

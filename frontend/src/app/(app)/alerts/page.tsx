@@ -1,178 +1,365 @@
 "use client";
 
-import { AlertTriangle } from "lucide-react";
-import { useSearchParams } from "next/navigation";
-import { Suspense, useMemo, useState } from "react";
+import { AlertTriangle, EyeOff, Layers, Play, ShieldQuestion } from "lucide-react";
+import Link from "next/link";
+import { useMemo, useState } from "react";
 import { PageShell } from "@/components/layout/PageShell";
 import { AlertDetail } from "@/components/alerts/AlertDetail";
 import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { CardHeader } from "@/components/ui/CardHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { SegmentedControl, type Segment } from "@/components/ui/SegmentedControl";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { useAlerts, useReviewAlert } from "@/hooks/useAlerts";
-import { cn } from "@/lib/cn";
-import { formatRelativeTime } from "@/lib/formatters";
-import { RISK_COLORS } from "@/lib/theme";
-import type { Incident } from "@/lib/types";
+import { useSession } from "@/hooks/useAuth";
+import {
+  useAlertGroups,
+  useAlertModel,
+  useAlertSummary,
+  useAlerts,
+  useSuppressions,
+} from "@/hooks/useAlerts";
+import { apiFetch } from "@/lib/api";
+import {
+  PRIORITY_TONE,
+  RULE_LABEL,
+  SCOPE_PREVIEW,
+  STATE_LABEL,
+  STATE_TONE,
+  formatPriority,
+  type Alert,
+} from "@/lib/alerts";
+import { formatTimestamp } from "@/lib/provenance";
 import styles from "./page.module.css";
 
-type SeverityFilter = "All" | "Critical" | "High";
-type StatusFilter = "All" | "Open" | "UnderInvestigation" | "Closed";
+type View = "queue" | "groups" | "suppressed" | "rules";
 
-const SEVERITY_TONE: Record<Incident["severity"], "critical" | "high" | "medium" | "low"> = {
-  Critical: "critical",
-  High: "high",
-  Medium: "medium",
-  Low: "low",
-};
-
-const SEVERITY_COLOR: Record<Incident["severity"], string> = {
-  Critical: RISK_COLORS.Critical,
-  High: RISK_COLORS.High,
-  Medium: RISK_COLORS.Medium,
-  Low: RISK_COLORS.Low,
-};
-
-const SEVERITY_RANK: Record<Incident["severity"], number> = {
-  Critical: 0,
-  High: 1,
-  Medium: 2,
-  Low: 3,
-};
-
+/**
+ * The alert queue.
+ *
+ * What this page replaced is worth stating, because the change is not cosmetic.
+ * It used to list `Incident` nodes of High or Critical severity. Those are
+ * written by the scenario generator — one per storyline, describing the
+ * storyline it had just planted — so the queue was the answer key, re-read and
+ * presented as ARGUS's findings. Nothing generated an alert, nothing
+ * deduplicated, and "review" was an unvalidated status write that left no
+ * record of who had done it.
+ *
+ * Every row here is now something a named, versioned rule concluded from
+ * ARGUS's own assessments and correlations, and the row says which rule, on
+ * what evidence, and how many times it has fired.
+ */
 export default function AlertsPage() {
-  return (
-    <Suspense fallback={<PageShell title="Alerts" subtitle="Triage queue">{null}</PageShell>}>
-      <AlertsPageInner />
-    </Suspense>
-  );
-}
+  const [view, setView] = useState<View>("queue");
+  const [selected, setSelected] = useState<string | null>(null);
+  const [groupFilter, setGroupFilter] = useState<string | null>(null);
+  const [running, setRunning] = useState(false);
 
-function AlertsPageInner() {
-  const searchParams = useSearchParams();
-  const focusId = searchParams.get("focus");
-  const [severity, setSeverity] = useState<SeverityFilter>(
-    () => (searchParams.get("severity") as SeverityFilter) ?? "All",
-  );
-  const [status, setStatus] = useState<StatusFilter>(() => (searchParams.get("status") as StatusFilter) ?? "All");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-
-  const { data, isLoading } = useAlerts(status === "All" ? undefined : status, severity === "All" ? undefined : severity);
-  const reviewAlert = useReviewAlert();
-
-  // The API only sorts by timestamp — for a triage surface, severity should
-  // decide order first (what needs attention), recency second, so a Critical
-  // alert doesn't get buried under a page of more-recent Medium ones.
-  const alerts = useMemo(
-    () =>
-      [...(data?.data ?? [])].sort(
-        (a, b) =>
-          SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] ||
-          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
-      ),
-    [data],
+  const { data: session } = useSession();
+  const { data: summary } = useAlertSummary();
+  const { data: model } = useAlertModel();
+  const { data: groups, isLoading: groupsLoading } = useAlertGroups();
+  const { data: suppressions } = useSuppressions(true);
+  const { data: queue, isLoading } = useAlerts(
+    view === "suppressed"
+      ? { suppressed: true }
+      : groupFilter
+        ? { groupKey: groupFilter }
+        : {},
   );
 
-  // Derived rather than synced: an incoming ?focus wins until the analyst picks
-  // something, and a filter change that drops the selection falls back to the
-  // top of the queue on the same render.
-  const selected: Incident | null =
-    alerts.find((a) => a.incident_id === selectedId) ??
-    (focusId ? (alerts.find((a) => a.incident_id === focusId) ?? null) : null) ??
-    alerts[0] ??
-    null;
+  const canRun = session?.permissions?.includes("alert:run") ?? false;
+  const alerts = queue?.data ?? [];
+  const counts = useMemo(() => summary?.counts ?? {}, [summary]);
 
-  const severitySegments: Segment<SeverityFilter>[] = [
-    { value: "All", label: "All severities" },
-    { value: "Critical", label: "Critical" },
-    { value: "High", label: "High" },
-  ];
-  const statusSegments: Segment<StatusFilter>[] = [
-    { value: "All", label: "All" },
-    { value: "Open", label: "Open" },
-    { value: "UnderInvestigation", label: "Investigating" },
-    { value: "Closed", label: "Closed" },
-  ];
+  const segments = useMemo(
+    () => [
+      { value: "queue" as const, label: "Queue", count: counts.open ?? 0 },
+      // The real total, not the number of rows this page received — a tab
+      // labelled with its own page size is a preview presented as a count.
+      { value: "groups" as const, label: "Groups", count: counts.groups ?? 0 },
+      { value: "suppressed" as const, label: "Suppressed", count: counts.suppressed ?? 0 },
+      { value: "rules" as const, label: "Rules", count: model?.rules.length ?? 0 },
+    ],
+    [counts, model],
+  );
+
+  async function runRules() {
+    setRunning(true);
+    try {
+      await apiFetch("/api/alerts/run", { method: "POST", body: JSON.stringify({}) });
+    } finally {
+      setRunning(false);
+    }
+  }
 
   return (
     <PageShell
       title="Alerts"
-      subtitle="System-detected anomalies, most severe first — triage, investigate, or close"
+      subtitle="Raised by ARGUS's own rules from its own findings — not from anything the data arrived labelled with."
+      actions={
+        canRun ? (
+          <Button onClick={runRules} disabled={running} size="sm">
+            <Play size={14} /> {running ? "Queued…" : "Run rules"}
+          </Button>
+        ) : null
+      }
     >
-      <div className={styles.filterRow}>
-        <div className={styles.filterGroup}>
-          <span className={styles.filterLabel}>Severity</span>
-          <SegmentedControl segments={severitySegments} value={severity} onChange={setSeverity} ariaLabel="Filter by severity" />
-        </div>
-        <div className={styles.filterGroup}>
-          <span className={styles.filterLabel}>Status</span>
-          <SegmentedControl segments={statusSegments} value={status} onChange={setStatus} ariaLabel="Filter by status" />
-        </div>
+      <div className={styles.stats}>
+        <Stat label="Open" value={counts.open ?? 0} />
+        <Stat label="Investigating" value={counts.investigating ?? 0} />
+        <Stat label="Resolved" value={counts.resolved ?? 0} />
+        <Stat label="Dismissed" value={counts.dismissed ?? 0} />
+        <Stat label="Suppressed" value={counts.suppressed ?? 0} muted />
       </div>
 
-      {isLoading ? (
-        <div className={styles.workspace}>
-          <Skeleton height={420} />
-          <Skeleton height={420} />
-        </div>
-      ) : alerts.length === 0 ? (
-        <div className={styles.emptyWrap}>
-          <EmptyState
-            icon={AlertTriangle}
-            title="Queue clear"
-            description="No alerts match this filter. Try widening the severity or status filter."
-          />
-        </div>
-      ) : (
-        // Queue selects, detail argues. A stack of self-contained cards forced
-        // every alert to carry its full context inline, so the page could only
-        // ever be skimmed — and comparing two alerts meant scrolling between
-        // two walls of text.
-        <div className={styles.workspace}>
-          <div className={styles.queueColumn}>
-            <header className={styles.queueHead}>
-              <span className={styles.queueTitle}>Queue</span>
-              <span className={styles.queueCount}>{alerts.length}</span>
-            </header>
-            <ul className={styles.queue} role="listbox" aria-label="Alert queue">
-              {alerts.map((alert) => {
-                const isSelected = alert.incident_id === selected?.incident_id;
-                const isClosed = (alert.status ?? "Open") === "Closed";
-                return (
-                  <li key={alert.incident_id}>
-                    <button
-                      type="button"
-                      role="option"
-                      aria-selected={isSelected}
-                      className={cn(styles.queueRow, isSelected && styles.queueRowSelected, isClosed && styles.resolved)}
-                      style={{ ["--severity-color" as string]: SEVERITY_COLOR[alert.severity] }}
-                      onClick={() => setSelectedId(alert.incident_id)}
-                    >
-                      <span className={styles.queueTop}>
-                        <Badge tone={SEVERITY_TONE[alert.severity]}>{alert.severity}</Badge>
-                        <span className={styles.queueTime}>{formatRelativeTime(alert.timestamp)}</span>
-                      </span>
-                      <span className={styles.queueType}>{alert.type.replace(/([A-Z])/g, " $1").trim()}</span>
-                      <span className={styles.queueDesc}>{alert.description}</span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
+      {(counts.suppressed ?? 0) > 0 ? (
+        <p className={styles.suppressedNote}>
+          <EyeOff size={13} /> {summary?.suppressed_note}
+        </p>
+      ) : null}
 
-          <div className={styles.detailColumn}>
-            {selected ? (
-              <AlertDetail
-                alert={selected}
-                onSelect={(a) => setSelectedId(a.incident_id)}
-                onReview={(next) => reviewAlert.mutate({ alertId: selected.incident_id, status: next })}
-                isReviewing={reviewAlert.isPending}
-              />
+      <SegmentedControl
+        segments={segments}
+        value={view}
+        onChange={(next) => {
+          setView(next);
+          if (next !== "queue") setGroupFilter(null);
+        }}
+        ariaLabel="Alert view"
+        className={styles.tabs}
+      />
+
+      {groupFilter && view === "queue" ? (
+        <p className={styles.filterNote}>
+          Showing one group.{" "}
+          <button className={styles.clearFilter} onClick={() => setGroupFilter(null)}>
+            Show the whole queue
+          </button>
+        </p>
+      ) : null}
+
+      {view === "rules" ? (
+        <RuleList model={model} />
+      ) : view === "groups" ? (
+        <GroupList
+          groups={groups}
+          loading={groupsLoading}
+          onOpen={(key) => {
+            setGroupFilter(key);
+            setView("queue");
+          }}
+        />
+      ) : (
+        <QueueList
+          alerts={alerts}
+          loading={isLoading}
+          suppressedView={view === "suppressed"}
+          onSelect={setSelected}
+        />
+      )}
+
+      {view === "suppressed" && suppressions && suppressions.length > 0 ? (
+        <Card className={styles.suppressionCard}>
+          <CardHeader
+            title="Active suppressions"
+            subtitle="Every one names who set it, why, and when it expires. None can be indefinite."
+          />
+          <ul className={styles.suppressionList}>
+            {suppressions.map((s) => (
+              <li key={s.suppression_id}>
+                <strong>{s.rule_id ?? "any rule"}</strong>
+                {s.subject_ref ? ` on ${s.subject_ref}` : ""} — {s.reason_code}, set by{" "}
+                {s.created_by}, expires {formatTimestamp(s.expires_at)}
+                <span className={styles.suppressionNote}>{s.note}</span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      ) : null}
+
+      {selected ? (
+        <AlertDetail alertKey={selected} onClose={() => setSelected(null)} />
+      ) : null}
+    </PageShell>
+  );
+}
+
+function Stat({ label, value, muted }: { label: string; value: number; muted?: boolean }) {
+  return (
+    <div className={muted ? `${styles.stat} ${styles.statMuted}` : styles.stat}>
+      <span className={styles.statValue}>{value}</span>
+      <span className={styles.statLabel}>{label}</span>
+    </div>
+  );
+}
+
+function QueueList({
+  alerts,
+  loading,
+  suppressedView,
+  onSelect,
+}: {
+  alerts: Alert[];
+  loading: boolean;
+  suppressedView: boolean;
+  onSelect: (key: string) => void;
+}) {
+  if (loading) return <Skeleton height={280} />;
+
+  if (alerts.length === 0) {
+    return (
+      <EmptyState
+        icon={AlertTriangle}
+        title={suppressedView ? "Nothing is suppressed" : "No open alerts"}
+        description={
+          suppressedView
+            ? "No active suppression is hiding anything from the queue."
+            : "Either no rule has fired, or no run has happened yet. Running the rules is the way to tell the difference — an empty queue is a finding, not a blank page."
+        }
+      />
+    );
+  }
+
+  return (
+    <ul className={styles.queue}>
+      {alerts.map((alert) => (
+        <li key={alert.alert_key}>
+          <button className={styles.row} onClick={() => onSelect(alert.alert_key)}>
+            <div className={styles.rowHead}>
+              <Badge tone={PRIORITY_TONE[alert.priority_band]}>
+                {alert.priority_band} · {formatPriority(alert.priority)}
+              </Badge>
+              <Badge tone={STATE_TONE[alert.state]}>{STATE_LABEL[alert.state]}</Badge>
+              <span className={styles.rule}>
+                {RULE_LABEL[alert.rule_id] ?? alert.rule_id}
+              </span>
+              {alert.occurrence_count > 1 ? (
+                <span className={styles.occurrences} title="Times this rule has fired on this scope. A repeat increments this rather than creating a new alert.">
+                  seen {alert.occurrence_count}×
+                </span>
+              ) : null}
+              {alert.suppressed ? (
+                <span className={styles.suppressedTag}>
+                  <EyeOff size={11} /> suppressed
+                </span>
+              ) : null}
+            </div>
+            <p className={styles.title}>{alert.title}</p>
+            <p className={styles.summary}>{alert.summary}</p>
+            <div className={styles.scope}>
+              {alert.scope.slice(0, SCOPE_PREVIEW).map((ref) => (
+                <span key={ref} className={styles.ref}>
+                  {ref}
+                </span>
+              ))}
+              {alert.scope.length > SCOPE_PREVIEW ? (
+                <span className={styles.more}>
+                  +{alert.scope.length - SCOPE_PREVIEW} more of {alert.scope.length}
+                </span>
+              ) : null}
+              <span className={styles.seen}>last seen {formatTimestamp(alert.last_seen_at)}</span>
+            </div>
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function GroupList({
+  groups,
+  loading,
+  onOpen,
+}: {
+  groups: ReturnType<typeof useAlertGroups>["data"];
+  loading: boolean;
+  onOpen: (key: string) => void;
+}) {
+  if (loading) return <Skeleton height={240} />;
+  if (!groups || groups.length === 0) {
+    return (
+      <EmptyState
+        icon={Layers}
+        title="No groups yet"
+        description="Groups appear once the rules have run. A group is a correlated cluster ARGUS already published — not a similarity heuristic invented for this screen."
+      />
+    );
+  }
+
+  return (
+    <ul className={styles.groups}>
+      {groups.map((group) => (
+        <li key={group.group_key} className={styles.group}>
+          <button className={styles.groupOpen} onClick={() => onOpen(group.group_key)}>
+            {group.alert_count === 1 ? "Open this alert" : `Open these ${group.alert_count} alerts`} →
+          </button>
+          <div className={styles.groupHead}>
+            <Badge tone="accent">
+              {group.alert_count} {group.alert_count === 1 ? "alert" : "alerts"}
+            </Badge>
+            {group.open_count > 0 ? <Badge tone="high">{group.open_count} open</Badge> : null}
+            {group.top_priority !== null ? (
+              <span className={styles.groupPriority}>
+                top priority {formatPriority(group.top_priority)}
+              </span>
             ) : null}
           </div>
-        </div>
-      )}
-    </PageShell>
+          <p className={styles.groupSummary}>{group.summary}</p>
+          <div className={styles.scope}>
+            {group.subjects.slice(0, SCOPE_PREVIEW).map((ref) => (
+              <Link key={ref} href={`/entities/${encodeURIComponent(ref)}`} className={styles.ref}>
+                {ref}
+              </Link>
+            ))}
+            {group.subjects.length > SCOPE_PREVIEW ? (
+              <span className={styles.more}>
+                +{group.subjects.length - SCOPE_PREVIEW} more of {group.subjects.length}
+              </span>
+            ) : null}
+          </div>
+          <div className={styles.groupRules}>
+            {group.rule_ids.map((r) => (
+              <span key={r} className={styles.rulePill}>
+                {RULE_LABEL[r] ?? r}
+              </span>
+            ))}
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function RuleList({ model }: { model: ReturnType<typeof useAlertModel>["data"] }) {
+  if (!model) return <Skeleton height={240} />;
+  return (
+    <div className={styles.rules}>
+      <p className={styles.priorityNote}>
+        <ShieldQuestion size={13} /> {model.priority_note}
+      </p>
+      {model.rules.map((rule) => (
+        <Card key={`${rule.rule_id}@${rule.version}`} className={styles.ruleCard}>
+          <CardHeader
+            title={rule.title}
+            subtitle={`${rule.rule_id} · v${rule.version} · ${rule.independent_methods} independent method${rule.independent_methods === 1 ? "" : "s"}`}
+          />
+          <p className={styles.ruleMeans}>{rule.means}</p>
+          <p className={styles.ruleWrong}>
+            <strong>Would be wrong if:</strong> {rule.would_be_wrong_if}
+          </p>
+          <details className={styles.reads}>
+            <summary>Reads {rule.reads.length} inputs</summary>
+            <ul>
+              {rule.reads.map((r) => (
+                <li key={r}>{r}</li>
+              ))}
+            </ul>
+          </details>
+        </Card>
+      ))}
+      <p className={styles.fingerprint}>Rule set fingerprint: {model.rules_fingerprint.slice(0, 16)}…</p>
+    </div>
   );
 }

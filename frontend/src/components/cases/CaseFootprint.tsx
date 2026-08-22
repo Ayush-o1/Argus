@@ -7,7 +7,7 @@ import { useMemo } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { formatRelativeTime } from "@/lib/formatters";
 import { entityId } from "@/lib/entityDisplay";
-import type { Incident } from "@/lib/types";
+import { PRIORITY_TONE, RULE_LABEL, formatPriority, type Alert } from "@/lib/alerts";
 import styles from "./CaseFootprint.module.css";
 
 /**
@@ -31,7 +31,7 @@ export function CaseFootprint({
   caseId,
 }: {
   entities: LinkedEntity[];
-  alerts: Incident[] | undefined;
+  alerts: Alert[] | undefined;
   caseId: string;
 }) {
   const model = useMemo(() => {
@@ -53,13 +53,11 @@ export function CaseFootprint({
       byLabel.set(e.label, (byLabel.get(e.label) ?? 0) + 1);
     }
 
-    // An alert belongs to this case when it involves an entity on the evidence
-    // board. Matching on IDs rather than fetching per-entity keeps this to the
-    // one alerts request the page already makes.
+    // An alert belongs to this case when one of its subjects is on the evidence
+    // board. `scope` is the alert's full subject list rather than a preview, so
+    // this match cannot miss an entity the alert covers but did not display.
     const linkedIds = new Set(entities.map((e) => entityId(e.label, e.properties)).filter(Boolean) as string[]);
-    const related = (alerts ?? []).filter((a) =>
-      (a.involved_entity_ids ?? []).some((id) => linkedIds.has(id)),
-    );
+    const related = (alerts ?? []).filter((a) => a.scope.some((ref) => linkedIds.has(ref)));
 
     return {
       countries: [...countries],
@@ -119,15 +117,19 @@ export function CaseFootprint({
         ) : (
           <ul className={styles.alerts}>
             {related.map((alert) => (
-              <li key={alert.incident_id}>
-                <Link href={`/alerts?focus=${alert.incident_id}`} className={styles.alertRow}>
+              <li key={alert.alert_key}>
+                <Link href={`/alerts?focus=${alert.alert_key}`} className={styles.alertRow}>
                   <ShieldHalf size={13} />
                   <span className={styles.alertBody}>
-                    <span className={styles.alertTitle}>{alert.type.replace(/([A-Z])/g, " $1").trim()}</span>
-                    <span className={styles.alertDesc}>{alert.description}</span>
+                    <span className={styles.alertTitle}>
+                      {RULE_LABEL[alert.rule_id] ?? alert.rule_id}
+                    </span>
+                    <span className={styles.alertDesc}>{alert.summary}</span>
                   </span>
-                  <Badge tone={alert.severity === "Critical" ? "critical" : "high"}>{alert.severity}</Badge>
-                  <span className={styles.alertTime}>{formatRelativeTime(alert.timestamp)}</span>
+                  <Badge tone={PRIORITY_TONE[alert.priority_band]}>
+                    {formatPriority(alert.priority)}
+                  </Badge>
+                  <span className={styles.alertTime}>{formatRelativeTime(alert.last_seen_at)}</span>
                 </Link>
               </li>
             ))}

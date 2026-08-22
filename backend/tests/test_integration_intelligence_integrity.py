@@ -9,130 +9,178 @@ assertion error.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from datetime import UTC, datetime, timedelta
+
 import pytest
+import pytest_asyncio
 from neo4j import AsyncDriver
 
-from app.repositories import alert_repo, dashboard_repo, timeline_repo
+from app.repositories import dashboard_repo, timeline_repo
 
 pytestmark = pytest.mark.asyncio
 
 
-async def _make_incident_with_entities(
-    driver: AsyncDriver, tag: str, incident_id: str, countries: list[str], regions: list[str]
-) -> None:
-    """One Incident involving len(countries) Persons, one per country."""
-    async with driver.session() as session:
-        await session.run(
-            """
-            CREATE (i:Incident {
-                incident_id: $incident_id, type: 'ProbeType', severity: 'Critical',
-                status: 'Open', timestamp: '2026-06-01T00:00:00', description: 'probe',
-                id: $uuid, _test_tag: $tag
-            })
-            """,
-            incident_id=incident_id,
-            uuid=f"{incident_id}-uuid",
-            tag=tag,
+@pytest_asyncio.fixture
+async def pg_pool() -> AsyncIterator[None]:
+    """Just the connection pool. `get_dashboard_summary` reads the alerting
+    tables for its queue figures, so it needs Postgres even where the test is
+    about the graph."""
+    from app.database.postgres import close_postgres, connect_postgres
+
+    try:
+        await connect_postgres()
+    except Exception:
+        pytest.skip("No PostgreSQL reachable; skipping dashboard integrity test")
+    try:
+        yield
+    finally:
+        await close_postgres()
+
+
+@pytest_asyncio.fixture
+async def pg_alerting() -> AsyncIterator[dict]:
+    """A run and a group to hang probe alerts from, removed afterwards."""
+    import uuid
+
+    import asyncpg
+
+    from app.config import get_settings
+    from app.database.postgres import acquire, close_postgres, connect_postgres
+    from app.repositories import alert_repo
+
+    try:
+        await connect_postgres()
+        admin = await asyncpg.connect(dsn=get_settings().postgres_admin_dsn, timeout=5)
+    except Exception:
+        pytest.skip("No PostgreSQL reachable; skipping alerting integrity test")
+
+    tag = uuid.uuid4().hex[:8]
+    run_id = await alert_repo.start_run(f"probe-{tag}", None, None)
+    group_key = f"grp-{tag}"
+    async with acquire() as conn:
+        await alert_repo.upsert_group(conn, group_key, "scope", ["PRS-PROBE"], "probe group")
+
+    state = {"run_id": run_id, "group_key": group_key, "keys": []}
+    try:
+        yield state
+    finally:
+        await admin.execute("ALTER TABLE alert_transitions DISABLE TRIGGER USER")
+        await admin.execute("ALTER TABLE alert_occurrences DISABLE TRIGGER USER")
+        try:
+            keys = state["keys"]
+            if keys:
+                await admin.execute("DELETE FROM alert_transitions WHERE alert_key = ANY($1::text[])", keys)
+                await admin.execute("DELETE FROM alert_occurrences WHERE alert_key = ANY($1::text[])", keys)
+                await admin.execute("DELETE FROM alerts WHERE alert_key = ANY($1::text[])", keys)
+            await admin.execute("DELETE FROM alert_groups WHERE group_key = $1", group_key)
+            await admin.execute("DELETE FROM alert_runs WHERE run_id = $1", run_id)
+        finally:
+            await admin.execute("ALTER TABLE alert_transitions ENABLE TRIGGER USER")
+            await admin.execute("ALTER TABLE alert_occurrences ENABLE TRIGGER USER")
+            await admin.close()
+            await close_postgres()
+
+
+async def _seed_alert(state: dict, *, rule_id: str, scope: list[str]) -> str:
+    import json
+
+    from app.alerting.identity import alert_key
+    from app.database.postgres import acquire
+    from app.repositories import alert_repo
+
+    key = alert_key(rule_id, 1, tuple(scope))
+    state["keys"].append(key)
+    async with acquire() as conn:
+        await alert_repo.upsert_alert(
+            conn,
+            alert_key=key, rule_id=rule_id, rule_version=1, scope=scope,
+            group_key=state["group_key"], title="probe", summary="probe",
+            priority=0.5, priority_band="medium",
+            priority_factors=json.dumps({}), evidence=json.dumps({}),
+            suppressed=False, suppressed_by=None, run_id=state["run_id"],
         )
-        for idx, (country, region) in enumerate(zip(countries, regions, strict=True)):
-            await session.run(
-                """
-                MATCH (i:Incident {incident_id: $incident_id})
-                CREATE (p:Person {
-                    person_id: $person_id, name: $name, country: $country, region: $region,
-                    risk_score: 90.0, id: $uuid, _test_tag: $tag
-                })
-                CREATE (i)-[:INVOLVES]->(p)
-                """,
-                incident_id=incident_id,
-                person_id=f"PRS-{tag[-6:]}-{idx:03d}",
-                name=f"Probe Person {idx}",
-                country=country,
-                region=region,
-                uuid=f"{incident_id}-person-{idx}",
-                tag=tag,
-            )
+    return key
 
 
-async def test_alert_spread_counts_every_involved_entity(graph: AsyncDriver, tag: str) -> None:
-    """B-04. Twelve involved entities across twelve countries; the preview holds
-    five. Deriving spread from the preview reported five countries."""
-    countries = [f"Country{i:02d}" for i in range(12)]
-    regions = [f"Region{i % 4}" for i in range(12)]
-    incident_id = f"INC-{tag[-8:]}"
-    await _make_incident_with_entities(graph, tag, incident_id, countries, regions)
+# ── B-04 and B-29, on the system that now owns alerting ─────────────────────
+#
+# The original two tests pinned these properties against `alert_repo.list_alerts`
+# and `list_related_alerts`, which read `Incident` nodes. Phase 7 replaced that
+# path entirely, so those tests could not be kept as written — and the second was
+# pinning a fix built on the answer key: "related alerts" matched on
+# `source.storyline_id`, the generator's own label. Making a planted result
+# complete is not the same as making it discovered.
+#
+# The properties themselves still matter and are pinned here against the alerting
+# tables. Neither is weakened: the first still fails if a preview is presented as
+# a total, and the second still fails if relatedness is scoped to a page.
 
-    alerts, _ = await alert_repo.list_alerts(graph, None, None, 1, 200)
-    alert = next(a for a in alerts if a["incident_id"] == incident_id)
 
-    spread = alert["spread"]
-    assert spread["involved_total"] == 12, "involved_total must count every entity, not the preview"
-    assert spread["country_count"] == 12, (
-        f"country_count is {spread['country_count']}; deriving it from the "
-        f"{len(alert['involved_entities'])}-entity preview understates the alert's reach"
+async def test_alert_scope_carries_every_subject_not_a_preview(pg_alerting: dict) -> None:
+    """B-04, restated. The defect was a five-entity preview whose spread figures
+    were derived from the preview and labelled as the alert's reach."""
+    from app.repositories import alert_repo
+
+    subjects = [f"PRS-SPREAD-{i:02d}" for i in range(12)]
+    key = await _seed_alert(pg_alerting, rule_id="probe.spread", scope=subjects)
+
+    row = await alert_repo.get_alert(key)
+    assert row is not None
+    assert len(row["scope"]) == 12, (
+        f"scope holds {len(row['scope'])} subjects; an alert that truncates its "
+        "own scope understates its reach exactly as the spread preview did"
     )
-    assert spread["region_count"] == 4
-
-    # The preview stays bounded, and says so.
-    assert len(alert["involved_entities"]) == alert_repo.INVOLVED_PREVIEW_LIMIT
-    coverage = alert["involved_coverage"]
-    assert coverage["basis"] == "truncated"
-    assert coverage["examined"] == alert_repo.INVOLVED_PREVIEW_LIMIT
-    assert coverage["population"] == 12
+    assert set(row["scope"]) == set(subjects)
 
 
-async def test_alert_coverage_is_complete_when_nothing_is_truncated(graph: AsyncDriver, tag: str) -> None:
-    incident_id = f"INC-{tag[-8:]}"
-    await _make_incident_with_entities(graph, tag, incident_id, ["India", "UAE"], ["South Asia", "Middle East"])
+async def test_group_counts_every_alert_not_the_returned_page(pg_alerting: dict) -> None:
+    """B-29, restated. Relatedness must be computed over the whole alert set,
+    not over whichever page a client happened to load — and without reading a
+    planted storyline to do it."""
+    from app.repositories import alert_repo
 
-    alerts, _ = await alert_repo.list_alerts(graph, None, None, 1, 200)
-    alert = next(a for a in alerts if a["incident_id"] == incident_id)
+    for i in range(7):
+        await _seed_alert(pg_alerting, rule_id=f"probe.group.{i}", scope=[f"PRS-GRP-{i:02d}"])
 
-    assert alert["involved_coverage"]["basis"] == "complete"
-    assert alert["spread"]["country_count"] == 2
+    rollup = await alert_repo.group_rollup(limit=200)
+    row = next(g for g in rollup if g["group_key"] == pg_alerting["group_key"])
+    assert row["alert_count"] == 7, (
+        f"group reports {row['alert_count']} of 7 alerts; a count scoped to a "
+        "page is the defect this pins"
+    )
 
-
-async def test_related_alerts_are_found_beyond_the_first_page(graph: AsyncDriver, tag: str) -> None:
-    """B-29. The UI filtered the loaded page, so a related alert outside it was
-    invisible while the panel claimed to identify one investigation."""
-    storyline = f"STL-{tag[-8:]}"
-    async with graph.session() as session:
-        for idx in range(3):
-            await session.run(
-                """
-                CREATE (i:Incident {
-                    incident_id: $incident_id, type: 'ProbeType', severity: 'High',
-                    status: 'Open', timestamp: $ts, description: 'probe',
-                    storyline_id: $storyline, id: $uuid, _test_tag: $tag
-                })
-                """,
-                incident_id=f"INC-{tag[-6:]}-{idx}",
-                ts=f"2026-06-0{idx + 1}T00:00:00",
-                storyline=storyline,
-                uuid=f"{tag}-rel-{idx}",
-                tag=tag,
-            )
-
-    related = await alert_repo.list_related_alerts(graph, f"INC-{tag[-6:]}-0")
-    assert len(related) == 2
-    assert all(r["storyline_id"] == storyline for r in related)
-    assert all(r["incident_id"] != f"INC-{tag[-6:]}-0" for r in related), "must exclude the source alert"
+    listed, total = await alert_repo.list_alerts(
+        group_key=pg_alerting["group_key"], page=1, page_size=3
+    )
+    assert len(listed) == 3, "page size must still bound what is returned"
+    assert total == 7, "the total must describe the group, not the page"
 
 
-async def test_related_alerts_empty_without_a_storyline(graph: AsyncDriver, tag: str) -> None:
-    async with graph.session() as session:
-        await session.run(
-            """
-            CREATE (i:Incident {
-                incident_id: $incident_id, type: 'Solo', severity: 'High', status: 'Open',
-                timestamp: '2026-06-01T00:00:00', description: 'probe', id: $uuid, _test_tag: $tag
-            })
-            """,
-            incident_id=f"INC-{tag[-8:]}",
-            uuid=f"{tag}-solo",
-            tag=tag,
-        )
-    assert await alert_repo.list_related_alerts(graph, f"INC-{tag[-8:]}") == []
+async def test_an_alert_in_no_group_reports_nothing_related(pg_alerting: dict) -> None:
+    """The empty case, which must be empty rather than nearest-neighbour."""
+    from app.repositories import alert_repo
+
+    listed, total = await alert_repo.list_alerts(group_key="grp-does-not-exist", page_size=50)
+    assert listed == [] and total == 0
+
+
+async def test_dashboard_open_alerts_come_from_argus_not_the_generator(
+    graph: AsyncDriver, pg_alerting: dict
+) -> None:
+    """The dashboard counted open High/Critical `Incident` nodes as its alert
+    figure. Those are written by the generator, one per storyline, so the number
+    was the answer key's size presented as the queue."""
+    from app.repositories import alert_repo
+
+    summary = await dashboard_repo.get_dashboard_summary(graph)
+    counts = await alert_repo.queue_counts()
+    assert summary["open_alerts"] == counts["open"], (
+        "dashboard open_alerts must equal the alerting tables' open count"
+    )
+    assert summary["high_priority_open_alerts"] <= summary["open_alerts"], (
+        "the high-priority figure must share open_alerts' denominator (B-05)"
+    )
 
 
 async def test_timeline_is_deterministic_and_complete(graph: AsyncDriver) -> None:
@@ -215,20 +263,31 @@ async def test_timeline_lane_flagged_counts_are_exact(graph: AsyncDriver) -> Non
             )
 
 
-async def test_dashboard_critical_count_is_not_capped_by_the_preview(graph: AsyncDriver, tag: str) -> None:
+async def test_dashboard_incident_counts_are_not_capped_by_the_preview(
+    graph: AsyncDriver, tag: str, pg_pool: None
+) -> None:
     """B-05. The headline sentence put a full count and a six-row sample in one
-    clause, so the critical figure could never exceed the preview length."""
+    clause, so the figure could never exceed the preview length.
+
+    The field this originally pinned — `critical_open_alerts` — counted open
+    High/Critical `Incident` nodes and was named as though it described the
+    alert queue. Phase 7 split those apart: `open_alerts` now comes from the
+    alerting tables, and the incident figures are reported as incidents. The
+    property is unchanged and is pinned here on the figures that remain.
+    """
+    recent = (datetime.now(UTC) - timedelta(days=1)).isoformat()
     async with graph.session() as session:
         for idx in range(8):
             await session.run(
                 """
                 CREATE (i:Incident {
                     incident_id: $incident_id, type: 'ProbeType', severity: 'Critical',
-                    status: 'Open', timestamp: '2026-06-01T00:00:00', description: 'probe',
+                    status: 'Open', timestamp: $ts, description: 'probe',
                     id: $uuid, _test_tag: $tag
                 })
                 """,
                 incident_id=f"INC-{tag[-6:]}-{idx}",
+                ts=recent,
                 uuid=f"{tag}-crit-{idx}",
                 tag=tag,
             )
@@ -236,8 +295,9 @@ async def test_dashboard_critical_count_is_not_capped_by_the_preview(graph: Asyn
     summary = await dashboard_repo.get_dashboard_summary(graph)
     preview_len = len(summary["recent_incidents"])
 
-    assert summary["critical_open_alerts"] >= 8, (
-        f"critical_open_alerts is {summary['critical_open_alerts']} with 8 critical open incidents "
-        f"present; a value bounded by the {preview_len}-row preview means it is being derived from it"
+    assert summary["critical_incidents_in_window"] >= 8, (
+        f"critical_incidents_in_window is {summary['critical_incidents_in_window']} with 8 "
+        f"critical incidents in the window; a value bounded by the {preview_len}-row "
+        "preview means it is being derived from it"
     )
-    assert summary["critical_open_alerts"] <= summary["open_alerts"]
+    assert summary["critical_incidents_in_window"] <= summary["incidents_in_window"]

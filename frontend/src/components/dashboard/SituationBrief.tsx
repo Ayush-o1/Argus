@@ -85,13 +85,15 @@ export function SituationBrief({ summary, regions }: SituationBriefProps) {
             .
           </>
         )}{" "}
-        {/* Both figures are full-population counts, so they can be stated as
-            parts of one whole. The critical count previously came from a
-            six-row display list and understated itself (audit B-05). */}
+        {/* Both figures are full-population counts over the alerting tables, so
+            they can be stated as parts of one whole. The qualifier is
+            "high priority", not "critical": priority orders the queue from what
+            ARGUS measured, whereas severity would claim to know how bad the
+            thing is, which ARGUS has no evidence for. */}
         <strong>{summary.open_alerts}</strong> {summary.open_alerts === 1 ? "alert is" : "alerts are"} open
-        {summary.critical_open_alerts > 0 ? (
+        {summary.high_priority_open_alerts > 0 ? (
           <>
-            , <strong>{summary.critical_open_alerts}</strong> of them critical
+            , <strong>{summary.high_priority_open_alerts}</strong> of them high priority
           </>
         ) : null}
         .

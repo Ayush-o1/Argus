@@ -140,8 +140,10 @@ a single compromised account being catastrophic:
 
 - [ ] Metrics load and are non-zero
 - [ ] Counts match the database — `active_cases` counts `Open` + `UnderReview`
-      (a `Draft` case is not active), `open_alerts` counts open High/Critical
-      incidents
+      (a `Draft` case is not active), and `open_alerts` counts alerts **ARGUS
+      raised** from the alerting tables. It previously counted open High/Critical
+      `Incident` nodes, which the generator writes one of per storyline, so the
+      dashboard was reporting the answer key's size as the queue
 - [ ] "Elevated entities" counts what **ARGUS** assessed, not what the generator
       flagged, and sits beside "Not assessable" — the figure that qualifies it.
       There is deliberately no mean risk score
@@ -153,12 +155,45 @@ a single compromised account being catastrophic:
 
 ## Alerts
 
-- [ ] List loads with a total
-- [ ] Filter by status and by priority
-- [ ] Open an alert → detail renders
-- [ ] Triage actions work as an analyst and are refused for a viewer
-- [ ] Related alerts are shown, and are not simply "everything with the same
-      storyline id"
+Alerts are raised by rules over ARGUS's own findings, so **run the assessment
+and the correlator first** — with neither, the queue is legitimately empty and
+the page says so rather than showing a blank.
+
+- [ ] **Run the rules** — *Alerts → Run rules* (investigator or supervisor).
+      The run reports firings, how many were new, how many were repeats, how
+      many are suppressed, and how many groups formed.
+- [ ] **Every row names its rule.** No alert should be attributable to
+      "the system". Open one: it carries the rule id and version, the evidence
+      behind the summary, and the priority factors.
+- [ ] **Run the rules again without changing anything.** `alerts_created`
+      must be **0** and `alerts_repeated` equal to the firing count. The queue
+      must not grow. On the alert, "seen N×" increments and the occurrence list
+      gains a row.
+- [ ] **Triage moves are attributed.** Move an alert Open → Acknowledged →
+      Investigating → Resolved. Each step appears in *History* with the
+      username, the role and the time. Reopen it: `closed_at` clears.
+- [ ] **Illegal moves are refused with a useful message.** Try Open →
+      Resolved: the error names what *is* reachable from Open, rather than
+      saying "invalid status".
+- [ ] **Dismissal requires a vocabulary reason.** Dismiss with no reason, and
+      with an invented one — both refused, and the message lists the valid
+      codes.
+- [ ] **Groups are the correlated clusters, largest first.** A group of one is
+      described as an alert ARGUS could not connect to anything, not as a
+      group.
+- [ ] **Suppression hides without silencing.** Suppress a rule, re-run, and
+      check: the alerts are still raised and counted (the run reports
+      `suppressed`), the banner states how many are hidden, and the *Suppressed*
+      tab shows them, each naming the suppression that hid it.
+- [ ] **Suppression cannot be indefinite or unscoped.** A suppression naming
+      neither a rule nor a subject is refused; so is one expiring beyond 90
+      days, and one whose note is under a sentence.
+- [ ] **Priority publishes its factors** — corroboration, confidence,
+      magnitude, recency — and states that asset criticality is **not**
+      computed, because ARGUS has no asset register.
+- [ ] **Roles differ.** An analyst can triage but not suppress and not run the
+      rules; an investigator can do all three; an administrator gets 403 on
+      every alert route including reads.
 
 ## Cases
 

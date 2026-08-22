@@ -38,7 +38,7 @@ Placed entities (`Person`, `Organization`, `Location`) additionally carry `count
 
 Every node also carries an opaque `id` property (a UUID4 string) — this is the node's true primary key, unique-constrained (see below), and what every relationship pattern matches on internally. The human-readable ID (`person_id`, `account_id`, ...) is what the API and UI expose to users; `backend/app/repositories/entity_labels.py` maps the ID's string prefix (`PRS`, `ACC`, ...) back to a label and field name so a route can resolve `/api/entities/PRS-0000442` without knowing the label ahead of time.
 
-`Transaction` and `Communication` are **not node labels** — see [architecture.md#why-transactionscommunications-are-edge-properties-not-nodes](architecture.md#why-transactionscommunications-are-edge-properties-not-nodes). `Alert` is also not a separate label — alerts are a filtered view over `Incident` (severity `High`/`Critical`); see `backend/app/repositories/alert_repo.py`.
+`Transaction` and `Communication` are **not node labels** — see [architecture.md#why-transactionscommunications-are-edge-properties-not-nodes](architecture.md#why-transactionscommunications-are-edge-properties-not-nodes). `Alert` is not a graph label at all: alerts live in PostgreSQL (`alerts`, `alert_occurrences`, `alert_groups`, `alert_transitions`, `alert_suppressions`), because they need transactions, constraints and an attributable history. They were a filtered view over `Incident` until Phase 7; see `backend/app/alerting/evidence.py` for why that had to change.
 
 ## Relationships
 
@@ -156,7 +156,8 @@ See [analytics.md](analytics.md) for the GDS graph-projection queries (PageRank,
 
 - **UUID `id` as the real primary key, human-readable ID as the display key** — lets every internal Cypher pattern and relationship match stay stable even though the human ID scheme (`PRS-0000442`) encodes a sequential counter that the Scenario Generator has to extend without collision (see [generator.md#id-offsets](generator.md#id-offsets)).
 - **Edge properties over intermediate nodes for Transaction/Communication** — see [architecture.md](architecture.md#why-transactionscommunications-are-edge-properties-not-nodes).
-- **Alerts as a filtered Incident view, not a separate label** — the machine (generator's rule-based scorer, or the storyline injector) creates `Incident`; the analyst reviews and updates `Incident.status` through the same node. There is no separate write path to keep in sync.
+- **Alerts in PostgreSQL, not the graph** — an alert is a work item with a current state, an assignee and an occurrence count, plus a complete history of every firing and every state change. Postgres gives that transactions, CHECK constraints and append-only triggers; Neo4j Community gives none of them. The graph stays authoritative for entities and relationships, and the alerting tables reference subjects by ref rather than by edge.
+- **`Incident` is no longer an alert** — it remains in the graph as a record reported by a source. Conflating it with the alert queue meant the queue was the scenario generator's own storyline summaries, re-read and presented as findings.
 - **Idempotent constraint/index creation** — since `write_world` wipes and rebuilds the graph by default (`wipe_existing=True`), constraints must survive a fresh `CREATE` pass without erroring on re-creation; `IF NOT EXISTS` makes this safe to run repeatedly, in both the generator and the migration runner.
 
 ## PostgreSQL schema

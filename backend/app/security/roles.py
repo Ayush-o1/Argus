@@ -95,6 +95,17 @@ class Permission(StrEnum):
     # how good ARGUS is at connecting people to each other.
     CORRELATION_RUN = "correlation:run"
 
+    # Re-running the detection rules over ARGUS's findings. Above analyst for
+    # the same reason as ASSESSMENT_RUN and CORRELATION_RUN: a run rewrites the
+    # queue every analyst is working from.
+    ALERT_RUN = "alert:run"
+    # Creating and revoking suppressions. Deliberately *not* granted with
+    # ALERT_TRIAGE, which every analyst holds. Triage decides about one alert;
+    # suppression decides that a class of future alerts will not be seen by
+    # default, including ones nobody has looked at yet. Those are different
+    # sizes of decision and should not be the same permission.
+    ALERT_SUPPRESS = "alert:suppress"
+
     # Expensive or graph-mutating operations
     ANALYTICS_RUN = "analytics:run"
     SCENARIO_GENERATE = "scenario:generate"
@@ -165,6 +176,8 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
         Permission.RESOLUTION_MANAGE,
         Permission.ASSESSMENT_RUN,
         Permission.CORRELATION_RUN,
+        Permission.ALERT_RUN,
+        Permission.ALERT_SUPPRESS,
     },
     Role.SUPERVISOR: _READ_INTELLIGENCE
     | {
@@ -183,6 +196,8 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
         Permission.RESOLUTION_MANAGE,
         Permission.ASSESSMENT_RUN,
         Permission.CORRELATION_RUN,
+        Permission.ALERT_RUN,
+        Permission.ALERT_SUPPRESS,
     },
     # No intelligence-read permissions. Deliberate: see the module docstring.
     #

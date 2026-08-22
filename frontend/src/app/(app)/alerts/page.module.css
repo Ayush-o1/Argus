@@ -1,262 +1,299 @@
-.filterRow {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: var(--space-4);
-  margin-bottom: var(--space-4);
-  flex-wrap: wrap;
-}
-
-.filterGroup {
-  display: flex;
-  align-items: center;
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: var(--space-3);
-  flex-wrap: wrap;
+  margin-bottom: var(--space-3);
 }
 
-.filterLabel {
-  font-size: var(--text-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-tertiary);
-}
-
-.list {
+.stat {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-}
-
-/* Severity is carried by a left edge stripe rather than only a badge, so a
-   column of alerts can be triaged by peripheral vision before any text is
-   read — the single most useful affordance on a queue screen. */
-.alertCard {
-  position: relative;
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: var(--space-2) var(--space-4);
-  padding: var(--space-3) var(--space-4) var(--space-3) var(--space-5);
+  gap: 2px;
+  padding: var(--space-3);
+  border: 1px solid var(--surface-border-faint);
   border-radius: var(--card-radius);
-  border: var(--card-border);
   background: var(--surface-raised);
-  transition: border-color var(--transition-fast);
 }
 
-.alertCard:hover {
-  border-color: var(--surface-hover);
+/* Suppressed is deliberately quieter but present. Hiding the count entirely is
+   how a suppression becomes invisible, which is the failure the whole feature
+   is designed against. */
+.statMuted {
+  opacity: 0.72;
 }
 
-.alertCard::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  border-radius: var(--card-radius) 0 0 var(--card-radius);
-  background: var(--severity-color, var(--surface-border));
-}
-
-.resolved {
-  opacity: 0.62;
-}
-
-.head {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-  min-width: 0;
-}
-
-.type {
-  font-weight: var(--font-semibold);
-  font-size: var(--text-base);
-  color: var(--text-primary);
-}
-
-.time {
-  font-size: var(--text-xs);
-  color: var(--text-tertiary);
-  white-space: nowrap;
-}
-
-.description {
-  grid-column: 1 / -1;
-  font-size: var(--text-sm);
-  line-height: 1.5;
-  color: var(--text-secondary);
-  max-width: 88ch;
-}
-
-.entityChips {
-  grid-column: 1 / -1;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.chipLabel {
-  font-size: var(--text-xs);
-  color: var(--text-tertiary);
-}
-
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: var(--text-xs);
-  padding: 2px var(--space-2);
-  border-radius: 999px;
-  border: 1px solid var(--surface-border);
-  background: var(--surface-inset);
-  color: var(--text-secondary);
-  text-decoration: none;
-  transition:
-    border-color var(--transition-fast),
-    color var(--transition-fast);
-}
-
-.chip:hover {
-  border-color: var(--accent-primary);
-  color: var(--accent-primary-hover);
-}
-
-.actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  justify-self: end;
-  align-self: start;
-}
-
-.emptyWrap {
-  padding: var(--space-10) 0;
-}
-
-/* Triage workspace: a fixed queue column against a detail panel. */
-.workspace {
-  display: grid;
-  grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
-  border: 1px solid var(--surface-border);
-  border-radius: 12px;
-  background: var(--surface-raised);
-  overflow: hidden;
-}
-
-.queueColumn {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  border-right: 1px solid var(--surface-border);
-}
-
-.detailColumn {
-  min-width: 0;
-}
-
-.queueHead {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid var(--surface-border);
-}
-
-.queueTitle {
-  font-size: var(--text-xs);
+.statValue {
+  font-size: var(--text-xl);
   font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
 }
 
-.queueCount {
-  font-family: var(--font-mono);
+.statLabel {
   font-size: var(--text-xs);
-  color: var(--text-tertiary);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
-.queue {
+.suppressedNote {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  margin-bottom: var(--space-3);
+}
+
+.tabs {
+  margin-bottom: var(--space-4);
+}
+
+.queue,
+.groups {
   list-style: none;
   margin: 0;
-  padding: var(--space-1);
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  overflow-y: auto;
-  max-height: 620px;
-}
-
-.queueRow {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: var(--space-3);
-  border-radius: 7px;
-  /* Severity as an edge stripe: readable at a glance down the column without
-     tinting the whole row. */
-  box-shadow: inset 2px 0 0 var(--severity-color);
-  text-align: left;
-  cursor: pointer;
-  transition: background-color var(--transition-fast);
-}
-
-.queueRow:hover {
-  background: var(--surface-hover);
-}
-
-.queueRow:focus-visible {
-  outline: 2px solid var(--accent-primary);
-  outline-offset: -2px;
-}
-
-.queueRowSelected {
-  background: var(--surface-hover);
-}
-
-.queueTop {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
   gap: var(--space-2);
 }
 
-.queueTime {
-  font-size: var(--text-xs);
-  color: var(--text-tertiary);
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-3);
+  border: 1px solid var(--surface-border-faint);
+  border-radius: var(--card-radius);
+  background: var(--surface-raised);
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
 }
 
-.queueType {
+.row:hover {
+  border-color: var(--surface-border);
+}
+
+.rowHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.rule {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.occurrences {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.suppressedTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.title {
+  margin: 0;
   font-size: var(--text-sm);
-  font-weight: 500;
-  color: var(--text-primary);
+  font-weight: 600;
 }
 
-.queueDesc {
-  font-size: var(--text-xs);
+.summary,
+.groupSummary {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
   line-height: 1.5;
-  color: var(--text-tertiary);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
 }
 
-@media (max-width: 1080px) {
-  .workspace {
-    grid-template-columns: minmax(0, 1fr);
-  }
+.scope {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
 
-  .queueColumn {
-    border-right: 0;
-    border-bottom: 1px solid var(--surface-border);
-  }
+.ref {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  padding: 2px 6px;
+  border: 1px solid var(--surface-border-faint);
+  border-radius: 4px;
+  text-decoration: none;
+}
 
-  .queue {
-    max-height: 320px;
-  }
+.ref:hover {
+  border-color: var(--accent-primary);
+}
+
+/* The total always travels with the preview. A preview whose denominator is not
+   stated is exactly the defect the audit found on the old alert surface. */
+.more,
+.seen {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.seen {
+  margin-left: auto;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--surface-border-faint);
+  border-radius: var(--card-radius);
+  background: var(--surface-raised);
+}
+
+.groupHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.groupPriority {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.groupRules {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.rulePill {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--surface-sunken);
+}
+
+.rules {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.ruleCard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.ruleMeans {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+/* The falsifier is styled as prominently as the meaning. A rule that only says
+   what it claims, and not what would defeat it, is not reviewable. */
+.ruleWrong {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--text-secondary);
+  padding: var(--space-2) var(--space-3);
+  border-left: 2px solid var(--surface-border);
+  background: var(--surface-sunken);
+  border-radius: 0 4px 4px 0;
+}
+
+.reads {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.reads ul {
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-4);
+  font-family: var(--font-mono);
+}
+
+.priorityNote,
+.fingerprint {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin: 0;
+}
+
+.fingerprint {
+  font-family: var(--font-mono);
+}
+
+.suppressionCard {
+  margin-top: var(--space-4);
+}
+
+.suppressionList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.suppressionNote {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.filterNote {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  margin: 0 0 var(--space-3);
+}
+
+.clearFilter {
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--accent-primary);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.groupOpen {
+  align-self: flex-start;
+  font: inherit;
+  font-size: var(--text-xs);
+  color: var(--accent-primary);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
 }

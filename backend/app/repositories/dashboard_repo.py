@@ -9,6 +9,8 @@ from datetime import UTC, datetime, timedelta
 
 from neo4j import AsyncDriver
 
+from app.repositories import alert_repo
+
 # Window for the dashboard's "recent activity" figure. Must match the label the
 # UI renders, which reads it from the response rather than hardcoding it.
 RECENT_WINDOW_DAYS = 7
@@ -47,9 +49,7 @@ async def get_dashboard_summary(driver: AsyncDriver) -> dict:
                 OPTIONAL MATCH (p2:Person) WHERE p2.argus_band = 'elevated'
                 WITH persons, orgs, transactions, count(p2) AS elevated
                 OPTIONAL MATCH (a:Case) WHERE a.status IN ['Open', 'UnderReview']
-                WITH persons, orgs, transactions, elevated, count(a) AS active_cases
-                OPTIONAL MATCH (i:Incident) WHERE i.status = 'Open' AND i.severity IN ['High', 'Critical']
-                RETURN persons, orgs, transactions, elevated, active_cases, count(i) AS open_alerts
+                RETURN persons, orgs, transactions, elevated, count(a) AS active_cases
                 """
             )
         ).single()
@@ -83,13 +83,8 @@ async def get_dashboard_summary(driver: AsyncDriver) -> dict:
         period_result = await (
             await session.run(
                 """
-                OPTIONAL MATCH (i:Incident)
-                WHERE i.severity IN ['High', 'Critical'] AND i.status = 'Open'
-                WITH count(i) AS open_alerts,
-                     sum(CASE WHEN i.severity = 'Critical' THEN 1 ELSE 0 END) AS critical_open
                 OPTIONAL MATCH (r:Incident) WHERE r.timestamp >= $since
-                RETURN open_alerts, critical_open,
-                       count(r) AS incidents_in_window,
+                RETURN count(r) AS incidents_in_window,
                        sum(CASE WHEN r.severity = 'Critical' THEN 1 ELSE 0 END) AS critical_in_window
                 """,
                 since=(datetime.now(UTC) - timedelta(days=RECENT_WINDOW_DAYS)).isoformat(),
@@ -118,6 +113,9 @@ async def get_dashboard_summary(driver: AsyncDriver) -> dict:
         )
         recent_cases = [dict(record) async for record in recent_cases_result]
 
+    alert_counts = await alert_repo.queue_counts()
+    high_priority_open = await alert_repo.count_open_high_priority()
+
     return {
         "total_persons": counts_row["persons"],
         "total_organizations": counts_row["orgs"],
@@ -128,10 +126,17 @@ async def get_dashboard_summary(driver: AsyncDriver) -> dict:
         # claim about a different thing.
         "elevated_entities": counts_row["elevated"],
         "active_cases": counts_row["active_cases"],
-        "open_alerts": counts_row["open_alerts"],
-        # Full-population figures the UI can safely put in one sentence with
-        # open_alerts, because they share its denominator.
-        "critical_open_alerts": period_result["critical_open"] or 0,
+        # Alerts ARGUS raised, from the alerting tables — not open High/Critical
+        # `Incident` nodes, which is what this counted until Phase 7. Those are
+        # written by the scenario generator, one per storyline, so the dashboard
+        # was reporting the answer key's size and calling it the queue.
+        "open_alerts": alert_counts.get("open", 0),
+        "high_priority_open_alerts": high_priority_open,
+        # Incidents are kept, and are no longer called alerts. In this world they
+        # are records reported by a source (the generator, registered and rated),
+        # which is a different thing from something ARGUS concluded. Labelling
+        # them as alerts is what made them a defect; reporting them as what they
+        # are is not.
         "incidents_in_window": period_result["incidents_in_window"] or 0,
         "critical_incidents_in_window": period_result["critical_in_window"] or 0,
         "window_days": RECENT_WINDOW_DAYS,

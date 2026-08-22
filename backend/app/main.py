@@ -89,6 +89,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # The durable job worker. Importing app.services.ingest registers its
     # handler; without the import the worker would start with no known kinds and
     # quietly consume nothing — a stall that looks exactly like an empty queue.
+    from app.services import alerting as _alerting  # noqa: F401  (handler registration)
     from app.services import assessment as _assessment  # noqa: F401  (handler registration)
     from app.services import correlation as _correlation  # noqa: F401  (handler registration)
     from app.services import ingest as _ingest  # noqa: F401  (handler registration)

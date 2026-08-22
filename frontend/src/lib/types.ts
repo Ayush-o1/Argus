@@ -93,11 +93,15 @@ export interface DashboardSummary {
    * `flagged_entities`, which counted entities the *generator* had marked. */
   elevated_entities: number;
   active_cases: number;
+  /** Alerts ARGUS raised and nobody has closed. Sourced from the alerting
+   * tables since Phase 7; it previously counted open High/Critical `Incident`
+   * nodes, which the scenario generator writes one of per storyline — so the
+   * dashboard was reporting the answer key's size as the queue. */
   open_alerts: number;
-  /** Counted across every incident, so it may safely be stated in the same
-   * sentence as `open_alerts`. Deriving it from `recent_incidents` capped it at
-   * that list's length and understated it (audit B-05). */
-  critical_open_alerts: number;
+  /** Open alerts in the top priority band. Counted across every alert, so it
+   * may safely be stated in the same sentence as `open_alerts`. Deriving such a
+   * figure from a display list capped it at that list's length (audit B-05). */
+  high_priority_open_alerts: number;
   incidents_in_window: number;
   critical_incidents_in_window: number;
   window_days: number;
