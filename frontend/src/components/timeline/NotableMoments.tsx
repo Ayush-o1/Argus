@@ -44,7 +44,7 @@ function buildMoments(data: TimelineDetail): Moment[] {
       rank: SEVERITY_RANK[i.severity] ?? 4,
     })),
     ...data.transactions
-      .filter((t) => t.flagged)
+      .filter((t) => t.source_reported)
       .map((t) => ({
         id: t.id,
         kind: "Transaction" as const,
@@ -56,7 +56,7 @@ function buildMoments(data: TimelineDetail): Moment[] {
         rank: 5,
       })),
     ...data.communications
-      .filter((c) => c.flagged)
+      .filter((c) => c.source_reported)
       .map((c) => ({
         id: c.id,
         kind: "Communication" as const,

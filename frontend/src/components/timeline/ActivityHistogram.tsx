@@ -14,7 +14,7 @@ import styles from "./ActivityHistogram.module.css";
  *
  * This is the "what changed" view the page was missing: a scatter of individual
  * records shows that activity exists, but volume-over-time is what makes a
- * burst visible at a glance. Days flagged as bursts get an explicit marker
+ * unusual visible at a glance. Days flagged as bursts get an explicit marker
  * rather than relying on the reader to eyeball a tall bar.
  */
 
@@ -75,7 +75,7 @@ function Inner({
         {days.map((b) => {
           const x = xScale(b.date) - barWidth / 2;
           const totalY = yScale(b.total);
-          const flaggedY = yScale(b.flagged);
+          const flaggedY = yScale(b.sourceReported);
           const isSelected = selectedDay === b.day;
           return (
             <g
@@ -90,7 +90,7 @@ function Inner({
                   onSelectDay(isSelected ? null : b.day);
                 }
               }}
-              aria-label={`${b.day}: ${b.total} records, ${b.flagged} flagged${b.burst ? ", burst" : ""}`}
+              aria-label={`${b.day}: ${b.total} records, ${b.sourceReported} flagged${b.unusual ? ", unusual" : ""}`}
             >
               {/* Full-height hit area — a 2px bar is far too small a target. */}
               <rect x={x - 1} y={0} width={barWidth + 2} height={innerHeight} fill="transparent" />
@@ -103,18 +103,18 @@ function Inner({
                 opacity={isSelected || !selectedDay ? 1 : 0.35}
                 rx={1}
               />
-              {b.flagged > 0 ? (
+              {b.sourceReported > 0 ? (
                 <rect
                   x={x}
                   y={flaggedY}
                   width={barWidth}
                   height={Math.max(0, innerHeight - flaggedY)}
-                  fill={b.burst ? RISK_COLORS.Critical : RISK_COLORS.High}
+                  fill={b.unusual ? RISK_COLORS.Critical : RISK_COLORS.High}
                   opacity={isSelected || !selectedDay ? 1 : 0.35}
                   rx={1}
                 />
               ) : null}
-              {b.burst ? <circle cx={x + barWidth / 2} cy={-4} r={2.5} fill={RISK_COLORS.Critical} /> : null}
+              {b.unusual ? <circle cx={x + barWidth / 2} cy={-4} r={2.5} fill={RISK_COLORS.Critical} /> : null}
               {isSelected ? (
                 <rect x={x - 1} y={0} width={barWidth + 2} height={innerHeight} className={styles.selection} rx={2} />
               ) : null}

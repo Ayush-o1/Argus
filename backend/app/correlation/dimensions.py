@@ -39,15 +39,14 @@ from typing import TYPE_CHECKING
 from app.correlation.evidence import Anchor, CorrelationEvidence, Place
 from app.correlation.measures import (
     ReachedAccount,
-    centroid,
     excess_over_chance,
     forward_reach,
-    haversine_km,
     overlap_weight,
     ramp,
     rarity_weight,
     window_overlap,
 )
+from app.geometry import centroid, haversine_km
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle: the model registers these
     from app.correlation.model import CorrelationModel

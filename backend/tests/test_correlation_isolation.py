@@ -401,18 +401,25 @@ def test_the_model_fingerprint_covers_the_dimension_registry() -> None:
 #       them is the entire point.
 #   resolution
 #       the matcher's own exclusion list, from Phase 4.
-#   alert_repo, alerts route, dashboard_repo
-#       `Incident` is still the alert source. Phase 7 replaces it with a real
-#       Alert entity; until then these read the generator's incidents because
-#       there is nothing else to read, and the roadmap records it.
+#   dashboard_repo
+#       reports a count of `Incident` nodes in a window, labelled as incidents
+#       reported by a source rather than as ARGUS's alerts. Phase 7 removed the
+#       alert-shaped reading: `open_alerts` now comes from the alerting tables,
+#       and `alert_repo` and the alerts route came off this list entirely.
 #   case_repo, cases route, entity_labels
 #       `Case` and `Storyline` are browsable entity types in their own right,
 #       and the cases route names `Case` as an audit resource type. Displaying
 #       or auditing a storyline-seeded record is not the same as scoring from
 #       one — what matters is that no intelligence path consults it.
 #   entity_repo, timeline_repo
-#       surface `flagged` on transactions and communications as a
-#       source-reported attribute. Phase 8 owns relabelling these as claims.
+#       read `flagged` on transactions and communications, and Phase 8 relabelled
+#       what they produce from it: the timeline's field is now `source_reported`
+#       and its meaning is stated — records the supplying source marked, which in
+#       this world is the generator marking its own storylines. It is displayed
+#       beside ARGUS's own view rather than as a finding, `storyline_id` no longer
+#       leaves the repository at all, and the record preview no longer orders by
+#       the flag (which had biased the sample toward planted records while
+#       calling itself "top-by-time").
 #   migrations/runner
 #       names node labels in order to create constraints on them.
 PERMITTED_TO_NAME_PLANTED_STRUCTURE = (
@@ -426,8 +433,6 @@ PERMITTED_TO_NAME_PLANTED_STRUCTURE = (
     "app/repositories/assessment_graph_repo.py",
     "app/repositories/correlation_graph_repo.py",
     "app/repositories/resolution_graph_repo.py",
-    "app/repositories/alert_repo.py",
-    "app/api/routes/alerts.py",
     "app/repositories/dashboard_repo.py",
     "app/repositories/case_repo.py",
     "app/api/routes/cases.py",

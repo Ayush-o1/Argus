@@ -1,0 +1,183 @@
+.tabs { margin-bottom: var(--space-4); }
+
+.windowNote,
+.anchorNote {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  margin: 0 0 var(--space-2);
+  line-height: 1.55;
+}
+
+.anchorNote {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  margin-bottom: var(--space-4);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.headline {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.figures {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.summary {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+/* The method line is styled quieter than the finding but is never hidden. A
+   statistic whose test is not stated is a number asking to be believed. */
+.method,
+.caveat {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
+.caveat {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-sunken);
+  border-radius: 4px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-3);
+}
+
+.finding {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--surface-border-faint);
+  border-radius: var(--card-radius);
+}
+
+.findingHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.findingLabel {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.findingText {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.spark {
+  display: flex;
+  align-items: flex-end;
+  gap: 1px;
+  height: 72px;
+  padding: var(--space-2);
+  background: var(--surface-sunken);
+  border-radius: 4px;
+}
+
+.bar {
+  flex: 1 1 auto;
+  min-width: 1px;
+  background: var(--surface-border);
+  border-radius: 1px 1px 0 0;
+}
+
+/* The comparison window is distinguished from the baseline, so the reader can
+   see which part of the series the rate ratio is about. */
+.barWindow { background: var(--accent-primary); opacity: 0.65; }
+.barHigh { background: var(--status-critical, #dc2626); opacity: 1; }
+.barLow { background: var(--accent-primary); opacity: 1; }
+
+.clusters,
+.hotspots {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.cluster {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--surface-border-faint);
+  border-radius: var(--card-radius);
+}
+
+.clusterHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.clusterBody {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.hotspot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-sunken);
+  border-radius: 4px;
+}
+
+.hotspotKey {
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.hotspotFigures {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  margin-left: auto;
+}
+
+.methods {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}

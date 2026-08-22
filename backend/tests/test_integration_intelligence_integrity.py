@@ -243,23 +243,28 @@ async def test_timeline_bucket_totals_equal_lane_totals(graph: AsyncDriver) -> N
         assert bucket["total"] == lane_sum, f"bucket {bucket['day']} totals disagree with its lanes"
 
 
-async def test_timeline_lane_flagged_counts_are_exact(graph: AsyncDriver) -> None:
-    """Per-lane flagged counts must sum to the day's flagged total.
+async def test_timeline_lane_source_reported_counts_are_exact(graph: AsyncDriver) -> None:
+    """Per-lane source-reported counts must sum to the day's total.
 
-    The UI computes the flagged figure for the active lane filter from these. If
-    they were approximated — or apportioned from a single summed total — the
-    number an analyst reads as exact would be an estimate.
+    The UI computes the figure for the active lane filter from these. If they
+    were approximated — or apportioned from a single summed total — the number
+    an analyst reads as exact would be an estimate.
+
+    The field was `flagged` until Phase 8. It counts records whose supplying
+    source marked them, which in this world is the scenario generator marking
+    its own storylines; naming it `flagged` invited it to be read as a finding.
+    The arithmetic property is unchanged.
     """
     lanes = ("transactions", "communications", "events", "incidents")
     for bucket in (await timeline_repo.get_global_timeline(graph))["buckets"]:
-        lane_flagged_sum = sum(bucket[f"{lane}_flagged"] for lane in lanes)
-        assert lane_flagged_sum == bucket["flagged"], (
-            f"day {bucket['day']}: lane flagged counts sum to {lane_flagged_sum} "
-            f"but the day total is {bucket['flagged']}"
+        lane_sum = sum(bucket[f"{lane}_source_reported"] for lane in lanes)
+        assert lane_sum == bucket["source_reported"], (
+            f"day {bucket['day']}: lane counts sum to {lane_sum} "
+            f"but the day total is {bucket['source_reported']}"
         )
         for lane in lanes:
-            assert bucket[f"{lane}_flagged"] <= bucket[lane], (
-                f"day {bucket['day']}: {lane} has more flagged than total records"
+            assert bucket[f"{lane}_source_reported"] <= bucket[lane], (
+                f"day {bucket['day']}: {lane} reports more marked than total records"
             )
 
 

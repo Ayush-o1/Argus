@@ -21,9 +21,9 @@ that was actually comparable all the way to the UI.
 
 from __future__ import annotations
 
-import math
 from datetime import date
 
+from app.geometry import haversine_km
 from app.resolution.normalize import (
     identifier_key,
     name_tokens,
@@ -40,9 +40,6 @@ _PHONE_SUFFIX = 8
 # roughly "same metropolitan area"; beyond it the signal is noise.
 _GEO_FLOOR_KM = 50.0
 _GEO_CEILING_KM = 2.0
-
-_EARTH_RADIUS_KM = 6371.0088
-
 
 def jaro_winkler(left: str, right: str, *, prefix_weight: float = 0.1) -> float:
     """Jaro-Winkler similarity in [0, 1].
@@ -252,14 +249,6 @@ def date_similarity(left: str | date | None, right: str | date | None) -> float 
         if left_date.month == right_date.month and 1 in (left_date.day, right_date.day):
             return 0.5
     return 0.0
-
-
-def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    phi1, phi2 = math.radians(lat1), math.radians(lat2)
-    d_phi = phi2 - phi1
-    d_lambda = math.radians(lon2 - lon1)
-    a = math.sin(d_phi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(d_lambda / 2) ** 2
-    return 2 * _EARTH_RADIUS_KM * math.asin(math.sqrt(a))
 
 
 def geo_similarity(

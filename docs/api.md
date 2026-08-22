@@ -158,6 +158,31 @@ append-only by trigger.
 counted, grouped, and named with the suppression that hid it — it is excluded
 from the default filter and is one query parameter away.
 
+## Patterns — `app/api/routes/patterns.py`
+
+Temporal and spatial statistics, computed on request. Read-only: unlike
+assessment, correlation and alerting these produce no durable claim for anything
+to attach to, so there is no ledger and no run to queue.
+
+| Method | Path | Params | Description |
+|---|---|---|---|
+| GET | `/api/patterns/model` | — | Which test answers which question, why it was chosen, and the conditions under which it declines to answer. |
+| GET | `/api/patterns/temporal` | `window_days` (1–365, default 30), `baseline_days` (1–730, default 90) | Per-lane rate change, trend, changepoint, weekly rhythm and per-day outliers. |
+| GET | `/api/patterns/spatial` | `eps_km`, `min_samples`, `band_km`, `value` | Density clusters over coordinates, and Getis-Ord Gi* over per-country counts. |
+
+**Every result states its window and its baseline.** The statistic this replaced
+— "N days above 2σ of flagged volume" — was uncheckable precisely because it
+never said what it measured against.
+
+**Every test can decline.** A comparison with no events in either window reports
+"not evaluable" rather than "unchanged"; a trend over eleven buckets reports why
+it will not fit one. A quiet world and an unchanged world are different findings.
+
+**Multiplicity is corrected and both verdicts are published.** Testing 200
+locations at α=0.05 yields about ten hotspots when nothing is happening, so
+Benjamini-Hochberg runs across every family of tests and the response carries
+`significant_before_correction` alongside `significant_after_correction`.
+
 ## Analytics — `app/api/routes/analytics.py`
 
 All `POST` routes here return `{job_id, status: "running"}` immediately — see [analytics.md](analytics.md) for what each algorithm computes, and [backend.md#background-jobs](backend.md#background-jobs) for the polling contract.

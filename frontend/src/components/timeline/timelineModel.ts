@@ -3,16 +3,25 @@ import type { DayBucket, GlobalTimeline } from "@/hooks/useTimeline";
 /**
  * Pure temporal model behind the Timeline page.
  *
- * Bucketing now happens server-side over the entire graph. This module filters
- * and analyses those buckets; it no longer counts records itself.
+ * Bucketing happens server-side over the entire graph. This module filters
+ * those buckets; it counts nothing itself and now tests nothing itself.
  *
- * What changed and why (audit B-03, B-18): burst detection used to run over a
- * random 800-record sample re-drawn on every request, with the mean taken only
- * across days that happened to appear in that sample. So the threshold moved
- * between refreshes, the "volume" it described was not volume, and empty days
- * were silently excluded from the baseline rather than counted as zero. The
- * statistic is only meaningful over a complete, contiguous series, which is
- * what the API now returns.
+ * **Burst detection was removed from here.** It computed "days above the mean
+ * plus two standard deviations" in the browser, and that was wrong in ways the
+ * server-side aggregation (audit B-03, B-18) did not fix:
+ *
+ *   - the mean and σ were taken over the whole series *including* the bursts,
+ *     so every unusual day raised the threshold meant to catch it;
+ *   - "two sigma" is not a test — it has no null hypothesis and no error rate,
+ *     and on count data the implied false-positive rate drifts with the volume;
+ *   - it ran over whatever the user had filtered to, so toggling a lane changed
+ *     which days were called bursts.
+ *
+ * Measured on the same data, that rule called 132 of 4,800 ordinary days a
+ * burst. The replacement — a two-sided Poisson test of each day against the
+ * rate implied by every *other* day, corrected across the series — calls one.
+ * It lives on the server (`/api/patterns/temporal`), and this page renders its
+ * answer rather than inventing its own.
  */
 
 export type LaneKey = "incidents" | "transactions" | "communications" | "events";
@@ -31,39 +40,25 @@ export interface AnalysedDay {
   day: string;
   date: Date;
   total: number;
-  flagged: number;
+  sourceReported: number;
   incidents: number;
-  /** Flagged volume more than BURST_SIGMA above the series mean. */
-  burst: boolean;
+  /** Set from the server's per-day Poisson test, not computed here. */
+  unusual: boolean;
+  unusualDirection: "high" | "low" | null;
 }
 
 export interface TimelineFilters {
   lanes: Record<LaneKey, boolean>;
-  flaggedOnly: boolean;
+  sourceReportedOnly: boolean;
   /** Days back from the newest bucket; null means the full window. */
   rangeDays: number | null;
 }
 
 export const DEFAULT_FILTERS: TimelineFilters = {
   lanes: { incidents: true, transactions: true, communications: true, events: true },
-  flaggedOnly: false,
+  sourceReportedOnly: false,
   rangeDays: null,
 };
-
-// Two sigma is the conventional starting point. A threshold that fires on a
-// third of all days would be decoration rather than a finding.
-export const BURST_SIGMA = 2;
-
-/** Statistics behind the burst threshold, surfaced so the UI can state the
- * basis of its own claim rather than asserting "2σ" without showing the work. */
-export interface BurstStats {
-  mean: number;
-  sigma: number;
-  threshold: number;
-  burstDays: number;
-  /** Days in the analysed series — the denominator for the mean. */
-  dayCount: number;
-}
 
 function parseDay(day: string): Date {
   // Buckets arrive as date-only keys — the server has already resolved each
@@ -105,26 +100,39 @@ function totalForLanes(bucket: DayBucket, lanes: Record<LaneKey, boolean>): numb
 }
 
 /**
- * Flagged count restricted to the active lanes.
+ * Source-reported count restricted to the active lanes.
  *
- * The API returns flagged counts per lane, not just a per-day total, precisely
- * so this can be exact. A single summed total cannot be apportioned back to
- * individual lanes, which would have forced an approximation here — and a
- * figure the analyst reads as exact must not be an estimate.
+ * The API returns these per lane, not just a per-day total, precisely so this
+ * can be exact. A single summed total cannot be apportioned back to individual
+ * lanes, which would have forced an approximation — and a figure the analyst
+ * reads as exact must not be an estimate.
+ *
+ * "Source-reported", not "flagged": it counts records the supplying source
+ * marked, which in this world is the scenario generator marking the storylines
+ * it planted. It is a fact about collection, not a finding.
  */
-function flaggedForLanes(bucket: DayBucket, lanes: Record<LaneKey, boolean>): number {
-  let flagged = 0;
-  if (lanes.transactions) flagged += bucket.transactions_flagged;
-  if (lanes.communications) flagged += bucket.communications_flagged;
-  if (lanes.events) flagged += bucket.events_flagged;
-  if (lanes.incidents) flagged += bucket.incidents_flagged;
-  return flagged;
+function sourceReportedForLanes(bucket: DayBucket, lanes: Record<LaneKey, boolean>): number {
+  let reported = 0;
+  if (lanes.transactions) reported += bucket.transactions_source_reported;
+  if (lanes.communications) reported += bucket.communications_source_reported;
+  if (lanes.events) reported += bucket.events_source_reported;
+  if (lanes.incidents) reported += bucket.incidents_source_reported;
+  return reported;
 }
 
+/**
+ * Filter the server's buckets to the active lanes and range.
+ *
+ * `unusualDays` maps a date to the verdict of the server's per-day Poisson
+ * test. It is passed in rather than computed: the test needs the whole series
+ * and a baseline that excludes the day under test, neither of which survives
+ * the user filtering a lane.
+ */
 export function analyseDays(
   data: GlobalTimeline,
   filters: TimelineFilters,
-): { days: AnalysedDay[]; stats: BurstStats } {
+  unusualDays: Map<string, "high" | "low"> = new Map(),
+): { days: AnalysedDay[] } {
   const start = rangeStart(data, filters.rangeDays);
 
   const days: AnalysedDay[] = data.buckets
@@ -133,50 +141,21 @@ export function analyseDays(
       return parseDay(b.day).getTime() >= start.getTime();
     })
     .map((b) => {
-      const flagged = flaggedForLanes(b, filters.lanes);
-      const total = filters.flaggedOnly ? flagged : totalForLanes(b, filters.lanes);
+      const sourceReported = sourceReportedForLanes(b, filters.lanes);
+      const total = filters.sourceReportedOnly ? sourceReported : totalForLanes(b, filters.lanes);
+      const direction = unusualDays.get(b.day) ?? null;
       return {
         day: b.day,
         date: parseDay(b.day),
         total,
-        flagged,
+        sourceReported,
         incidents: filters.lanes.incidents ? b.incidents : 0,
-        burst: false,
+        unusual: direction !== null,
+        unusualDirection: direction,
       };
     });
 
-  const stats = markBursts(days);
-  return { days, stats };
-}
-
-/**
- * Mark days whose flagged volume exceeds the mean by BURST_SIGMA.
- *
- * The series is contiguous and zero-filled by the API, so days with no activity
- * are included in the mean as the zeroes they are.
- */
-function markBursts(days: AnalysedDay[]): BurstStats {
-  const empty: BurstStats = { mean: 0, sigma: 0, threshold: 0, burstDays: 0, dayCount: days.length };
-  if (days.length < 3) return empty;
-
-  const flagged = days.map((d) => d.flagged);
-  const mean = flagged.reduce((sum, n) => sum + n, 0) / flagged.length;
-  const variance = flagged.reduce((sum, n) => sum + (n - mean) ** 2, 0) / flagged.length;
-  const sigma = Math.sqrt(variance);
-
-  // With no spread every day is identical, so nothing stands out.
-  if (sigma === 0) return { ...empty, mean };
-
-  const threshold = mean + BURST_SIGMA * sigma;
-  let burstDays = 0;
-  for (const day of days) {
-    if (day.flagged > threshold) {
-      day.burst = true;
-      burstDays += 1;
-    }
-  }
-
-  return { mean, sigma, threshold, burstDays, dayCount: days.length };
+  return { days };
 }
 
 /** The filtered record previews the scatter and ranked panel render. Distinct
@@ -199,15 +178,15 @@ export function filterDetail(data: GlobalTimeline, filters: TimelineFilters): Ti
     const time = Date.parse(ts);
     return !Number.isNaN(time) && time >= start.getTime();
   };
-  const keep = (lane: LaneKey, flagged: boolean, ts: string) =>
-    filters.lanes[lane] && inRange(ts) && (!filters.flaggedOnly || flagged);
+  const keep = (lane: LaneKey, reported: boolean, ts: string) =>
+    filters.lanes[lane] && inRange(ts) && (!filters.sourceReportedOnly || reported);
 
   return {
     incidents: data.detail.incidents.records.filter((i) => keep("incidents", true, i.timestamp)),
-    transactions: data.detail.transactions.records.filter((t) => keep("transactions", t.flagged, t.timestamp)),
+    transactions: data.detail.transactions.records.filter((t) => keep("transactions", t.source_reported, t.timestamp)),
     communications: data.detail.communications.records.filter((c) =>
-      keep("communications", c.flagged, c.timestamp),
+      keep("communications", c.source_reported, c.timestamp),
     ),
-    events: data.detail.events.records.filter((e) => keep("events", e.flagged, e.timestamp)),
+    events: data.detail.events.records.filter((e) => keep("events", e.source_reported, e.timestamp)),
   };
 }

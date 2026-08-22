@@ -12,6 +12,7 @@ import {
   Search,
   Settings,
   ShieldHalf,
+  TrendingUp,
   Waypoints,
   type LucideIcon,
 } from "lucide-react";
@@ -58,6 +59,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: "Graph Explorer", href: "/graph", icon: Waypoints, hint: "Explore entity relationships",  permission: "graph:read",},
       { label: "Map", href: "/map", icon: Map, hint: "Geographic and route intelligence",  permission: "graph:read",},
       { label: "Timeline", href: "/timeline", icon: Clock, hint: "Temporal activity patterns",  permission: "entity:read",},
+      { label: "Patterns", href: "/patterns", icon: TrendingUp, hint: "What changed over time, and where activity concentrates",  permission: "analytics:read",},
     ],
   },
   {

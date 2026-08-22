@@ -43,10 +43,10 @@ LANES = ("transactions", "communications", "events", "incidents")
 
 
 def _empty_bucket(day: str) -> dict:
-    bucket: dict = {"day": day, "total": 0, "flagged": 0}
+    bucket: dict = {"day": day, "total": 0, "source_reported": 0}
     for lane in LANES:
         bucket[lane] = 0
-        bucket[f"{lane}_flagged"] = 0
+        bucket[f"{lane}_source_reported"] = 0
     return bucket
 
 
@@ -74,27 +74,27 @@ async def _daily_counts(driver: AsyncDriver) -> tuple[list[dict], dict[str, int]
         WHERE t.timestamp IS NOT NULL
         RETURN substring(t.timestamp, 0, 10) AS day,
                'transactions' AS lane,
-               CASE WHEN t.flagged THEN 1 ELSE 0 END AS flagged
+               CASE WHEN t.flagged THEN 1 ELSE 0 END AS reported
         UNION ALL
         MATCH ()-[c:COMMUNICATED_WITH]->()
         WHERE c.timestamp IS NOT NULL
         RETURN substring(c.timestamp, 0, 10) AS day,
                'communications' AS lane,
-               CASE WHEN c.flagged THEN 1 ELSE 0 END AS flagged
+               CASE WHEN c.flagged THEN 1 ELSE 0 END AS reported
         UNION ALL
         MATCH (e:Event)
         WHERE e.timestamp IS NOT NULL
         RETURN substring(e.timestamp, 0, 10) AS day,
                'events' AS lane,
-               0 AS flagged
+               0 AS reported
         UNION ALL
         MATCH (i:Incident)
         WHERE i.timestamp IS NOT NULL
         RETURN substring(i.timestamp, 0, 10) AS day,
                'incidents' AS lane,
-               1 AS flagged
+               1 AS reported
     }
-    RETURN day, lane, count(*) AS total, sum(flagged) AS flagged
+    RETURN day, lane, count(*) AS total, sum(reported) AS source_reported
     ORDER BY day
     """
     async with driver.session() as session:
@@ -108,14 +108,14 @@ async def _daily_counts(driver: AsyncDriver) -> tuple[list[dict], dict[str, int]
         day = row["day"]
         bucket = by_day.setdefault(day, _empty_bucket(day))
         bucket["total"] += row["total"]
-        bucket["flagged"] += row["flagged"]
+        bucket["source_reported"] += row["source_reported"]
         bucket[row["lane"]] += row["total"]
         # Kept per-lane, not just summed: the UI lets an analyst switch lanes
         # off, and a single pre-summed total cannot be apportioned back
         # afterwards. Without these the filtered flagged count would have to be
         # approximated, and approximating a figure the analyst reads as exact is
         # the failure this whole change exists to prevent.
-        bucket[f"{row['lane']}_flagged"] += row["flagged"]
+        bucket[f"{row['lane']}_source_reported"] += row["source_reported"]
         population[row["lane"]] += row["total"]
 
     return list(by_day.values()), population
@@ -159,9 +159,8 @@ async def _detail_records(driver: AsyncDriver) -> dict[str, list[dict]]:
             MATCH ()-[t:TRANSACTED_WITH]->()
             WHERE t.timestamp IS NOT NULL
             RETURN t.tx_id AS id, t.timestamp AS timestamp, t.amount AS amount,
-                   t.type AS subtype, coalesce(t.flagged, false) AS flagged,
-                   t.storyline_id AS storyline_id
-            ORDER BY t.flagged DESC, t.timestamp DESC
+                   t.type AS subtype, coalesce(t.flagged, false) AS source_reported
+            ORDER BY t.timestamp DESC
             LIMIT $limit
             """,
             limit=DETAIL_LIMIT,
@@ -174,8 +173,8 @@ async def _detail_records(driver: AsyncDriver) -> dict[str, list[dict]]:
             WHERE c.timestamp IS NOT NULL
             RETURN c.comm_id AS id, c.timestamp AS timestamp,
                    c.duration_seconds AS duration_seconds, c.type AS subtype,
-                   coalesce(c.flagged, false) AS flagged, c.storyline_id AS storyline_id
-            ORDER BY c.flagged DESC, c.timestamp DESC
+                   coalesce(c.flagged, false) AS source_reported
+            ORDER BY c.timestamp DESC
             LIMIT $limit
             """,
             limit=DETAIL_LIMIT,
@@ -187,7 +186,7 @@ async def _detail_records(driver: AsyncDriver) -> dict[str, list[dict]]:
             MATCH (e:Event)
             WHERE e.timestamp IS NOT NULL
             RETURN e.event_id AS id, e.timestamp AS timestamp, e.type AS subtype,
-                   false AS flagged, e.storyline_id AS storyline_id
+                   false AS source_reported
             ORDER BY e.timestamp DESC
             LIMIT $limit
             """,
@@ -202,8 +201,7 @@ async def _detail_records(driver: AsyncDriver) -> dict[str, list[dict]]:
             MATCH (i:Incident)
             WHERE i.timestamp IS NOT NULL
             RETURN i.incident_id AS id, i.timestamp AS timestamp, i.type AS subtype,
-                   i.severity AS severity, i.description AS description,
-                   i.storyline_id AS storyline_id
+                   i.severity AS severity, i.description AS description
             ORDER BY i.timestamp DESC
             """
         )
@@ -223,7 +221,7 @@ async def get_global_timeline(driver: AsyncDriver) -> dict:
     details = await _detail_records(driver)
 
     total_records = sum(population.values())
-    total_flagged = sum(b["flagged"] for b in filled)
+    total_reported = sum(b["source_reported"] for b in filled)
 
     def preview(lane: str) -> dict:
         records = details[lane]
@@ -246,9 +244,14 @@ async def get_global_timeline(driver: AsyncDriver) -> dict:
             "records": Aggregate.complete(total_records, population=total_records, method="count").model_dump(
                 mode="json"
             ),
-            "flagged": Aggregate.complete(total_flagged, population=total_records, method="count").model_dump(
-                mode="json"
-            ),
+            # Not "flagged". This counts records whose *source* marked them, and
+            # in this world that source is the scenario generator marking the
+            # storylines it planted. Presented as a finding it is the answer key;
+            # presented as what it is — a claim by a rated source — it is a fact
+            # about collection, and worth showing beside ARGUS's own view.
+            "source_reported": Aggregate.complete(
+                total_reported, population=total_records, method="count"
+            ).model_dump(mode="json"),
             "by_lane": {lane: population[lane] for lane in population},
         },
         # Individual records, for the scatter visual only.

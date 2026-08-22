@@ -14,15 +14,18 @@ from datetime import datetime, timedelta
 import pytest
 
 from app.correlation.measures import (
-    centroid,
     forward_reach,
-    haversine_km,
     noisy_or,
     overlap_weight,
     ramp,
     rarity_weight,
     window_overlap,
 )
+
+# haversine_km and centroid moved to app/geometry.py, which correlation,
+# resolution and the spatial statistics all now share. The tests moved with
+# them in the sense that matters: they still exercise the same functions.
+from app.geometry import centroid, haversine_km
 
 T0 = datetime(2026, 3, 1, 12, 0)
 

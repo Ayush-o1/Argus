@@ -14,7 +14,7 @@ interface Point {
   id: string;
   lane: string;
   timestamp: Date;
-  flagged: boolean;
+  source_reported: boolean;
   color: string;
   label: string;
   detail: string;
@@ -33,8 +33,8 @@ function buildPoints(data: TimelineDetail): Point[] {
       id: t.id,
       lane: "Transactions",
       timestamp: new Date(t.timestamp),
-      flagged: t.flagged,
-      color: t.flagged ? RISK_COLORS.Critical : ENTITY_COLORS.Account,
+      source_reported: t.source_reported,
+      color: t.source_reported ? RISK_COLORS.Critical : ENTITY_COLORS.Account,
       label: t.id,
       detail: `${t.subtype} · ₹${t.amount.toLocaleString("en-IN")}`,
     });
@@ -44,8 +44,8 @@ function buildPoints(data: TimelineDetail): Point[] {
       id: c.id,
       lane: "Communications",
       timestamp: new Date(c.timestamp),
-      flagged: c.flagged,
-      color: c.flagged ? RISK_COLORS.Critical : ENTITY_COLORS.Device,
+      source_reported: c.source_reported,
+      color: c.source_reported ? RISK_COLORS.Critical : ENTITY_COLORS.Device,
       label: c.id,
       detail: `${c.subtype} · ${c.duration_seconds}s`,
     });
@@ -55,7 +55,7 @@ function buildPoints(data: TimelineDetail): Point[] {
       id: e.id,
       lane: "Events",
       timestamp: new Date(e.timestamp),
-      flagged: false,
+      source_reported: false,
       color: ENTITY_COLORS.Event,
       label: e.id,
       detail: e.subtype,
@@ -66,7 +66,7 @@ function buildPoints(data: TimelineDetail): Point[] {
       id: i.id,
       lane: "Incidents",
       timestamp: new Date(i.timestamp),
-      flagged: true,
+      source_reported: true,
       color: SEVERITY_COLOR[i.severity] ?? RISK_COLOR_UNKNOWN,
       label: i.id,
       detail: `${i.subtype} (${i.severity}) — ${i.description}`,
@@ -89,7 +89,7 @@ function TimelineChartInner({ data, width, height }: { data: TimelineDetail; wid
   // Draw baseline first so flagged records are never occluded by an ordinary
   // one that happens to come later in the payload.
   const orderedPoints = useMemo(
-    () => [...points].sort((a, b) => Number(a.flagged) - Number(b.flagged)),
+    () => [...points].sort((a, b) => Number(a.source_reported) - Number(b.source_reported)),
     [points],
   );
   const { tooltipData, tooltipLeft, tooltipTop, showTooltip, hideTooltip } = useTooltip<Point>();
@@ -152,9 +152,9 @@ function TimelineChartInner({ data, width, height }: { data: TimelineDetail; wid
               key={p.id}
               cx={xScale(p.timestamp)}
               cy={(yScale(p.lane) ?? 0) + yScale.bandwidth() / 2}
-              r={p.flagged ? 4.5 : 1.6}
+              r={p.source_reported ? 4.5 : 1.6}
               fill={p.color}
-              opacity={p.flagged ? 0.95 : 0.3}
+              opacity={p.source_reported ? 0.95 : 0.3}
               onMouseEnter={() => {
                 cancelHide();
                 showTooltip({

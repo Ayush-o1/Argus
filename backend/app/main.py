@@ -26,6 +26,7 @@ from app.api.routes import (
     entities,
     graph,
     ingest,
+    patterns,
     provenance,
     resolution,
     scenario,
@@ -259,6 +260,7 @@ app.include_router(graph.router)
 app.include_router(analytics.router)
 app.include_router(cases.router)
 app.include_router(alerts.router)
+app.include_router(patterns.router)
 app.include_router(ai.router)
 app.include_router(map_routes.router)
 app.include_router(timeline.router)

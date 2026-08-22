@@ -14,7 +14,6 @@ import { NotableMoments } from "@/components/timeline/NotableMoments";
 import { TimelineChart } from "@/components/timeline/TimelineChart";
 import {
   analyseDays,
-  BURST_SIGMA,
   DEFAULT_FILTERS,
   filterDetail,
   LANE_LABEL,
@@ -23,6 +22,7 @@ import {
   type TimelineFilters,
 } from "@/components/timeline/timelineModel";
 import { useGlobalTimeline } from "@/hooks/useTimeline";
+import { useTemporalPatterns } from "@/hooks/usePatterns";
 import { coverageLabel } from "@/lib/aggregate";
 import { ENTITY_COLORS, RISK_COLORS } from "@/lib/theme";
 import styles from "./page.module.css";
@@ -46,10 +46,31 @@ export default function TimelinePage() {
   const [filters, setFilters] = useState<TimelineFilters>(DEFAULT_FILTERS);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
 
-  const analysis = useMemo(() => (data ? analyseDays(data, filters) : null), [data, filters]);
+  const { data: temporal } = useTemporalPatterns();
+
+  // Which days the *server* found unusual, by a two-sided Poisson test of each
+  // day against the rate implied by every other day. Computed there because the
+  // test needs the whole series and a baseline excluding the day under test —
+  // neither of which survives the user toggling a lane in the browser.
+  const unusualDays = useMemo(() => {
+    const map = new Map<string, "high" | "low">();
+    for (const series of temporal?.series ?? []) {
+      for (const day of series.daily) {
+        if (day.unusual && day.unusual_direction) map.set(day.day, day.unusual_direction);
+      }
+    }
+    return map;
+  }, [temporal]);
+
+  const analysis = useMemo(
+    () => (data ? analyseDays(data, filters, unusualDays) : null),
+    [data, filters, unusualDays],
+  );
   const detail = useMemo(() => (data ? filterDetail(data, filters) : null), [data, filters]);
 
-  const flaggedTotal = analysis?.days.reduce((sum, d) => sum + d.flagged, 0) ?? 0;
+  const reportedTotal = analysis?.days.reduce((sum, d) => sum + d.sourceReported, 0) ?? 0;
+  const dayCount = analysis?.days.length ?? 0;
+  const unusualCount = analysis?.days.filter((d) => d.unusual).length ?? 0;
 
   function setLane(lane: LaneKey, on: boolean) {
     setFilters((f) => ({ ...f, lanes: { ...f.lanes, [lane]: on } }));
@@ -79,12 +100,10 @@ export default function TimelinePage() {
       title="Timeline"
       subtitle={
         analysis
-          ? `${flaggedTotal.toLocaleString()} flagged record${flaggedTotal === 1 ? "" : "s"} across ${
-              analysis.stats.dayCount
-            } day${analysis.stats.dayCount === 1 ? "" : "s"}${
-              analysis.stats.burstDays > 0
-                ? ` · ${analysis.stats.burstDays} burst day${analysis.stats.burstDays === 1 ? "" : "s"}`
-                : ""
+          ? `${reportedTotal.toLocaleString()} source-reported record${
+              reportedTotal === 1 ? "" : "s"
+            } across ${dayCount} day${dayCount === 1 ? "" : "s"}${
+              unusualCount > 0 ? ` · ${unusualCount} day${unusualCount === 1 ? "" : "s"} tested unusual` : ""
             } — select a day to narrow the sequence`
           : "Reconstruct what happened, and when"
       }
@@ -128,9 +147,9 @@ export default function TimelinePage() {
                 </div>
                 <div className={styles.spacer} />
                 <Checkbox
-                  checked={filters.flaggedOnly}
+                  checked={filters.sourceReportedOnly}
                   onChange={(e) => {
-                    setFilters((f) => ({ ...f, flaggedOnly: e.target.checked }));
+                    setFilters((f) => ({ ...f, sourceReportedOnly: e.target.checked }));
                     setSelectedDay(null);
                   }}
                   label="Flagged only"
@@ -146,11 +165,15 @@ export default function TimelinePage() {
                   className={styles.sectionHint}
                   title={`Counted across all ${data.totals.records.population?.toLocaleString() ?? "—"} records in the graph`}
                 >
-                  {analysis.stats.sigma === 0
-                    ? "No variation in flagged volume across this range"
-                    : analysis.stats.burstDays > 0
-                      ? `${analysis.stats.burstDays} day${analysis.stats.burstDays === 1 ? "" : "s"} above ${BURST_SIGMA}σ (>${analysis.stats.threshold.toFixed(1)} flagged/day vs mean ${analysis.stats.mean.toFixed(1)})`
-                      : `No day exceeds ${BURST_SIGMA}σ (>${analysis.stats.threshold.toFixed(1)} flagged/day vs mean ${analysis.stats.mean.toFixed(1)})`}
+                  {/* Was "N days above 2σ", computed in the browser over the
+                      filtered range with a threshold the bursts themselves
+                      inflated. This is the server's per-day Poisson test,
+                      corrected across the series. */}
+                  {!temporal
+                    ? "Testing days against the rest of the series…"
+                    : unusualCount > 0
+                      ? `${unusualCount} day${unusualCount === 1 ? "" : "s"} depart from the rest of the series (Poisson test against a leave-one-out baseline, corrected)`
+                      : "No day departs significantly from the rest of the series"}
                 </span>
               </div>
               <ActivityHistogram days={analysis.days} selectedDay={selectedDay} onSelectDay={setSelectedDay} />
@@ -170,7 +193,7 @@ export default function TimelinePage() {
               </div>
               {previewNote.length > 0 ? (
                 <p className={styles.previewNote}>
-                  Showing the most recent and flagged records for {previewNote.join(", ")}; the volume chart above
+                  Showing the most recent records for {previewNote.join(", ")}; the volume chart above
                   counts every record.
                 </p>
               ) : null}

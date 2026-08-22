@@ -7,8 +7,7 @@ export interface TimelineTransaction {
   timestamp: string;
   amount: number;
   subtype: string;
-  flagged: boolean;
-  storyline_id: string | null;
+  source_reported: boolean;
 }
 
 export interface TimelineCommunication {
@@ -16,16 +15,14 @@ export interface TimelineCommunication {
   timestamp: string;
   duration_seconds: number;
   subtype: string;
-  flagged: boolean;
-  storyline_id: string | null;
+  source_reported: boolean;
 }
 
 export interface TimelineEvent {
   id: string;
   timestamp: string;
   subtype: string;
-  flagged: boolean;
-  storyline_id: string | null;
+  source_reported: boolean;
 }
 
 export interface TimelineIncident {
@@ -34,7 +31,6 @@ export interface TimelineIncident {
   subtype: string;
   severity: "Low" | "Medium" | "High" | "Critical";
   description: string;
-  storyline_id: string | null;
 }
 
 /**
@@ -48,17 +44,17 @@ export interface TimelineIncident {
 export interface DayBucket {
   day: string;
   total: number;
-  flagged: number;
+  source_reported: number;
   transactions: number;
   communications: number;
   events: number;
   incidents: number;
-  /** Flagged counts per lane. Returned separately from `flagged` so a lane
+  /** Source-reported counts per lane. Returned separately from the day total so a lane
    * filter can produce an exact figure rather than an apportioned estimate. */
-  transactions_flagged: number;
-  communications_flagged: number;
-  events_flagged: number;
-  incidents_flagged: number;
+  transactions_source_reported: number;
+  communications_source_reported: number;
+  events_source_reported: number;
+  incidents_source_reported: number;
 }
 
 /** A bounded, deterministically ordered preview of individual records, for the
@@ -74,7 +70,7 @@ export interface GlobalTimeline {
   day_count: number;
   totals: {
     records: Aggregate<number>;
-    flagged: Aggregate<number>;
+    source_reported: Aggregate<number>;
     by_lane: Record<"transactions" | "communications" | "events" | "incidents", number>;
   };
   detail: {

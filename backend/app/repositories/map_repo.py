@@ -9,6 +9,7 @@ anyway, and the aggregate is the thing the analyst is actually reading.
 
 from neo4j import AsyncDriver
 
+from app.geometry import centroid
 from app.repositories.graph_repo import to_graph_node
 
 # Kept in sync with generator/geography.py's REGION_CENTERS. Duplicated rather
@@ -129,13 +130,28 @@ async def get_country_rollup(driver: AsyncDriver, region: str | None = None) -> 
          sum(CASE WHEN n.argus_band = 'elevated' THEN 1 ELSE 0 END) AS elevated_count,
          sum(CASE WHEN n.argus_band IS NOT NULL
                    AND n.argus_band <> 'insufficient_evidence' THEN 1 ELSE 0 END) AS assessed_count,
-         avg(n.lat) AS lat, avg(n.lng) AS lng
-    RETURN country, country_code, region, entity_count, elevated_count, assessed_count, lat, lng
+         collect([n.lat, n.lng])[0..2000] AS positions
+    RETURN country, country_code, region, entity_count, elevated_count, assessed_count, positions
     ORDER BY entity_count DESC
     """
     async with driver.session() as session:
         result = await session.run(query, region=region)
-        return [dict(record) async for record in result]
+        rows = [dict(record) async for record in result]
+
+    # The marker position was `avg(n.lat), avg(n.lng)` in Cypher. Averaging
+    # longitude degrees is wrong on a sphere — across the antimeridian it places
+    # a country in the wrong hemisphere, and even away from it the arithmetic
+    # mean of angles is not the mean direction. Computed properly here, in three
+    # dimensions and projected back.
+    for row in rows:
+        positions = [
+            (float(p[0]), float(p[1]))
+            for p in (row.pop("positions", None) or [])
+            if p and p[0] is not None and p[1] is not None
+        ]
+        centre = centroid(positions)
+        row["lat"], row["lng"] = centre if centre else (None, None)
+    return rows
 
 
 async def get_corridors(driver: AsyncDriver) -> list[dict]:
