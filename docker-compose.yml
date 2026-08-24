@@ -27,7 +27,9 @@ services:
     image: redis:7-alpine
     container_name: argus-redis
     ports:
-      - "6379:6379"
+      # Same reasoning as Postgres above: a developer machine may already run
+      # its own Redis on 6379, so the host port is configurable.
+      - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     healthcheck:

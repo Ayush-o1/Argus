@@ -28,7 +28,7 @@ const MAX_LEADS = 25;
 
 export default function DashboardPage() {
   const { data: summary, isLoading } = useDashboardSummary();
-  const { data: regions } = useMapRegions();
+  const { data: regions, isLoading: regionsLoading } = useMapRegions();
   const { data: allLeads, isFetching: loadingLeads } = useBrowseEntities(LEAD_TYPES, LEAD_BAND);
 
   const [region, setRegion] = useState<string | null>(null);
@@ -46,7 +46,12 @@ export default function DashboardPage() {
   const selected: GraphNode | null =
     leads.find((l) => l.id === selectedId) ?? leads[0] ?? null;
 
-  if (isLoading || !summary) {
+  // Gated on regions too, not just summary: SituationBrief's sentence reads
+  // "across N regions, concentrated in X" from the region rollup, so painting
+  // it before that query settles means the sentence — and the section's
+  // height — changes a beat later. Two data sources feeding one statement
+  // means the statement waits for both.
+  if (isLoading || regionsLoading || !summary) {
     return (
       <PageShell title="Command Center" subtitle="Global situation and what to investigate next">
         <div className={styles.stack}>

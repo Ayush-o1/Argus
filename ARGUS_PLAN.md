@@ -2212,7 +2212,7 @@ CREATE INDEX alert_status FOR (n:Alert) ON (n.status, n.priority)
 - [x] Responsive layout (spot-checked at 900px breakpoints across Dashboard/Analytics/Cases/Alerts)
 - [x] README with features/stack/run instructions
 - [x] Ethics + synthetic data disclaimer (README + Settings → About)
-- [ ] Final performance audit — spot-checked (clean production builds, no console errors across all 10 pages), not a formal Lighthouse-style pass
+- [x] Final performance audit — formal Lighthouse pass against a production build with a seeded graph, authenticated; found and fixed a real layout-shift defect on the Dashboard, and investigated (with direct evidence, not assumption) why Graph/Map LCP figures don't hold up — see [docs/performance.md](docs/performance.md)
 
 **Demo**: The finished product. Enterprise-grade feel. Smooth everywhere.
 

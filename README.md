@@ -219,6 +219,7 @@ this README.
 | [docs/ai-layer.md](docs/ai-layer.md) | Template narratives + the optional local-LLM assistant |
 | [docs/deployment.md](docs/deployment.md) | Running locally, Docker, every environment variable |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | Common failure modes and fixes |
+| [docs/performance.md](docs/performance.md) | The formal Lighthouse audit: what was measured, fixed, and why some findings weren't |
 | [ARGUS_PLAN.md](ARGUS_PLAN.md) | Original design proposal (historical) |
 
 ## Keyboard shortcuts
