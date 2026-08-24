@@ -21,6 +21,7 @@ import pytest_asyncio
 
 from app.config import get_settings
 from app.evidence.artifacts import digest, verify
+from app.evidence.export import render_markdown, render_pdf
 from app.repositories import export_repo, investigation_repo
 from app.services.retention import dispose_due_exports
 
@@ -320,3 +321,59 @@ async def test_an_export_records_the_classification_it_carried_not_the_current_o
     row = await export_repo.fetch_export(str(record["export_id"]))
     assert row is not None
     assert row["classification"] == "internal"
+
+
+async def test_markdown_and_pdf_are_accepted_formats_and_round_trip_intact(scratch: dict) -> None:
+    """Migration 011 widened the format constraint from (json, html) to add
+    (markdown, pdf) — proved here by actually inserting both, through the real
+    renderers, against the real constraint, rather than asserting the SQL text."""
+    inv = await _investigation(scratch)
+    full = await investigation_repo.get_investigation(inv["inv_ref"])
+    assert full is not None
+    events = await investigation_repo.fetch_events(inv["investigation_id"])
+
+    md_bytes = render_markdown(full, events, requested_by="t.mensah", purpose="regulator hand-off")
+    pdf_bytes = render_pdf(full, events, requested_by="t.mensah", purpose="regulator hand-off")
+
+    # `_export` always writes format_="html", so each real format is inserted
+    # explicitly here rather than complicating that shared helper.
+    md_artifact = digest(md_bytes)
+    md_row = await export_repo.create_export(
+        investigation_id=inv["investigation_id"],
+        format_="markdown",
+        classification=inv["classification"],
+        content=md_artifact.content,
+        sha256=md_artifact.sha256,
+        requested_by="t.mensah",
+        requester_role="analyst",
+        requester_clearance="internal",
+        purpose="regulator hand-off",
+        request_ip="127.0.0.1",
+    )
+    scratch["exports"].append(md_row["export_id"])
+
+    pdf_artifact = digest(pdf_bytes)
+    pdf_row = await export_repo.create_export(
+        investigation_id=inv["investigation_id"],
+        format_="pdf",
+        classification=inv["classification"],
+        content=pdf_artifact.content,
+        sha256=pdf_artifact.sha256,
+        requested_by="t.mensah",
+        requester_role="analyst",
+        requester_clearance="internal",
+        purpose="regulator hand-off",
+        request_ip="127.0.0.1",
+    )
+    scratch["exports"].append(pdf_row["export_id"])
+
+    fetched_md = await export_repo.fetch_export_content(str(md_row["export_id"]))
+    fetched_pdf = await export_repo.fetch_export_content(str(pdf_row["export_id"]))
+    assert bytes(fetched_md["content"]) == md_bytes
+    assert bytes(fetched_pdf["content"]) == pdf_bytes
+    assert bytes(fetched_pdf["content"]).startswith(b"%PDF-")
+
+    ok_md, _ = verify(bytes(fetched_md["content"]), md_row["content_sha256"])
+    ok_pdf, _ = verify(bytes(fetched_pdf["content"]), pdf_row["content_sha256"])
+    assert ok_md
+    assert ok_pdf

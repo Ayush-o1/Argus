@@ -1,4 +1,8 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+// Exported so callers that need a plain URL rather than a fetch — an <a
+// download> link, for instance — build against the same backend origin
+// apiFetch does, instead of a relative path that resolves against whichever
+// origin the browser happens to be on.
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 /**
  * API client.

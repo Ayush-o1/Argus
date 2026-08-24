@@ -135,10 +135,14 @@ export interface ClassificationLevel {
   export_retention_days: number;
 }
 
+// json for a machine; html, markdown and pdf are three renderings of the same
+// investigation for a person, chosen for the medium it ends up in.
+export type ExportFormat = "json" | "html" | "markdown" | "pdf";
+
 export interface ExportRecord {
   export_id: string;
   investigation_id: string | null;
-  format: "json" | "html";
+  format: ExportFormat;
   classification: ClassificationCode;
   content_sha256: string;
   byte_size: number;

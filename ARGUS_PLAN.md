@@ -2183,7 +2183,7 @@ CREATE INDEX alert_status FOR (n:Alert) ON (n.status, n.priority)
 
 - [x] Isolation Forest + z-score anomaly detection over generated behavioral features — verified live: independently rediscovered a real injected transaction burst without reading its ground-truth flag
 - [x] Template-based NLG composer (entity narrative, case summary)
-- [ ] Report generator (Markdown/PDF export) — deferred; the entity/case summary narratives cover the core "explain this in prose" need, a multi-section exportable report is a natural next iteration
+- [x] Report generator (Markdown/PDF export) — added as two more formats on the investigation export custody chain built in the evidence/calibration phase (json, html, now markdown and pdf), rather than a second, disconnected export path: same hash-on-creation, same per-access logging, same retention schedule. PDF is drawn directly with reportlab (no system Cairo/Pango dependency); Markdown escapes the handful of characters the format gives meaning to, so a finding statement containing `*` or `#` can't inject structure. Verified live against a real investigation with findings and evidence.
 - [x] Optional: Ollama detection + "Ask ARGUS" panel (⌘J), gracefully absent if not installed
 
 **Demo**: Anomaly detector flags entities, template narratives explain them, case summaries generate on demand — all offline.

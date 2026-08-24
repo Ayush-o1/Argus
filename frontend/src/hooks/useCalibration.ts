@@ -5,6 +5,7 @@ import type {
   ClassificationLevel,
   DriftReport,
   ExportAccess,
+  ExportFormat,
   ExportRecord,
   FalseNegatives,
   SimulationResult,
@@ -96,7 +97,7 @@ export function useCreateExport() {
   return useMutation({
     mutationFn: async (payload: {
       investigation_ref: string;
-      format: "html" | "json";
+      format: ExportFormat;
       purpose: string;
     }) =>
       (

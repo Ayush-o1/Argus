@@ -23,7 +23,8 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { Button } from "@/components/ui/Button";
 import { useCreateExport, useExports, useVerifyExport } from "@/hooks/useCalibration";
 import { useInvestigation, useInvestigationHistory } from "@/hooks/useInvestigations";
-import { CLASSIFICATION_TONE, type ClassificationCode } from "@/lib/calibration";
+import { API_BASE_URL } from "@/lib/api";
+import { CLASSIFICATION_TONE, type ClassificationCode, type ExportFormat } from "@/lib/calibration";
 import { describeState, findingStanding } from "@/lib/investigations";
 import styles from "./page.module.css";
 
@@ -320,7 +321,7 @@ function ExportPanel({
   investigationId: string;
 }) {
   const [purpose, setPurpose] = useState("");
-  const [format, setFormat] = useState<"html" | "json">("html");
+  const [format, setFormat] = useState<ExportFormat>("html");
   const { data, refetch } = useExports(investigationId);
   const create = useCreateExport();
   const verifyExport = useVerifyExport();
@@ -348,10 +349,12 @@ function ExportPanel({
           <select
             className={styles.exportSelect}
             value={format}
-            onChange={(e) => setFormat(e.target.value as "html" | "json")}
+            onChange={(e) => setFormat(e.target.value as ExportFormat)}
             aria-label="Export format"
           >
             <option value="html">HTML — for a person</option>
+            <option value="markdown">Markdown — for a document or a diff</option>
+            <option value="pdf">PDF — for printing or emailing</option>
             <option value="json">JSON — for a machine</option>
           </select>
           <Button
@@ -401,7 +404,14 @@ function ExportPanel({
                 {!e.disposed_at ? (
                   <a
                     className={styles.downloadLink}
-                    href={`/api/exports/${encodeURIComponent(e.export_id)}/content`}
+                    // Absolute, against the backend's own origin: the frontend
+                    // and backend are separate origins in every real topology
+                    // (dev, docker-compose, and any real deployment), and a
+                    // relative href here resolved against whichever origin
+                    // served this page — the frontend, which has no /api route
+                    // of its own — rather than the API that actually holds the
+                    // bytes.
+                    href={`${API_BASE_URL}/api/exports/${encodeURIComponent(e.export_id)}/content`}
                   >
                     <Download size={13} aria-hidden /> Download
                   </a>

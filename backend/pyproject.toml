@@ -16,6 +16,7 @@ dependencies = [
     "asyncpg>=0.30",
     "argon2-cffi>=23.1",
     "pyotp>=2.9",
+    "reportlab>=4.2",
 ]
 # asyncpg backs identity, authorization and the audit log (see
 # app/database/postgres.py for why a second datastore exists). argon2-cffi is
@@ -32,6 +33,13 @@ dependencies = [
 # working build breaks when the intermediate package drops it. httpx is used only by the optional Ollama
 # adapter (app/services/ollama.py); every other feature has no AI
 # dependency at all, and both remain fully local. See ARGUS_PLAN.md Phase 10.
+#
+# reportlab renders the PDF export format (Phase 8's "Report generator") by
+# drawing the investigation's fields directly — no HTML/CSS layout engine, no
+# system package (no Cairo, no Pango), just pure-Python plus its own bundled
+# font metrics. It ships manylinux/macOS wheels, so `pip install` is enough on
+# both a developer machine and CI; weasyprint was ruled out for exactly the
+# system-dependency problem this project avoids everywhere else.
 
 [project.optional-dependencies]
 dev = [
@@ -39,6 +47,7 @@ dev = [
     "mypy>=1.13",
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
+    "types-reportlab>=4.2",
 ]
 
 [build-system]

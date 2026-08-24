@@ -30,7 +30,7 @@ from app.evidence.classification import (
     classification_by_code,
     may_access,
 )
-from app.evidence.export import render_html, render_json
+from app.evidence.export import render_html, render_json, render_markdown, render_pdf
 from app.models.envelope import Envelope, Meta
 from app.repositories import (
     alert_findings_repo,
@@ -60,6 +60,23 @@ MAX_PURPOSE = 500
 class ExportFormat(StrEnum):
     JSON = "json"
     HTML = "html"
+    MARKDOWN = "markdown"
+    PDF = "pdf"
+
+
+_RENDERERS = {
+    ExportFormat.JSON: render_json,
+    ExportFormat.HTML: render_html,
+    ExportFormat.MARKDOWN: render_markdown,
+    ExportFormat.PDF: render_pdf,
+}
+
+_CONTENT_TYPES = {
+    "json": "application/json",
+    "html": "text/html; charset=utf-8",
+    "markdown": "text/markdown; charset=utf-8",
+    "pdf": "application/pdf",
+}
 
 
 class ExportRequest(BaseModel):
@@ -164,7 +181,7 @@ async def create_export(
         )
 
     events = await investigation_repo.fetch_events(found["investigation_id"])
-    render = render_json if payload.format is ExportFormat.JSON else render_html
+    render = _RENDERERS[payload.format]
     content = render(found, events, requested_by=user.username, purpose=payload.purpose)
     artifact = digest(content)
 
@@ -304,7 +321,7 @@ async def download_export(
         actor_clearance=clearance,
         ip_address=_ip(request),
     )
-    media = "application/json" if row["format"] == "json" else "text/html; charset=utf-8"
+    media = _CONTENT_TYPES.get(row["format"], "application/octet-stream")
     return Response(
         content=bytes(content["content"]),
         media_type=media,
