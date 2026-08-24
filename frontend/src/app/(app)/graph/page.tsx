@@ -1,5 +1,6 @@
 "use client";
 
+import type { Core } from "cytoscape";
 import { Waypoints } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useRef, useState } from "react";
@@ -8,6 +9,7 @@ import { Spinner } from "@/components/ui/Spinner";
 import { PageShell } from "@/components/layout/PageShell";
 import { GraphCanvas, type EdgeDetail, type GraphCanvasHandle, type LayoutName, type NeighborConnection } from "@/components/graph/GraphCanvas";
 import { GraphControls, GraphLegend } from "@/components/graph/GraphControls";
+import { GraphMinimap } from "@/components/graph/GraphMinimap";
 import { NodeDetailPanel } from "@/components/graph/NodeDetailPanel";
 import { RelationshipPanel } from "@/components/graph/RelationshipPanel";
 import { useGraphOverview, useSubgraph } from "@/hooks/useGraph";
@@ -79,6 +81,7 @@ function GraphExplorerView({ data, isSeeded }: { data: Subgraph; isSeeded: boole
   const [hiddenTypes, setHiddenTypes] = useState<string[]>([]);
   const [riskFilter, setRiskFilter] = useState(0);
   const [focusedId, setFocusedId] = useState<string | null>(null);
+  const [cy, setCy] = useState<Core | null>(null);
 
   function toggleType(label: string) {
     setHiddenTypes((prev) => {
@@ -202,8 +205,10 @@ function GraphExplorerView({ data, isSeeded }: { data: Subgraph; isSeeded: boole
         onSelectNode={handleSelect}
         onSelectEdge={handleSelectEdge}
         onExpandNode={handleExpand}
+        onReady={setCy}
       />
       <GraphLegend hiddenTypes={hiddenTypes} onToggleType={toggleType} />
+      <GraphMinimap cy={cy} />
       {selectedId && !pathMode ? (
         <NodeDetailPanel
           entityId={selectedId}

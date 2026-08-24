@@ -62,6 +62,10 @@ interface GraphCanvasProps {
   onSelectNode: (nodeId: string | null) => void;
   onSelectEdge: (edgeId: string | null) => void;
   onExpandNode: (nodeId: string) => void;
+  /** Handed the live Cytoscape instance once it exists, so a sibling like the
+   * minimap can read/drive it without this component needing to know that
+   * minimap exists. Called once per mount; the instance is stable until unmount. */
+  onReady?: (cy: Core) => void;
 }
 
 function truncateLabel(name: string): string {
@@ -101,7 +105,7 @@ function toEdgeElement(edge: GraphEdge): ElementDefinition {
 const LABEL_HUB_DEGREE = 4;
 
 export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
-  ({ initialNodes, initialEdges, onSelectNode, onSelectEdge, onExpandNode }, ref) => {
+  ({ initialNodes, initialEdges, onSelectNode, onSelectEdge, onExpandNode, onReady }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const cyRef = useRef<Core | null>(null);
     const currentLayoutRef = useRef<Layouts | null>(null);
@@ -230,6 +234,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
       cy.on("layoutstop", () => updateLabelVisibility(cy));
 
       cyRef.current = cy;
+      onReady?.(cy);
       return () => {
         // Stop the running layout's animation-frame loop *before* destroying —
         // fcose's physics simulation schedules many recursive rAF ticks, and

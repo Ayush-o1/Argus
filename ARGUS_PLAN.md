@@ -2132,7 +2132,7 @@ CREATE INDEX alert_status FOR (n:Alert) ON (n.status, n.priority)
 - [x] Node selection → detail panel (right side)
 - [x] Layout switcher
 - [x] Shortest path finder (select two nodes → highlight the path) — added in Phase 10 polish
-- [ ] Mini-map — deferred; at this scale, fit-to-screen + pan/zoom covers wayfinding without the extra Cytoscape plugin dependency a minimap would need
+- [x] Mini-map — a hand-drawn `<canvas>` overview (not a second Cytoscape instance or plugin), bottom-right, coloring dots by risk tier and drawing the current viewport as a draggable rectangle; click/drag pans the real graph
 
 **Demo**: Graph Explorer with real data. Expand nodes, find paths between them, see the network.
 
@@ -2145,7 +2145,7 @@ CREATE INDEX alert_status FOR (n:Alert) ON (n.status, n.priority)
 - [x] deck.gl ArcLayer for shipment routes
 - [x] Timeline page with VisX custom rendering
 - [x] Timeline swim lanes per event type
-- [ ] Temporal zooming — deferred; the 180-day window renders fully at a legible density without it at this data scale
+- [x] Temporal zooming — drag across the daily-volume histogram to select a span; narrows the active range (chart, scatter, and notable-moments panel all re-filter), with a "Zoomed to X–Y · reset" badge; a plain click still selects a single day, distinguished from a drag by pointer movement, not by target element
 
 **Demo**: See entities on the map. See their activity on the timeline. ✅ Done.
 

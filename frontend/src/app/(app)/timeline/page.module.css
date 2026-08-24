@@ -35,6 +35,25 @@
   flex: 1;
 }
 
+.zoomBadge {
+  height: 34px;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-3);
+  border-radius: 8px;
+  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  color: var(--accent-primary-hover);
+  border: 1px solid rgba(61, 123, 255, 0.4);
+  background: var(--accent-glow);
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+}
+
+.zoomBadge:hover {
+  background: rgba(61, 123, 255, 0.24);
+}
+
 .histogramHead {
   display: flex;
   flex-wrap: wrap;

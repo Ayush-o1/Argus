@@ -52,13 +52,35 @@ export interface TimelineFilters {
   sourceReportedOnly: boolean;
   /** Days back from the newest bucket; null means the full window. */
   rangeDays: number | null;
+  /** An interactive zoom into a sub-span of `rangeDays`, set by dragging a
+   * selection across the histogram (epoch milliseconds, inclusive both
+   * ends). Narrows further than `rangeDays` rather than replacing it — a
+   * zoom is always "within what's currently on screen", so the two bounds
+   * never disagree about which end is more restrictive. Cleared whenever
+   * `rangeDays` changes: a pixel-drawn window from a 90-day view has no
+   * reliable meaning once the view becomes 7 days. */
+  zoomRange: { start: number; end: number } | null;
 }
 
 export const DEFAULT_FILTERS: TimelineFilters = {
   lanes: { incidents: true, transactions: true, communications: true, events: true },
   sourceReportedOnly: false,
   rangeDays: null,
+  zoomRange: null,
 };
+
+/** The effective [start, end) window once `rangeDays` and an interactive
+ * zoom are combined — the tighter bound wins on each side. `end` is null
+ * (open, meaning "through the latest bucket") unless a zoom has bounded it. */
+function windowBounds(data: GlobalTimeline, filters: TimelineFilters): { start: Date | null; end: Date | null } {
+  const rangeStartDate = rangeStart(data, filters.rangeDays);
+  if (!filters.zoomRange) return { start: rangeStartDate, end: null };
+
+  const zoomStart = new Date(filters.zoomRange.start);
+  const zoomEnd = new Date(filters.zoomRange.end);
+  const start = rangeStartDate && rangeStartDate.getTime() > zoomStart.getTime() ? rangeStartDate : zoomStart;
+  return { start, end: zoomEnd };
+}
 
 function parseDay(day: string): Date {
   // Buckets arrive as date-only keys — the server has already resolved each
@@ -133,12 +155,14 @@ export function analyseDays(
   filters: TimelineFilters,
   unusualDays: Map<string, "high" | "low"> = new Map(),
 ): { days: AnalysedDay[] } {
-  const start = rangeStart(data, filters.rangeDays);
+  const { start, end } = windowBounds(data, filters);
 
   const days: AnalysedDay[] = data.buckets
     .filter((b) => {
-      if (!start) return true;
-      return parseDay(b.day).getTime() >= start.getTime();
+      const t = parseDay(b.day).getTime();
+      if (start && t < start.getTime()) return false;
+      if (end && t > end.getTime()) return false;
+      return true;
     })
     .map((b) => {
       const sourceReported = sourceReportedForLanes(b, filters.lanes);
@@ -171,12 +195,14 @@ export interface TimelineDetail {
 
 /** Filtered record previews for the scatter lane. */
 export function filterDetail(data: GlobalTimeline, filters: TimelineFilters): TimelineDetail {
-  const start = rangeStart(data, filters.rangeDays);
+  const { start, end } = windowBounds(data, filters);
   const inRange = (ts: string) => {
     if (!ts) return false;
-    if (!start) return true;
     const time = Date.parse(ts);
-    return !Number.isNaN(time) && time >= start.getTime();
+    if (Number.isNaN(time)) return false;
+    if (start && time < start.getTime()) return false;
+    if (end && time > end.getTime()) return false;
+    return true;
   };
   const keep = (lane: LaneKey, reported: boolean, ts: string) =>
     filters.lanes[lane] && inRange(ts) && (!filters.sourceReportedOnly || reported);

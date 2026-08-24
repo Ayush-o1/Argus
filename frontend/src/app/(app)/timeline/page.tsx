@@ -41,6 +41,12 @@ const LEGEND = [
   { label: "Events", color: ENTITY_COLORS.Event },
 ];
 
+const ZOOM_DATE_FORMAT = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
+
+function formatZoomSpan(range: { start: number; end: number }): string {
+  return `${ZOOM_DATE_FORMAT.format(range.start)}–${ZOOM_DATE_FORMAT.format(range.end)}`;
+}
+
 export default function TimelinePage() {
   const { data, isLoading, isError, refetch } = useGlobalTimeline();
   const [filters, setFilters] = useState<TimelineFilters>(DEFAULT_FILTERS);
@@ -74,6 +80,16 @@ export default function TimelinePage() {
 
   function setLane(lane: LaneKey, on: boolean) {
     setFilters((f) => ({ ...f, lanes: { ...f.lanes, [lane]: on } }));
+    setSelectedDay(null);
+  }
+
+  function handleZoom(range: { start: number; end: number }) {
+    setFilters((f) => ({ ...f, zoomRange: range }));
+    setSelectedDay(null);
+  }
+
+  function resetZoom() {
+    setFilters((f) => ({ ...f, zoomRange: null }));
     setSelectedDay(null);
   }
 
@@ -130,11 +146,16 @@ export default function TimelinePage() {
                   segments={RANGE_OPTIONS}
                   value={filters.rangeDays === null ? "all" : String(filters.rangeDays)}
                   onChange={(v) => {
-                    setFilters((f) => ({ ...f, rangeDays: v === "all" ? null : Number(v) }));
+                    setFilters((f) => ({ ...f, rangeDays: v === "all" ? null : Number(v), zoomRange: null }));
                     setSelectedDay(null);
                   }}
                   ariaLabel="Time range"
                 />
+                {filters.zoomRange ? (
+                  <button type="button" className={styles.zoomBadge} onClick={resetZoom}>
+                    Zoomed to {formatZoomSpan(filters.zoomRange)} · reset
+                  </button>
+                ) : null}
                 <div className={styles.lanes}>
                   {LANES.map((lane) => (
                     <Checkbox
@@ -174,9 +195,10 @@ export default function TimelinePage() {
                     : unusualCount > 0
                       ? `${unusualCount} day${unusualCount === 1 ? "" : "s"} depart from the rest of the series (Poisson test against a leave-one-out baseline, corrected)`
                       : "No day departs significantly from the rest of the series"}
+                  {" · drag across the chart to zoom into a span"}
                 </span>
               </div>
-              <ActivityHistogram days={analysis.days} selectedDay={selectedDay} onSelectDay={setSelectedDay} />
+              <ActivityHistogram days={analysis.days} selectedDay={selectedDay} onSelectDay={setSelectedDay} onZoom={handleZoom} />
             </Card>
 
             <Card>
