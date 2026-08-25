@@ -23,8 +23,10 @@
 import type { AssessmentBand, SignalOutcome, SubjectAssessment } from "@/lib/assessment";
 import type { Corridor, CountryRollup, RegionRollup, ShipmentRoute } from "@/hooks/useMap";
 import type { DayBucket, GlobalTimeline } from "@/hooks/useTimeline";
-import type { DashboardSummary, GraphEdge, GraphNode, Incident } from "@/lib/types";
+import type { CaseSummary, DashboardSummary, GraphEdge, GraphNode, Incident } from "@/lib/types";
 import type { Assertion, Conflict, Observation, Source, SubjectProvenance } from "@/lib/provenance";
+import type { Alert, AlertState, PriorityBand } from "@/lib/alerts";
+import type { Confidence, InvestigationState, InvestigationSummary, Outcome } from "@/lib/investigations";
 
 // ---------------------------------------------------------------------------
 // Deterministic PRNG — fixture data must be stable across renders and across
@@ -578,6 +580,116 @@ export const nextFixtureProvenance: Record<string, SubjectProvenance> = Object.f
     return [subject.id, provenance];
   }),
 );
+
+// ---------------------------------------------------------------------------
+// Triage — Alerts, the investigation queue, and Cases, kept as three
+// distinct records rather than one undifferentiated "queue" list.
+//
+// `rule_id` values are the real four from `RULE_LABEL` (`lib/alerts.ts`);
+// `Alert`/`InvestigationSummary`/`CaseSummary` are the real API shapes, not
+// redeclared. Cases here are deliberately NOT investigations: the real
+// `/cases` page's own provenance note (every case record is written by the
+// scenario generator from a storyline it just planted, down to an invented
+// analyst name) is carried into the Triage page verbatim, and no case here
+// is linked into `nextFixtureInvestigations` as if one had grown out of it.
+// ---------------------------------------------------------------------------
+
+const RULE_IDS_ALERT = ["assessment.elevated", "assessment.escalated", "correlation.established_pair", "convergence.assessed_cluster"] as const;
+
+const ALERT_SUBJECTS = nextFixtureSubjects.filter((s) => s.assessment?.band === "elevated" || s.assessment?.band === "notable");
+
+function alertFor(subject: GraphNode, ruleId: (typeof RULE_IDS_ALERT)[number], state: AlertState, idx: number): Alert {
+  const priority = Math.round((0.5 + rand() * 0.45) * 100) / 100;
+  const band: PriorityBand = priority >= 0.75 ? "high" : priority >= 0.5 ? "medium" : "low";
+  const summaries: Record<(typeof RULE_IDS_ALERT)[number], string> = {
+    "assessment.elevated": `${subject.name} was assessed elevated by the current model.`,
+    "assessment.escalated": `${subject.name} moved up a band since the last assessment run.`,
+    "correlation.established_pair": `${subject.name} forms an established-tier correlation pair with another subject in scope.`,
+    "convergence.assessed_cluster": `Two independent methods concur on ${subject.name} within the same cluster.`,
+  };
+  return {
+    alert_key: `ALT-2026-${String(1000 + idx).padStart(5, "0")}`,
+    rule_id: ruleId,
+    rule_version: 1,
+    scope: [subject.id],
+    group_key: null,
+    title: `${subject.label} in scope — ${ruleId}`,
+    summary: summaries[ruleId],
+    priority,
+    priority_band: band,
+    priority_factors: {
+      priority,
+      band,
+      factors: {
+        corroboration: Math.round(rand() * 100) / 100,
+        confidence: Math.round(rand() * 100) / 100,
+        magnitude: Math.round(rand() * 100) / 100,
+        recency: Math.round(rand() * 100) / 100,
+      },
+      independent_methods: ruleId === "convergence.assessed_cluster" ? 2 : 1,
+      evidence_age_days: Math.round(rand() * 20),
+      asset_criticality: null,
+      asset_criticality_note: "Asset criticality is not modelled in this build.",
+    },
+    evidence: {},
+    state,
+    assigned_to: state === "investigating" || state === "resolved" ? pick(ANALYSTS) : null,
+    closed_at: state === "resolved" ? "2026-08-22T00:00:00Z" : null,
+    dismissal_reason: null,
+    suppressed: false,
+    suppressed_by: null,
+    occurrence_count: 1 + Math.round(rand() * 3),
+    first_seen_at: "2026-08-15T00:00:00Z",
+    last_seen_at: "2026-08-24T00:00:00Z",
+  };
+}
+
+const ALERT_STATES: AlertState[] = ["open", "open", "acknowledged", "investigating", "investigating", "resolved"];
+
+export const nextFixtureAlerts: Alert[] = ALERT_STATES.map((state, i) =>
+  alertFor(ALERT_SUBJECTS[i % ALERT_SUBJECTS.length], RULE_IDS_ALERT[i % RULE_IDS_ALERT.length], state, i),
+);
+
+const INVESTIGATION_DEFS: { state: InvestigationState; confidence: Confidence; outcome: Outcome | null }[] = [
+  { state: "open", confidence: "low", outcome: null },
+  { state: "active", confidence: "moderate", outcome: null },
+  { state: "closed", confidence: "high", outcome: "confirmed" },
+  { state: "closed", confidence: "moderate", outcome: "inconclusive" },
+];
+
+export const nextFixtureInvestigations: InvestigationSummary[] = INVESTIGATION_DEFS.map((def, i) => {
+  const subject = ALERT_SUBJECTS[i % ALERT_SUBJECTS.length];
+  return {
+    investigation_id: `inv-${hex(12)}`,
+    inv_ref: `INV-2026-${String(100 + i).padStart(4, "0")}`,
+    title: `${subject.name} — ${def.state === "closed" ? "review of elevated assessment" : "elevated assessment under review"}`,
+    state: def.state,
+    confidence: def.confidence,
+    assigned_to: pick(ANALYSTS),
+    opened_by: pick(ANALYSTS),
+    opened_at: "2026-08-16T00:00:00Z",
+    outcome: def.outcome,
+    closed_at: def.state === "closed" ? "2026-08-23T00:00:00Z" : null,
+    review_count: def.state === "closed" ? 1 : 0,
+    dissenting_reviews: def.outcome === "inconclusive" ? 1 : 0,
+    last_reviewed_at: def.state === "closed" ? "2026-08-23T00:00:00Z" : null,
+    alert_count: 1,
+    entity_count: 1,
+    finding_count: def.state === "closed" ? 2 : def.state === "active" ? 1 : 0,
+    open_action_count: def.state === "active" ? 1 : 0,
+  };
+});
+
+const CASE_TITLES = ["Freight manifest discrepancy — Q3 shipment cluster", "Rapid account formation near flagged corridor", "Cross-border payment loop, three-hop"];
+
+export const nextFixtureCases: CaseSummary[] = CASE_TITLES.map((title, i) => ({
+  case_id: `CASE-2026-${String(200 + i).padStart(4, "0")}`,
+  title,
+  status: (["Open", "UnderReview", "Closed"] as const)[i % 3],
+  priority: (["High", "Medium", "Critical"] as const)[i % 3],
+  opened_at: "2026-08-10T00:00:00Z",
+  closed_at: i % 3 === 2 ? "2026-08-20T00:00:00Z" : null,
+}));
 
 // ---------------------------------------------------------------------------
 // Correlation — Investigate's Graph lens (Phase 6/7).
