@@ -396,7 +396,14 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
       },
     }));
 
-    return <div ref={containerRef} style={{ width: "100%", height: "100%" }} />;
+    return (
+      <div
+        ref={containerRef}
+        role="graphics-document"
+        aria-label={`Network graph, ${initialNodes.length} entities and ${initialEdges.length} relationships. Not screen-reader navigable; pan, zoom and selection are pointer-only.`}
+        style={{ width: "100%", height: "100%" }}
+      />
+    );
   },
 );
 

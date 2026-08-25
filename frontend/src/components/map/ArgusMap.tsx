@@ -558,7 +558,12 @@ export const ArgusMap = forwardRef<ArgusMapHandle, ArgusMapProps>(function Argus
 
   return (
     <div className={styles.container}>
-      <div ref={containerRef} style={{ width: "100%", height: "100%" }} />
+      <div
+        ref={containerRef}
+        role="graphics-document"
+        aria-label={`World map, ${entities.length} entities and ${shipments.length} shipment routes plotted. Not screen-reader navigable; pan, zoom and selection are pointer-only.`}
+        style={{ width: "100%", height: "100%" }}
+      />
       {hovered ? (
         <div className={styles.tooltip} style={{ left: hovered.x + 14, top: hovered.y + 14 }}>
           <div className={styles.tooltipTitle}>{hovered.title}</div>
