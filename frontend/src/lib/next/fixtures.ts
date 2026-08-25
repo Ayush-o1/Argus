@@ -27,6 +27,7 @@ import type { CaseSummary, DashboardSummary, GraphEdge, GraphNode, Incident } fr
 import type { Assertion, Conflict, Observation, Source, SubjectProvenance } from "@/lib/provenance";
 import type { Alert, AlertState, PriorityBand } from "@/lib/alerts";
 import type { Confidence, InvestigationState, InvestigationSummary, Outcome } from "@/lib/investigations";
+import type { ClassificationCode, ExportFormat, ExportRecord } from "@/lib/calibration";
 
 // ---------------------------------------------------------------------------
 // Deterministic PRNG — fixture data must be stable across renders and across
@@ -690,6 +691,44 @@ export const nextFixtureCases: CaseSummary[] = CASE_TITLES.map((title, i) => ({
   opened_at: "2026-08-10T00:00:00Z",
   closed_at: i % 3 === 2 ? "2026-08-20T00:00:00Z" : null,
 }));
+
+// ---------------------------------------------------------------------------
+// Report — custody register for the closed/active investigations above.
+//
+// `ExportRecord` is the real shape (`lib/calibration.ts`), including the
+// fields that make it a custody record rather than a download log: a
+// required, immutable `purpose`, the `content_sha256` a recipient can check
+// their copy against, and `retention_until`/`disposed_at` rather than an
+// implicit "kept forever". `requester_clearance` reuses the same
+// classification vocabulary the backend's own clearance check uses
+// (`user.clearance` in `investigations.py`), not a separate invented scale.
+// ---------------------------------------------------------------------------
+
+const EXPORT_FORMATS: ExportFormat[] = ["html", "pdf", "markdown"];
+const EXPORT_CLASSIFICATIONS: ClassificationCode[] = ["internal", "confidential", "unrestricted"];
+
+export const nextFixtureExports: ExportRecord[] = nextFixtureInvestigations
+  .filter((inv) => inv.state !== "open")
+  .map((inv, i) => {
+    const disposed = i === 0;
+    return {
+      export_id: `exp-${hex(12)}`,
+      investigation_id: inv.investigation_id,
+      format: EXPORT_FORMATS[i % EXPORT_FORMATS.length],
+      classification: EXPORT_CLASSIFICATIONS[i % EXPORT_CLASSIFICATIONS.length],
+      content_sha256: hex(64),
+      byte_size: 40_000 + Math.round(rand() * 260_000),
+      requested_by: pick(ANALYSTS),
+      requester_role: "analyst",
+      requester_clearance: EXPORT_CLASSIFICATIONS[i % EXPORT_CLASSIFICATIONS.length],
+      requested_at: "2026-08-23T00:00:00Z",
+      purpose: disposed ? "Shared with the regional liaison office for corroboration, per standing agreement." : "Attached to the weekly briefing pack for the assigned reviewer.",
+      retention_until: "2026-11-21T00:00:00Z",
+      disposed_at: disposed ? "2026-08-24T00:00:00Z" : null,
+      disposed_by: disposed ? pick(ANALYSTS) : null,
+      disposal_reason: disposed ? "Retention purpose fulfilled; recipient confirmed receipt." : null,
+    } satisfies ExportRecord;
+  });
 
 // ---------------------------------------------------------------------------
 // Correlation — Investigate's Graph lens (Phase 6/7).

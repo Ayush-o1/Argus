@@ -1,11 +1,12 @@
-import { ModeStub } from "@/components/next/shell/ModeStub";
+"use client";
 
+import { CustodyRegister } from "@/components/next/report/CustodyRegister";
+
+/**
+ * Report mode (ARGUS_PLAN.md's redesign Phase 10): findings and custody,
+ * built on the real export/custody shape. See CustodyRegister's module note
+ * for why "Produce an export" and "Verify" are shown but not wired here.
+ */
 export default function NextReportPage() {
-  return (
-    <ModeStub
-      title="Report"
-      body="Findings, custody and export, built on the real evidence-export implementation. Animation only for operations that actually happen — no simulated progress for instant, synchronous exports."
-      phase="ARGUS_PLAN.md — Phase 10"
-    />
-  );
+  return <CustodyRegister />;
 }
