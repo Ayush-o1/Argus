@@ -24,6 +24,7 @@ import type { AssessmentBand, SignalOutcome, SubjectAssessment } from "@/lib/ass
 import type { Corridor, CountryRollup, RegionRollup, ShipmentRoute } from "@/hooks/useMap";
 import type { DayBucket, GlobalTimeline } from "@/hooks/useTimeline";
 import type { DashboardSummary, GraphEdge, GraphNode, Incident } from "@/lib/types";
+import type { Assertion, Conflict, Observation, Source, SubjectProvenance } from "@/lib/provenance";
 
 // ---------------------------------------------------------------------------
 // Deterministic PRNG — fixture data must be stable across renders and across
@@ -387,6 +388,195 @@ export const nextFixtureAnalystJudgements: Record<string, NextAnalystJudgement> 
         } satisfies NextAnalystJudgement,
       ];
     }),
+);
+
+// ---------------------------------------------------------------------------
+// Provenance — Evidence mode.
+//
+// The three sources below are copied from `BUILTIN_SOURCES` in
+// `backend/app/services/provenance.py` verbatim (id, name, rating,
+// description, reliability_basis) rather than invented: this system rates
+// every one of its own sources F, including its own analyst workbench and
+// its own derived-algorithm output, by deliberate design — there is no
+// "trusted" source here to fabricate. Per-subject observations/assertions
+// mirror `backfill_graph_provenance`'s real shape (one generator observation
+// per subject, content_type `graph.node.{label}`; an INFERRED `risk_score`
+// assertion rated F/6 with the exact real method id and note wording), and
+// reuse `nextFixtureAnalystJudgements` above for the analyst side rather than
+// inventing a second, disconnected judgement — a divergent judgement there
+// becomes a genuine `Conflict` here, on the same predicate, exactly as the
+// real provenance store would surface it.
+// ---------------------------------------------------------------------------
+
+const GENERATOR_SOURCE_ID = "argus.scenario-generator";
+const ANALYST_SOURCE_ID = "argus.analyst";
+const DERIVED_SOURCE_ID = "argus.derived";
+const GENERATOR_RISK_METHOD = "generator.risk_scorer@v1";
+
+export const nextFixtureSources: Source[] = [
+  {
+    source_id: GENERATOR_SOURCE_ID,
+    name: "ARGUS Scenario Generator",
+    source_type: "synthetic",
+    description:
+      "Fabricates a synthetic world — people, organisations, accounts, movements and planted storylines — for demonstration and testing. It is not a report about anything that happened.",
+    reliability: "F",
+    reliability_basis:
+      "Reliability cannot be judged, because there is nothing to judge it against: this source invents its content rather than reporting on the world. The rating is F and the synthetic flag is set, so no assessment built on this data can inherit confidence it has not earned.",
+    is_synthetic: true,
+    independence_group: GENERATOR_SOURCE_ID,
+    staleness_hours: null,
+    is_active: true,
+    registered_at: "2026-01-01T00:00:00Z",
+  },
+  {
+    source_id: ANALYST_SOURCE_ID,
+    name: "ARGUS Analyst Workbench",
+    source_type: "human",
+    description: "Judgements entered by named analysts through ARGUS. Each assertion is attributed to the individual who made it.",
+    reliability: "F",
+    reliability_basis:
+      "ARGUS does not rate individual analysts, and assigning the workbench a flattering blanket rating would launder every judgement made through it. Source-level reliability is therefore left unjudged; what carries weight is the named analyst on the assertion and the credibility they state for the specific claim.",
+    is_synthetic: false,
+    independence_group: ANALYST_SOURCE_ID,
+    staleness_hours: null,
+    is_active: true,
+    registered_at: "2026-01-01T00:00:00Z",
+  },
+  {
+    source_id: DERIVED_SOURCE_ID,
+    name: "ARGUS Derived",
+    source_type: "system",
+    description: "Output of ARGUS's own algorithms — scoring, correlation, anomaly detection. Every assertion names the method and version that produced it.",
+    reliability: "F",
+    reliability_basis:
+      "The reliability of a derivation is a property of the method and its calibration. ARGUS has no calibration report for any of its algorithms yet, so there is no basis for a rating and F is the honest answer.",
+    is_synthetic: false,
+    independence_group: DERIVED_SOURCE_ID,
+    staleness_hours: null,
+    is_active: true,
+    registered_at: "2026-01-01T00:00:00Z",
+  },
+];
+
+function hex(n: number): string {
+  let s = "";
+  for (let i = 0; i < n; i++) s += Math.floor(rand() * 16).toString(16);
+  return s;
+}
+
+export const nextFixtureProvenance: Record<string, SubjectProvenance> = Object.fromEntries(
+  nextFixtureSubjects.map((subject) => {
+    const observationId = `obs-${hex(12)}`;
+    const observation: Observation = {
+      observation_id: observationId,
+      source_id: GENERATOR_SOURCE_ID,
+      source_name: "ARGUS Scenario Generator",
+      source_reliability: "F",
+      source_is_synthetic: true,
+      content_type: `graph.node.${subject.label}`,
+      payload: subject.properties,
+      content_hash: hex(64),
+      occurred_at: null,
+      collected_at: null,
+      recorded_at: "2026-08-01T00:00:00Z",
+      supersedes: null,
+      provenance_note:
+        "Reconstructed from the graph by the provenance backfill. The graph predates the provenance layer, so this record was not captured at ingest: recorded_at is when the backfill ran, and collection and occurrence times are null because the source never recorded them.",
+      subjects: [subject.id],
+    };
+
+    const assertions: Assertion[] = [];
+    const conflicts: Conflict[] = [];
+
+    if (subject.assessment && subject.assessment.score !== null) {
+      const generatorAssertion: Assertion = {
+        assertion_id: `ast-${hex(12)}`,
+        subject_ref: subject.id,
+        subject_type: subject.label,
+        predicate: "risk_score",
+        object_value: subject.assessment.score,
+        epistemic_kind: "inferred",
+        rating: { reliability: "F", credibility: "6" },
+        method: GENERATOR_RISK_METHOD,
+        asserted_by: `source:${GENERATOR_SOURCE_ID}`,
+        asserted_by_display: "ARGUS Scenario Generator",
+        asserted_at: "2026-08-01T00:00:00Z",
+        valid_from: "2026-08-01T00:00:00Z",
+        valid_until: null,
+        superseded_by: null,
+        superseded_at: null,
+        retracted_at: null,
+        retracted_by: null,
+        retracted_by_display: null,
+        retraction_reason: null,
+        note: "Assigned by the scenario generator from storyline membership, not derived from evidence about the world.",
+        evidence: [
+          {
+            observation_id: observationId,
+            stance: "supports",
+            source_id: GENERATOR_SOURCE_ID,
+            source_name: "ARGUS Scenario Generator",
+            source_reliability: "F",
+            source_is_synthetic: true,
+            recorded_at: observation.recorded_at,
+            occurred_at: null,
+            collected_at: null,
+          },
+        ],
+        corroboration: {
+          independent_sources: 1,
+          supporting_observations: 1,
+          contradicting_observations: 0,
+          source_groups: [GENERATOR_SOURCE_ID],
+          contradicting_groups: [],
+        },
+      };
+      assertions.push(generatorAssertion);
+
+      const judgement = nextFixtureAnalystJudgements[subject.id];
+      if (judgement) {
+        const analystAssertion: Assertion = {
+          assertion_id: `ast-${hex(12)}`,
+          subject_ref: subject.id,
+          subject_type: subject.label,
+          predicate: "risk_score",
+          object_value: judgement.score,
+          epistemic_kind: "assessed",
+          rating: { reliability: "F", credibility: Math.abs(judgement.score - subject.assessment.score) > 15 ? "3" : "2" },
+          method: "analyst.manual_review",
+          asserted_by: `user:${judgement.by}`,
+          asserted_by_display: judgement.by,
+          asserted_at: `${judgement.at}T00:00:00Z`,
+          valid_from: `${judgement.at}T00:00:00Z`,
+          valid_until: null,
+          superseded_by: null,
+          superseded_at: null,
+          retracted_at: null,
+          retracted_by: null,
+          retracted_by_display: null,
+          retraction_reason: null,
+          note: judgement.note,
+          evidence: [],
+          corroboration: null,
+        };
+        assertions.push(analystAssertion);
+        conflicts.push({ subject_ref: subject.id, predicate: "risk_score", assertions: [generatorAssertion, analystAssertion] });
+      }
+    }
+
+    const provenance: SubjectProvenance = {
+      subject_ref: subject.id,
+      as_of: null,
+      observations: [observation],
+      observation_total: 1,
+      assertions,
+      conflicts,
+      sources: nextFixtureSources,
+    };
+
+    return [subject.id, provenance];
+  }),
 );
 
 // ---------------------------------------------------------------------------
