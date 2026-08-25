@@ -35,6 +35,9 @@ data/redis/
 !.vscode/extensions.json
 *.swp
 
+# Personal Claude Code permission overrides — not shared with the team
+.claude/settings.local.json
+
 # Logs
 *.log
 npm-debug.log*

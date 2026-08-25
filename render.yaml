@@ -1,0 +1,72 @@
+# Render Blueprint for the ARGUS backend.
+#
+# Covers the one service this repo can define unambiguously: the backend API
+# container. Neon, Aura and Upstash are external managed services created
+# outside Render (per the deployment plan — this repo does not provision
+# them), so their connection details are declared here as env vars to fill in
+# by hand in the Render dashboard (`sync: false`), not as Render-managed
+# resources.
+#
+# Verify this file's field names against Render's current Blueprint schema
+# (https://render.com/docs/blueprint-spec) before relying on it — it was
+# written from the documented spec, not validated against a live `render
+# blueprint launch`, since this task does not create Render services.
+#
+# Build context is the repo root, not backend/: backend/Dockerfile's
+# generator-builder stage copies generator/, which sits outside a
+# backend/-scoped context. See docker-compose.yml's `backend.build` block,
+# which uses the same context/dockerfile pairing for local dev.
+
+services:
+  - type: web
+    name: argus-backend
+    runtime: docker
+    dockerfilePath: backend/Dockerfile
+    dockerContext: .
+    healthCheckPath: /livez
+    envVars:
+      # --- Neo4j (AuraDB) ---
+      - key: NEO4J_URI
+        sync: false # neo4j+s://<dbid>.databases.neo4j.io
+      - key: NEO4J_USER
+        sync: false
+      - key: NEO4J_PASSWORD
+        sync: false
+
+      # --- Redis (Upstash) ---
+      - key: REDIS_URL
+        sync: false # rediss://... from the Upstash console
+
+      # --- PostgreSQL (Neon) ---
+      - key: POSTGRES_HOST
+        sync: false
+      - key: POSTGRES_PORT
+        value: "5432"
+      - key: POSTGRES_DB
+        sync: false
+      - key: POSTGRES_SUPERUSER
+        sync: false
+      - key: POSTGRES_SUPERUSER_PASSWORD
+        sync: false
+      - key: POSTGRES_APP_USER
+        value: argus_app
+      - key: POSTGRES_APP_PASSWORD
+        sync: false
+      - key: POSTGRES_SSLMODE
+        value: require
+
+      # --- Sessions / cookies ---
+      # A Vercel frontend and this Render backend are different sites, so the
+      # session cookie cannot be SameSite=Strict — see .env.example for why.
+      - key: SESSION_COOKIE_SECURE
+        value: "true"
+      - key: SESSION_COOKIE_SAMESITE
+        value: none
+
+      # --- CORS ---
+      - key: CORS_ORIGINS
+        sync: false # e.g. https://<argus-vercel-domain>.vercel.app
+
+      # --- Logging ---
+      - key: LOG_JSON
+        value: "true"

@@ -61,7 +61,7 @@ def _set_session_cookies(response: Response, token: str, csrf_token: str) -> Non
         max_age=max_age,
         httponly=True,
         secure=settings.session_cookie_secure,
-        samesite="strict",
+        samesite=settings.session_cookie_samesite,
         path="/",
     )
     # Readable by same-origin JS on purpose: the SPA echoes it back in a header,
@@ -72,14 +72,20 @@ def _set_session_cookies(response: Response, token: str, csrf_token: str) -> Non
         max_age=max_age,
         httponly=False,
         secure=settings.session_cookie_secure,
-        samesite="strict",
+        samesite=settings.session_cookie_samesite,
         path="/",
     )
 
 
 def _clear_session_cookies(response: Response) -> None:
+    settings = get_settings()
     for name in (SESSION_COOKIE_NAME, CSRF_COOKIE_NAME):
-        response.delete_cookie(name, path="/")
+        response.delete_cookie(
+            name,
+            path="/",
+            secure=settings.session_cookie_secure,
+            samesite=settings.session_cookie_samesite,
+        )
 
 
 @router.post("/login")

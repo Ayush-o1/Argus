@@ -1,5 +1,7 @@
 from functools import lru_cache
+from typing import Literal
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -45,18 +47,32 @@ class Settings(BaseSettings):
 
     postgres_command_timeout_seconds: float = 10.0
 
+    # Empty by default — the local docker-compose Postgres speaks plain TCP and
+    # has no certificate to verify. A managed provider (Neon, RDS, etc.) both
+    # requires TLS and rejects a plaintext connection outright, so deploying
+    # against one needs this set — "require" at minimum, "verify-full" where
+    # the provider supplies a CA chain worth pinning to. asyncpg parses
+    # `sslmode` directly out of the DSN query string (verified against the
+    # installed asyncpg's own `connect_utils` parser), so this is the one
+    # setting that turns TLS on; no other code change is needed.
+    postgres_sslmode: str = ""
+
+    @property
+    def _postgres_sslmode_qs(self) -> str:
+        return f"?sslmode={self.postgres_sslmode}" if self.postgres_sslmode else ""
+
     @property
     def postgres_admin_dsn(self) -> str:
         return (
             f"postgresql://{self.postgres_superuser}:{self.postgres_superuser_password}"
-            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}{self._postgres_sslmode_qs}"
         )
 
     @property
     def postgres_dsn(self) -> str:
         return (
             f"postgresql://{self.postgres_app_user}:{self.postgres_app_password}"
-            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}{self._postgres_sslmode_qs}"
         )
 
     # --- Sessions ---
@@ -68,6 +84,29 @@ class Settings(BaseSettings):
     # Cookie Secure flag. False for local http development only; any deployment
     # reachable over a network must set this true.
     session_cookie_secure: bool = False
+
+    # SameSite policy for the session and CSRF cookies. "strict" is correct
+    # whenever the frontend and backend share a registrable domain (including
+    # local dev — a different port is still the same *site*). It is wrong the
+    # moment they don't: a Vercel frontend (*.vercel.app) and a Render backend
+    # (*.onrender.com) are different sites, and a Strict cookie is never sent
+    # on that cross-site request — login would appear to succeed (the response
+    # carries Set-Cookie) while the browser silently drops it, so every
+    # subsequent request looks unauthenticated. Set to "none" for that
+    # deployment shape, which requires `session_cookie_secure=true` (enforced
+    # below) because browsers reject `SameSite=None` without `Secure`.
+    session_cookie_samesite: Literal["strict", "lax", "none"] = "strict"
+
+    @model_validator(mode="after")
+    def _samesite_none_requires_secure(self) -> "Settings":
+        if self.session_cookie_samesite == "none" and not self.session_cookie_secure:
+            raise ValueError(
+                "SESSION_COOKIE_SAMESITE=none requires SESSION_COOKIE_SECURE=true "
+                "— browsers reject SameSite=None cookies without Secure, so this "
+                "combination would silently break authentication rather than "
+                "just being insecure."
+            )
+        return self
 
     # --- Brute-force protection ---
     max_failed_logins: int = 5

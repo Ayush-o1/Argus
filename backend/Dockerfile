@@ -44,7 +44,21 @@ COPY generator/ /generator/
 EXPOSE 8000
 
 # GENERATOR_DIR tells scenario.py where to find the generator.
-# RELOAD should be "false" in production; set to "true" only for dev containers.
 ENV GENERATOR_DIR=/generator
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Shell form, not exec (JSON-array) form: Render (and most PaaS Docker
+# runners) inject a `PORT` env var at container start and route traffic to
+# it, which only a shell can expand — `CMD ["uvicorn", ..., "--port",
+# "$PORT"]` would pass the literal string "$PORT" to uvicorn and fail to
+# bind. Falls back to 8000 (this image's EXPOSE'd port) when PORT is unset,
+# e.g. under plain `docker run`.
+#
+# `exec` matters here: without it, `/bin/sh -c "uvicorn ..."` stays PID 1 and
+# does not reliably forward SIGTERM to the uvicorn child, so a platform
+# shutdown/redeploy would wait out the shell's own handling (or Docker's
+# SIGKILL grace period) instead of uvicorn shutting down cleanly. `exec`
+# replaces the shell with the uvicorn process, so it becomes PID 1 itself and
+# receives the signal directly — the standard fix for this exact tradeoff,
+# confirmed against `docker build`'s own "JSON arguments recommended ... for
+# OS signals" warning on the plain shell-form version of this line.
+CMD exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
