@@ -42,6 +42,23 @@ const RING_WIDTH: Record<RiskTier, number> = {
   none: 2,
 };
 
+// Correlation-link edges (the `/next` Investigate Graph lens's fixture data —
+// see `lib/next/fixtures.ts`'s `nextFixtureGraphEdges` — set `type` to the
+// correlation tier itself: "established" | "probable" | "possible", matching
+// `TIER_ESTABLISHED`/`TIER_PROBABLE`/`TIER_POSSIBLE` in
+// `backend/app/correlation/model.py`) render as line style, not just color,
+// so the distinction survives a screenshot or colorblind viewing. Unrelated
+// relationship types (TRANSACTED_WITH etc., in EDGE_COLORS above) never
+// collide with these three selector values.
+const CORRELATION_TIER_STYLE: Record<
+  "established" | "probable" | "possible",
+  { color: string; lineStyle: "solid" | "dashed" | "dotted"; width: number }
+> = {
+  established: { color: "#3D7BFF", lineStyle: "solid", width: 2 },
+  probable: { color: "#8892A4", lineStyle: "solid", width: 1.1 },
+  possible: { color: "#5A6478", lineStyle: "dashed", width: 1 },
+};
+
 export function buildGraphStylesheet(): StylesheetJson {
   const nodeColorRules = Object.entries(NODE_COLORS).map(([label, color]) => ({
     selector: `node[entityLabel = "${label}"]`,
@@ -57,6 +74,21 @@ export function buildGraphStylesheet(): StylesheetJson {
     selector: `node[riskTier = "${tier}"]`,
     style: { "border-color": RING_COLOR[tier], "border-width": RING_WIDTH[tier] },
   }));
+
+  const correlationTierRules = (
+    Object.keys(CORRELATION_TIER_STYLE) as (keyof typeof CORRELATION_TIER_STYLE)[]
+  ).map((tier) => {
+    const s = CORRELATION_TIER_STYLE[tier];
+    return {
+      selector: `edge[relType = "${tier}"]`,
+      style: {
+        "line-color": s.color,
+        "target-arrow-color": s.color,
+        "line-style": s.lineStyle,
+        width: s.width,
+      },
+    };
+  });
 
   return [
     {
@@ -120,6 +152,7 @@ export function buildGraphStylesheet(): StylesheetJson {
       },
     },
     ...edgeColorRules,
+    ...correlationTierRules,
     {
       selector: "edge.faded",
       style: { opacity: 0.04 },

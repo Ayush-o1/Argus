@@ -1,0 +1,119 @@
+.section {
+  padding: 18px 26px 20px;
+  border-bottom: 1px solid var(--surface-border-faint);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: 14px;
+}
+
+.label {
+  font-size: 10px;
+  font-weight: var(--font-semibold);
+  letter-spacing: 0.14em;
+  color: var(--text-secondary);
+}
+
+.rule {
+  flex: 1;
+  height: 1px;
+  background: var(--surface-border-faint);
+}
+
+.meta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-tertiary);
+}
+
+.hint {
+  margin: 6px 0 0;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.resetWindow {
+  color: var(--accent-primary-hover);
+  background: none;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
+.regionGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 1px;
+  margin-top: 18px;
+  background: var(--surface-border-faint);
+  border: 1px solid var(--surface-border-faint);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.regionCell {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 10px 11px 9px;
+  border: 0;
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+  background: var(--surface-raised);
+  transition: background-color var(--transition-fast);
+}
+
+.regionCell:hover {
+  background: var(--surface-hover);
+}
+
+.regionCell[data-active="true"] {
+  background: var(--surface-selected);
+}
+
+.regionName {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.regionCell[data-active="true"] .regionName {
+  color: var(--text-primary);
+}
+
+.regionFigures {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.regionCount {
+  font-family: var(--font-mono);
+  font-size: 17px;
+  line-height: 1;
+}
+
+.regionRoutes {
+  font-size: 10px;
+  color: var(--text-tertiary);
+}
+
+.regionBarTrack {
+  display: block;
+  height: 2px;
+  background: var(--surface-border-faint);
+  border-radius: 1px;
+}
+
+.regionBarFill {
+  display: block;
+  height: 2px;
+  border-radius: 1px;
+}

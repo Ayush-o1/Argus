@@ -1,0 +1,121 @@
+"use client";
+
+import Link from "next/link";
+import { useState, type ReactNode } from "react";
+import { useSession } from "@/hooks/useAuth";
+import { nextFixtureDashboard, nextFixtureModel } from "@/lib/next/fixtures";
+import { NEXT_MODE_PATH, useNextMode } from "@/lib/next/modeRouting";
+import { useNextScopeStore, type NextMode } from "@/stores/nextScopeStore";
+import { CommandBar } from "./CommandBar";
+import { LeadsIncidentsPanel } from "./LeadsIncidentsPanel";
+import { WorkingSetRail } from "./WorkingSetRail";
+import styles from "./NextShell.module.css";
+
+const MODES: { key: NextMode; label: string; hint: string }[] = [
+  { key: "command", label: "COMMAND", hint: "Operational entry point" },
+  { key: "investigate", label: "INVESTIGATE", hint: "Graph, map and timeline over one context" },
+  { key: "evidence", label: "EVIDENCE", hint: "Provenance, reliability, contradiction" },
+  { key: "triage", label: "TRIAGE", hint: "Alerts and investigations as queues" },
+  { key: "report", label: "REPORT", hint: "Findings, custody, export" },
+];
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  return ((parts[0]?.[0] ?? "") + (parts[parts.length - 1]?.[0] ?? "")).toUpperCase() || "?";
+}
+
+/**
+ * The application shell — Phase 1/3. Renders `children` as-is: which mode
+ * is "active" is a routing fact (`useNextMode`), not something this
+ * component decides, so refresh/deep-link/back-forward all work for free.
+ */
+export function NextShell({ children }: { children: ReactNode }) {
+  const mode = useNextMode();
+  const setPaletteOpen = useNextScopeStore((s) => s.setPaletteOpen);
+  const { data: session } = useSession();
+  const [openSheet, setOpenSheet] = useState<"rail" | "panel" | null>(null);
+
+  const worldStat = (nextFixtureDashboard.total_persons + nextFixtureDashboard.total_organizations).toLocaleString("en-US");
+
+  return (
+    <div className={styles.shell}>
+      <header className={styles.header}>
+        <Link href={NEXT_MODE_PATH.command} className={styles.brand}>
+          <span className={styles.brandDot} />
+          <span className={styles.brandName}>ARGUS</span>
+        </Link>
+
+        <nav className={styles.modes} aria-label="Analytical modes">
+          {MODES.map((m) => (
+            <Link
+              key={m.key}
+              href={NEXT_MODE_PATH[m.key]}
+              className={styles.modeButton}
+              data-active={mode === m.key}
+              title={m.hint}
+            >
+              <span className={styles.modeDot} />
+              {m.label}
+            </Link>
+          ))}
+        </nav>
+
+        <div className={styles.spacer} />
+
+        <div className={styles.sheetToggles}>
+          <button type="button" className={styles.sheetToggle} onClick={() => setOpenSheet((s) => (s === "rail" ? null : "rail"))}>
+            CONTEXT
+          </button>
+          <button type="button" className={styles.sheetToggle} onClick={() => setOpenSheet((s) => (s === "panel" ? null : "panel"))}>
+            LEADS
+          </button>
+        </div>
+
+        <button type="button" className={styles.commandTrigger} onClick={() => setPaletteOpen(true)}>
+          <span className={styles.commandPrompt}>&gt;</span>
+          <span className={styles.commandLabel}>Command — find, isolate, filter, explain</span>
+          <span className={styles.kbd}>⌘K</span>
+        </button>
+
+        <span className={styles.worldStat}>{worldStat} entities</span>
+
+        <span
+          className={styles.syntheticBadge}
+          title="Every entity, relationship and event in this instance is procedurally generated. No real individual or organization is represented."
+        >
+          <span className={styles.syntheticDot} />
+          SYNTHETIC
+        </span>
+
+        {session ? <span className={styles.avatar}>{initials(session.user.display_name)}</span> : null}
+      </header>
+
+      <div className={styles.body}>
+        <aside className={styles.sheet} data-open={openSheet === "rail"} aria-label="Working set">
+          <WorkingSetRail />
+        </aside>
+
+        <main className={styles.main} data-screen-label={mode}>
+          {children}
+        </main>
+
+        <aside className={`${styles.sheet} ${styles.panelSheet}`} data-open={openSheet === "panel"} aria-label="Elevated leads">
+          <LeadsIncidentsPanel />
+        </aside>
+      </div>
+
+      <footer className={styles.footer}>
+        <span>MODEL {nextFixtureModel.version} · fp {nextFixtureModel.fingerprint}</span>
+        <span>WORLD SEED {nextFixtureModel.world_seed}</span>
+        <span>LAST RUN {nextFixtureModel.last_run_at.slice(11, 16)} UTC</span>
+        <span>
+          ELEVATED P {nextFixtureModel.precision_elevated.toFixed(2)} / R {nextFixtureModel.recall_elevated.toFixed(2)} vs ground truth it never read
+        </span>
+        <span className={styles.spacer} />
+        <span className={styles.footerRight}>SYNTHETIC INTELLIGENCE ENVIRONMENT</span>
+      </footer>
+
+      <CommandBar />
+    </div>
+  );
+}

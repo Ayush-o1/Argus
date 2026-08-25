@@ -127,6 +127,14 @@
   --risk-critical-glow: rgba(255, 59, 71, 0.35);
   --risk-high-glow: rgba(255, 125, 26, 0.28);
 
+  /* === DIVERGENCE ===
+     Reserved exclusively for machine/analyst assessment disagreement and
+     provenance conflicts — the one state the rest of the palette (which is
+     entirely blue-accent + risk-scale) has no color for. Never reused for
+     anything else, so it stays legible as "these two views disagree" on
+     sight. Introduced for the /next experience (see ARGUS_PLAN.md). */
+  --tension: #c77ab5;
+
   /* === GRID === */
   --grid-cols: 12;
   --grid-gutter: 24px;

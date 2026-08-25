@@ -1,0 +1,125 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  background: rgba(6, 7, 10, 0.68);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+}
+
+.dialog {
+  width: 100%;
+  max-width: 600px;
+  background: var(--surface-raised);
+  border: 1px solid var(--surface-border);
+  border-radius: 12px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+}
+
+.inputRow {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 15px 18px;
+  border-bottom: 1px solid var(--surface-border-faint);
+}
+
+.prompt {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--accent-primary);
+}
+
+.input {
+  flex: 1;
+  background: none;
+  border: 0;
+  outline: none;
+  font-family: inherit;
+  font-size: var(--text-md);
+  color: var(--text-primary);
+}
+
+.results {
+  max-height: 46vh;
+  overflow-y: auto;
+  padding: var(--space-2);
+}
+
+.groupLabel {
+  padding: 9px 11px 5px;
+  font-size: 10px;
+  font-weight: var(--font-semibold);
+  letter-spacing: 0.12em;
+  color: var(--text-tertiary);
+}
+
+.resultRow {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 8px 11px;
+  border: 0;
+  border-radius: 7px;
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+  background: none;
+  color: var(--text-secondary);
+}
+
+.resultRow[data-active="true"] {
+  background: var(--surface-selected);
+  color: var(--text-primary);
+}
+
+.resultDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  flex-shrink: 0;
+}
+
+.resultLabel {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.resultMeta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.empty {
+  margin: 0;
+  padding: 22px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.hints {
+  display: flex;
+  gap: 16px;
+  padding: 10px 18px;
+  border-top: 1px solid var(--surface-border-faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-tertiary);
+}
+
+.hintsSpacer {
+  flex: 1;
+}
