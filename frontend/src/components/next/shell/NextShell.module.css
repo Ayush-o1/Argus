@@ -306,6 +306,15 @@
     transform: none;
   }
 
+  /* A translated-off-screen sheet is still in the DOM and, without this,
+     still in the tab order — a keyboard user tabbing past the header lands
+     in controls they cannot see. `visibility: hidden` removes it from both
+     the tab order and the accessibility tree; `data-open="true"` above
+     restores default (visible) before this would apply to it. */
+  .sheet:not([data-open="true"]) {
+    visibility: hidden;
+  }
+
   .panelSheet {
     left: auto;
     right: 0;

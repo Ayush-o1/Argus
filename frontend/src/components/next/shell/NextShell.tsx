@@ -52,6 +52,7 @@ export function NextShell({ children }: { children: ReactNode }) {
               href={NEXT_MODE_PATH[m.key]}
               className={styles.modeButton}
               data-active={mode === m.key}
+              aria-current={mode === m.key ? "page" : undefined}
               title={m.hint}
             >
               <span className={styles.modeDot} />
@@ -63,15 +64,32 @@ export function NextShell({ children }: { children: ReactNode }) {
         <div className={styles.spacer} />
 
         <div className={styles.sheetToggles}>
-          <button type="button" className={styles.sheetToggle} onClick={() => setOpenSheet((s) => (s === "rail" ? null : "rail"))}>
+          <button
+            type="button"
+            className={styles.sheetToggle}
+            aria-expanded={openSheet === "rail"}
+            aria-controls="next-working-set-sheet"
+            onClick={() => setOpenSheet((s) => (s === "rail" ? null : "rail"))}
+          >
             CONTEXT
           </button>
-          <button type="button" className={styles.sheetToggle} onClick={() => setOpenSheet((s) => (s === "panel" ? null : "panel"))}>
+          <button
+            type="button"
+            className={styles.sheetToggle}
+            aria-expanded={openSheet === "panel"}
+            aria-controls="next-leads-sheet"
+            onClick={() => setOpenSheet((s) => (s === "panel" ? null : "panel"))}
+          >
             LEADS
           </button>
         </div>
 
-        <button type="button" className={styles.commandTrigger} onClick={() => setPaletteOpen(true)}>
+        <button
+          type="button"
+          className={styles.commandTrigger}
+          aria-haspopup="dialog"
+          onClick={() => setPaletteOpen(true)}
+        >
           <span className={styles.commandPrompt}>&gt;</span>
           <span className={styles.commandLabel}>Command — find, isolate, filter, explain</span>
           <span className={styles.kbd}>⌘K</span>
@@ -91,7 +109,7 @@ export function NextShell({ children }: { children: ReactNode }) {
       </header>
 
       <div className={styles.body}>
-        <aside className={styles.sheet} data-open={openSheet === "rail"} aria-label="Working set">
+        <aside id="next-working-set-sheet" className={styles.sheet} data-open={openSheet === "rail"} aria-label="Working set">
           <WorkingSetRail />
         </aside>
 
@@ -99,7 +117,7 @@ export function NextShell({ children }: { children: ReactNode }) {
           {children}
         </main>
 
-        <aside className={`${styles.sheet} ${styles.panelSheet}`} data-open={openSheet === "panel"} aria-label="Elevated leads">
+        <aside id="next-leads-sheet" className={`${styles.sheet} ${styles.panelSheet}`} data-open={openSheet === "panel"} aria-label="Elevated leads">
           <LeadsIncidentsPanel />
         </aside>
       </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { EntityTypeIcon } from "@/components/entity/EntityTypeIcon";
 import { nextFixtureActivityDays, nextFixtureRegions, nextFixtureSubjects } from "@/lib/next/fixtures";
 import { NEXT_MODE_PATH } from "@/lib/next/modeRouting";
@@ -43,6 +43,8 @@ export function CommandBar() {
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
 
   const selectedId = useNextScopeStore((s) => s.selectedId);
   const select = useNextScopeStore((s) => s.select);
@@ -66,6 +68,13 @@ export function CommandBar() {
     setOpen(false);
     setQuery("");
     setActiveIndex(0);
+    // Returns focus to whatever had it before the palette opened — the ⌘K
+    // trigger button for a mouse click, but just as often nothing in
+    // particular, since ⌘K is a global shortcut that can fire from anywhere.
+    // Without this, focus is left on a node React is about to unmount, and
+    // most browsers then silently drop it to <body> — a keyboard user closing
+    // the palette would lose their place in the page entirely.
+    previousFocusRef.current?.focus?.();
   }
 
   useEffect(() => {
@@ -86,8 +95,29 @@ export function CommandBar() {
   // Focus only — no setState here, so this is a plain DOM synchronization
   // effect, not the pattern above.
   useEffect(() => {
-    if (open) requestAnimationFrame(() => inputRef.current?.focus());
+    if (open) {
+      previousFocusRef.current = document.activeElement as HTMLElement | null;
+      requestAnimationFrame(() => inputRef.current?.focus());
+    }
   }, [open]);
+
+  // A modal dialog must trap Tab — without this, tabbing forward from the
+  // last result (or backward from the input) escapes into the page behind
+  // the overlay, which a sighted keyboard user can no longer see is there.
+  function trapTab(e: ReactKeyboardEvent<HTMLDivElement>) {
+    if (e.key !== "Tab" || !dialogRef.current) return;
+    const focusables = Array.from(dialogRef.current.querySelectorAll<HTMLElement>("input, button:not(:disabled)"));
+    if (focusables.length === 0) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
 
   const selected = nextFixtureSubjects.find((s) => s.id === selectedId) ?? null;
   const latestDay = nextFixtureActivityDays[nextFixtureActivityDays.length - 1]?.day;
@@ -198,12 +228,24 @@ export function CommandBar() {
 
   return (
     <div className={styles.overlay} onClick={close}>
-      <div className={styles.dialog} onClick={(e) => e.stopPropagation()}>
+      <div
+        ref={dialogRef}
+        className={styles.dialog}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Command palette"
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={trapTab}
+      >
         <div className={styles.inputRow}>
           <span className={styles.prompt}>&gt;</span>
           <input
             ref={inputRef}
             className={styles.input}
+            role="combobox"
+            aria-expanded="true"
+            aria-controls="next-command-results"
+            aria-activedescendant={results[activeIndex] ? `next-command-result-${activeIndex}` : undefined}
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
@@ -224,7 +266,7 @@ export function CommandBar() {
           />
         </div>
 
-        <div className={styles.results}>
+        <div className={styles.results} id="next-command-results" role="listbox" aria-label="Command results">
           {results.map((it, i) => {
             const showGroup = it.group !== lastGroup;
             lastGroup = it.group;
@@ -233,6 +275,9 @@ export function CommandBar() {
                 {showGroup ? <div className={styles.groupLabel}>{it.group.toUpperCase()}</div> : null}
                 <button
                   type="button"
+                  id={`next-command-result-${i}`}
+                  role="option"
+                  aria-selected={i === activeIndex}
                   className={styles.resultRow}
                   data-active={i === activeIndex}
                   onMouseEnter={() => setActiveIndex(i)}
