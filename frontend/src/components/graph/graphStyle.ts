@@ -42,14 +42,14 @@ const RING_WIDTH: Record<RiskTier, number> = {
   none: 2,
 };
 
-// Correlation-link edges (the `/next` Investigate Graph lens's fixture data —
-// see `lib/next/fixtures.ts`'s `nextFixtureGraphEdges` — set `type` to the
-// correlation tier itself: "established" | "probable" | "possible", matching
-// `TIER_ESTABLISHED`/`TIER_PROBABLE`/`TIER_POSSIBLE` in
-// `backend/app/correlation/model.py`) render as line style, not just color,
-// so the distinction survives a screenshot or colorblind viewing. Unrelated
-// relationship types (TRANSACTED_WITH etc., in EDGE_COLORS above) never
-// collide with these three selector values.
+// Correlation-link edges — a `type` of "established" | "probable" | "possible",
+// matching `TIER_ESTABLISHED`/`TIER_PROBABLE`/`TIER_POSSIBLE` in
+// `backend/app/correlation/model.py` — render as line style, not just color,
+// so the distinction survives a screenshot or colorblind viewing. Currently
+// inert against live data: real `/api/graph/*` edges carry relationship types
+// (TRANSACTED_WITH etc., in EDGE_COLORS above), never a correlation-tier
+// `relType`. Left in place because it's harmless (never matches) and is the
+// correct rule if a correlation-tier-typed edge source is ever wired in.
 const CORRELATION_TIER_STYLE: Record<
   "established" | "probable" | "possible",
   { color: string; lineStyle: "solid" | "dashed" | "dotted"; width: number }

@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
+import { useAssessmentModel, useLatestEvaluation } from "@/hooks/useAssessment";
 import { useSession } from "@/hooks/useAuth";
 import { useDashboardSummary } from "@/hooks/useDashboard";
-import { nextFixtureModel } from "@/lib/next/fixtures";
 import { NEXT_MODE_PATH, useNextMode } from "@/lib/next/modeRouting";
 import { useNextScopeStore, type NextMode } from "@/stores/nextScopeStore";
 import { CommandBar } from "./CommandBar";
@@ -35,6 +35,9 @@ export function NextShell({ children }: { children: ReactNode }) {
   const setPaletteOpen = useNextScopeStore((s) => s.setPaletteOpen);
   const { data: session } = useSession();
   const [openSheet, setOpenSheet] = useState<"rail" | "panel" | null>(null);
+
+  const { data: assessmentModel } = useAssessmentModel();
+  const { data: evaluation } = useLatestEvaluation();
 
   const { data: summary } = useDashboardSummary();
   // Undefined either while the query is in flight, or permanently, when the
@@ -128,12 +131,20 @@ export function NextShell({ children }: { children: ReactNode }) {
       </div>
 
       <footer className={styles.footer}>
-        <span>MODEL {nextFixtureModel.version} · fp {nextFixtureModel.fingerprint}</span>
-        <span>WORLD SEED {nextFixtureModel.world_seed}</span>
-        <span>LAST RUN {nextFixtureModel.last_run_at.slice(11, 16)} UTC</span>
-        <span>
-          ELEVATED P {nextFixtureModel.precision_elevated.toFixed(2)} / R {nextFixtureModel.recall_elevated.toFixed(2)} vs ground truth it never read
-        </span>
+        {assessmentModel ? (
+          <span>
+            MODEL {assessmentModel.version} · fp {assessmentModel.short_fingerprint}
+          </span>
+        ) : null}
+        {evaluation ? (
+          <span>LAST EVALUATION {new Date(evaluation.generated_at).toISOString().slice(11, 16)} UTC</span>
+        ) : null}
+        {evaluation ? (
+          <span>
+            ELEVATED P {evaluation.report.elevated.precision?.toFixed(2) ?? "—"} / R {evaluation.report.elevated.recall?.toFixed(2) ?? "—"} vs
+            ground truth it never read
+          </span>
+        ) : null}
         <span className={styles.spacer} />
         <span className={styles.footerRight}>SYNTHETIC INTELLIGENCE ENVIRONMENT</span>
       </footer>
