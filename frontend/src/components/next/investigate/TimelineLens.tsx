@@ -1,10 +1,13 @@
 "use client";
 
+import { Clock } from "lucide-react";
 import { useMemo, useState } from "react";
 import { ActivityHistogram } from "@/components/timeline/ActivityHistogram";
 import { NotableMoments } from "@/components/timeline/NotableMoments";
 import { analyseDays, DEFAULT_FILTERS, filterDetail, LANE_LABEL, LANES, type LaneKey } from "@/components/timeline/timelineModel";
+import { Button } from "@/components/ui/Button";
 import { Checkbox } from "@/components/ui/Checkbox";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useGlobalTimeline } from "@/hooks/useTimeline";
 import { useTemporalPatterns } from "@/hooks/usePatterns";
@@ -41,7 +44,7 @@ export function TimelineLens() {
   const timeWindow = useNextScopeStore((s) => s.timeWindow);
   const setTimeWindow = useNextScopeStore((s) => s.setTimeWindow);
 
-  const { data: timeline, isLoading: timelineLoading } = useGlobalTimeline();
+  const { data: timeline, isLoading: timelineLoading, isError: timelineError, refetch } = useGlobalTimeline();
   const { data: temporal } = useTemporalPatterns();
 
   const unusualDays = useMemo(() => {
@@ -70,6 +73,23 @@ export function TimelineLens() {
   function setLane(lane: LaneKey, on: boolean) {
     setLanes((l) => ({ ...l, [lane]: on }));
     setSelectedDay(null);
+  }
+
+  if (timelineError) {
+    return (
+      <div style={{ padding: "18px" }}>
+        <EmptyState
+          icon={Clock}
+          title="Could not load the timeline"
+          description="The activity data could not be retrieved. This is a loading failure, not an empty result."
+          actions={
+            <Button variant="secondary" size="sm" onClick={() => void refetch()}>
+              Retry
+            </Button>
+          }
+        />
+      </div>
+    );
   }
 
   if (timelineLoading || !analysis || !detail) {

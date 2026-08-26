@@ -161,6 +161,8 @@ export function CustodyRegister() {
                   </Button>
                   {verify.data?.export_id === e.export_id ? (
                     <span className={verify.data.intact ? styles.intact : styles.notIntact}>{verify.data.explains}</span>
+                  ) : verify.isError && verify.variables === e.export_id ? (
+                    <span className={styles.notIntact}>{(verify.error as Error).message}</span>
                   ) : null}
                 </div>
               </Card>
