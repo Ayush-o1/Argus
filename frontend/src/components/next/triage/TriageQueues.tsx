@@ -4,13 +4,19 @@ import { AlertTriangle, FileSearch, Info, ShieldHalf } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Skeleton } from "@/components/ui/Skeleton";
+import { useAlerts } from "@/hooks/useAlerts";
+import { useCases } from "@/hooks/useCases";
+import { useInvestigations } from "@/hooks/useInvestigations";
 import { PRIORITY_TONE, RULE_LABEL, STATE_LABEL, STATE_TONE, formatPriority } from "@/lib/alerts";
 import { CASE_STATUS_LABEL, CASE_STATUS_TONE } from "@/lib/caseLabels";
 import { describeState } from "@/lib/investigations";
 import { NEXT_MODE_PATH } from "@/lib/next/modeRouting";
-import { nextFixtureAlerts, nextFixtureCases, nextFixtureInvestigations } from "@/lib/next/fixtures";
 import { useNextScopeStore } from "@/stores/nextScopeStore";
 import styles from "./TriageQueues.module.css";
+
+const ALERT_ROWS_SHOWN = 15;
+const CASE_ROWS_SHOWN = 10;
 
 /**
  * Triage mode: Alerts and the investigation queue as working queues, with
@@ -20,11 +26,30 @@ import styles from "./TriageQueues.module.css";
  * calls the shared scope bus's `openAlert`/`openInvestigation` (which focus
  * the subject and switch the Graph lens) and then navigates to Investigate —
  * the same two-step every "jump to Investigate" action in Command uses.
+ *
+ * Live-wired (Phase 12): `useAlerts`/`useInvestigations`/`useCases` are the
+ * real hooks the `/alerts`/`/investigations`/`/cases` pages use. Alerts are
+ * scoped to `state: "open"` and capped to the top `ALERT_ROWS_SHOWN` by
+ * priority — this is a compact triage surface, not the full filterable
+ * `/alerts` table, and the count shown is always the true total from the
+ * API's own `meta`, not the length of what's rendered.
  */
 export function TriageQueues() {
   const router = useRouter();
   const openAlert = useNextScopeStore((s) => s.openAlert);
   const openInvestigation = useNextScopeStore((s) => s.openInvestigation);
+
+  const { data: alertsEnvelope, isLoading: alertsLoading } = useAlerts({ state: "open" });
+  const { data: investigationsEnvelope, isLoading: investigationsLoading } = useInvestigations();
+  const { data: casesEnvelope, isLoading: casesLoading } = useCases();
+
+  const alertsTotal = alertsEnvelope?.meta?.total ?? 0;
+  const alerts = [...(alertsEnvelope?.data ?? [])].sort((a, b) => b.priority - a.priority).slice(0, ALERT_ROWS_SHOWN);
+  const investigations = investigationsEnvelope?.data ?? [];
+  const casesTotal = casesEnvelope?.meta?.total ?? 0;
+  const cases = [...(casesEnvelope?.data ?? [])]
+    .sort((a, b) => new Date(b.opened_at).getTime() - new Date(a.opened_at).getTime())
+    .slice(0, CASE_ROWS_SHOWN);
 
   function goInvestigate() {
     router.push(NEXT_MODE_PATH.investigate);
@@ -33,12 +58,17 @@ export function TriageQueues() {
   return (
     <div className={styles.wrap}>
       <section className={styles.section}>
-        <h2 className={styles.sectionTitle}>Alerts ({nextFixtureAlerts.length})</h2>
-        {nextFixtureAlerts.length === 0 ? (
+        <h2 className={styles.sectionTitle}>
+          Alerts ({alerts.length}
+          {alertsTotal > alerts.length ? ` of ${alertsTotal}` : ""})
+        </h2>
+        {alertsLoading ? (
+          <Skeleton height={120} />
+        ) : alerts.length === 0 ? (
           <EmptyState icon={AlertTriangle} title="No open alerts" description="Either no rule has fired, or no run has happened yet." />
         ) : (
           <ul className={styles.list}>
-            {nextFixtureAlerts.map((alert) => (
+            {alerts.map((alert) => (
               <li key={alert.alert_key}>
                 <button
                   type="button"
@@ -66,8 +96,10 @@ export function TriageQueues() {
       </section>
 
       <section className={styles.section}>
-        <h2 className={styles.sectionTitle}>Investigations ({nextFixtureInvestigations.length})</h2>
-        {nextFixtureInvestigations.length === 0 ? (
+        <h2 className={styles.sectionTitle}>Investigations ({investigations.length})</h2>
+        {investigationsLoading ? (
+          <Skeleton height={80} />
+        ) : investigations.length === 0 ? (
           <EmptyState
             icon={FileSearch}
             title="No investigations yet"
@@ -75,7 +107,7 @@ export function TriageQueues() {
           />
         ) : (
           <ul className={styles.list}>
-            {nextFixtureInvestigations.map((inv) => (
+            {investigations.map((inv) => (
               <li key={inv.investigation_id}>
                 <button
                   type="button"
@@ -104,7 +136,10 @@ export function TriageQueues() {
       </section>
 
       <section className={styles.section}>
-        <h2 className={styles.sectionTitle}>Cases ({nextFixtureCases.length})</h2>
+        <h2 className={styles.sectionTitle}>
+          Cases ({cases.length}
+          {casesTotal > cases.length ? ` of ${casesTotal}` : ""})
+        </h2>
         <div className={styles.provenanceNote}>
           <Info size={15} aria-hidden />
           <span>
@@ -112,11 +147,13 @@ export function TriageQueues() {
             deployment, and nothing here has been concluded by an analyst.
           </span>
         </div>
-        {nextFixtureCases.length === 0 ? (
+        {casesLoading ? (
+          <Skeleton height={100} />
+        ) : cases.length === 0 ? (
           <EmptyState icon={ShieldHalf} title="No cases" description="No source case records match this filter." />
         ) : (
           <ul className={styles.list}>
-            {nextFixtureCases.map((c) => (
+            {cases.map((c) => (
               <li key={c.case_id} className={styles.caseRow}>
                 <span className={styles.ref}>{c.case_id}</span>
                 <Badge tone={CASE_STATUS_TONE[c.status]}>{CASE_STATUS_LABEL[c.status]}</Badge>
