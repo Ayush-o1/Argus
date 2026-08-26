@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { useSession } from "@/hooks/useAuth";
-import { nextFixtureDashboard, nextFixtureModel } from "@/lib/next/fixtures";
+import { useDashboardSummary } from "@/hooks/useDashboard";
+import { nextFixtureModel } from "@/lib/next/fixtures";
 import { NEXT_MODE_PATH, useNextMode } from "@/lib/next/modeRouting";
 import { useNextScopeStore, type NextMode } from "@/stores/nextScopeStore";
 import { CommandBar } from "./CommandBar";
@@ -35,7 +36,11 @@ export function NextShell({ children }: { children: ReactNode }) {
   const { data: session } = useSession();
   const [openSheet, setOpenSheet] = useState<"rail" | "panel" | null>(null);
 
-  const worldStat = (nextFixtureDashboard.total_persons + nextFixtureDashboard.total_organizations).toLocaleString("en-US");
+  const { data: summary } = useDashboardSummary();
+  // Undefined either while the query is in flight, or permanently, when the
+  // role lacks entity:read (the query is disabled, not failing) — either way
+  // the header shows nothing rather than a fixture number standing in.
+  const worldStat = summary ? (summary.total_persons + summary.total_organizations).toLocaleString("en-US") : null;
 
   return (
     <div className={styles.shell}>
@@ -95,7 +100,7 @@ export function NextShell({ children }: { children: ReactNode }) {
           <span className={styles.kbd}>⌘K</span>
         </button>
 
-        <span className={styles.worldStat}>{worldStat} entities</span>
+        {worldStat ? <span className={styles.worldStat}>{worldStat} entities</span> : null}
 
         <span
           className={styles.syntheticBadge}

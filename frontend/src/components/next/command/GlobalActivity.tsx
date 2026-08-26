@@ -3,17 +3,20 @@
 import { useMemo, useState } from "react";
 import { ActivityHistogram } from "@/components/timeline/ActivityHistogram";
 import { analyseDays, DEFAULT_FILTERS } from "@/components/timeline/timelineModel";
-import { nextFixtureActivityDays, nextFixtureRegions, nextFixtureUnusualDays } from "@/lib/next/fixtures";
+import { Skeleton } from "@/components/ui/Skeleton";
+import { useGlobalTimeline } from "@/hooks/useTimeline";
+import { useTemporalPatterns } from "@/hooks/usePatterns";
+import { useMapRegions } from "@/hooks/useMap";
 import { useNextScopeStore } from "@/stores/nextScopeStore";
 import styles from "./GlobalActivity.module.css";
-import type { GlobalTimeline } from "@/hooks/useTimeline";
 
 /**
  * Global daily volume + region breakdown.
  *
  * Reuses the real `ActivityHistogram` and `analyseDays` (the Poisson-tested
- * burst detection already shipping on `/timeline`) rather than a second
- * histogram implementation — the same drag-to-window gesture from that page
+ * burst detection already shipping on `/timeline`), and the same
+ * `useGlobalTimeline`/`useTemporalPatterns`/`useMapRegions` hooks and
+ * `unusualDays` derivation that page uses — the same drag-to-window gesture
  * now writes into the shared scope bus instead of page-local state, which is
  * exactly what Phase 4's "one source of truth" means in practice.
  */
@@ -24,13 +27,40 @@ export function GlobalActivity() {
   const setTimeWindow = useNextScopeStore((s) => s.setTimeWindow);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
 
+  const { data: timeline, isLoading: timelineLoading } = useGlobalTimeline();
+  const { data: temporal } = useTemporalPatterns();
+  const { data: regions, isLoading: regionsLoading } = useMapRegions();
+
+  // Which days the *server* found unusual, by a two-sided Poisson test of each
+  // day against the rate implied by every other day — computed there because
+  // the test needs the whole series and a baseline excluding the day under
+  // test. Same derivation as the real /timeline page.
+  const unusualDays = useMemo(() => {
+    const map = new Map<string, "high" | "low">();
+    for (const series of temporal?.series ?? []) {
+      for (const day of series.daily) {
+        if (day.unusual && day.unusual_direction) map.set(day.day, day.unusual_direction);
+      }
+    }
+    return map;
+  }, [temporal]);
+
   const analysis = useMemo(
-    () => analyseDays({ buckets: nextFixtureActivityDays } as GlobalTimeline, DEFAULT_FILTERS, nextFixtureUnusualDays),
-    [],
+    () => (timeline ? analyseDays(timeline, DEFAULT_FILTERS, unusualDays) : null),
+    [timeline, unusualDays],
   );
+
+  if (timelineLoading || regionsLoading || !analysis || !regions) {
+    return (
+      <section className={styles.section} aria-label="Global activity">
+        <Skeleton height={220} />
+      </section>
+    );
+  }
+
   const unusualCount = analysis.days.filter((d) => d.unusual).length;
 
-  const maxEntities = Math.max(...nextFixtureRegions.map((r) => r.entity_count));
+  const maxEntities = Math.max(...regions.map((r) => r.entity_count));
 
   return (
     <section className={styles.section} aria-label="Global activity">
@@ -62,7 +92,7 @@ export function GlobalActivity() {
       </p>
 
       <div className={styles.regionGrid} role="group" aria-label="Filter by region">
-        {nextFixtureRegions.map((r) => {
+        {regions.map((r) => {
           const active = region === r.region;
           const accent = r.elevated_count >= 4 ? "var(--risk-critical)" : r.elevated_count >= 1 ? "var(--risk-high)" : "var(--surface-border)";
           return (
