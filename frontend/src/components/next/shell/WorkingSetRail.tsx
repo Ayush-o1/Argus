@@ -65,7 +65,7 @@ export function WorkingSetRail() {
               {timeWindow ? formatWindow(timeWindow) : "Full 90-day span"}
             </span>
             {timeWindow ? (
-              <button type="button" className={styles.scopeClear} onClick={clearTimeWindow}>
+              <button type="button" className={styles.scopeClear} title="Clear time window" aria-label="Clear time window" onClick={clearTimeWindow}>
                 ×
               </button>
             ) : null}
@@ -79,7 +79,7 @@ export function WorkingSetRail() {
               {region ?? "World — all regions"}
             </span>
             {region ? (
-              <button type="button" className={styles.scopeClear} onClick={clearRegion}>
+              <button type="button" className={styles.scopeClear} title="Clear region" aria-label="Clear region" onClick={clearRegion}>
                 ×
               </button>
             ) : null}
