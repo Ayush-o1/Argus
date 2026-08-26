@@ -108,8 +108,45 @@
 
 .actions {
   display: flex;
+  align-items: center;
   gap: var(--space-2);
   margin-top: 4px;
+}
+
+.error {
+  font-size: 11px;
+  color: var(--risk-critical);
+  margin: 4px 0 0;
+}
+
+.downloadLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 6px;
+  background: var(--surface-overlay);
+  border: 1px solid var(--surface-border);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+.downloadLink:hover {
+  border-color: var(--accent-primary);
+  color: var(--text-primary);
+}
+
+.intact {
+  font-size: 10px;
+  color: var(--status-ok);
+}
+
+.notIntact {
+  font-size: 10px;
+  color: var(--risk-critical);
 }
 
 /* ---------- phone layout ---------- */
