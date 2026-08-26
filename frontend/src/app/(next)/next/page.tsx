@@ -27,10 +27,6 @@ const LEAD_BAND = "elevated";
  * disabled forever, rendering as a skeleton that never resolves — which is
  * not "loading", it is "not permitted", and those are different states.
  *
- * Known seam: `selectedId` set from a lead selected here is a real entity
- * id; Investigate/Evidence/Triage still resolve selection against fixture
- * ids until they are wired in a later pass, so a real selection made in
- * Command will not (yet) be found if you jump to those modes.
  */
 export default function NextCommandPage() {
   const canReadEntities = useHasPermission("entity:read");
