@@ -3,7 +3,10 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { EntityTypeIcon } from "@/components/entity/EntityTypeIcon";
-import { nextFixtureActivityDays, nextFixtureRegions, nextFixtureSubjects } from "@/lib/next/fixtures";
+import { useEntity } from "@/hooks/useEntities";
+import { useMapRegions } from "@/hooks/useMap";
+import { useSearch } from "@/hooks/useSearch";
+import { useGlobalTimeline } from "@/hooks/useTimeline";
 import { NEXT_MODE_PATH } from "@/lib/next/modeRouting";
 import { useNextScopeStore, type NextMode } from "@/stores/nextScopeStore";
 import styles from "./CommandBar.module.css";
@@ -29,12 +32,14 @@ const MODE_DEFS: { key: NextMode; label: string }[] = [
  * Command Palette v2 (Phase 5) — an acting interface, not just navigation.
  *
  * Every command here invokes a real, already-working state transition on
- * `useNextScopeStore`; nothing here simulates a capability the app doesn't
- * have. Entity search runs against the fixture subject list rather than the
- * real `useSearch` hook for now, deliberately: everything else on screen
- * during the fixture phase is fixture data too, and a search that reached
- * into the real graph would return results nothing else on screen could
- * open. Both become real together in Phase 12.
+ * `useNextScopeStore`.
+ *
+ * Live-wired (Phase 12): entity search is `useSearch(query)` — the real
+ * `/api/search` endpoint, only ever queried when there's a query (unlike
+ * every other group here, entities can't be listed eagerly: there are
+ * 4,400 of them, not 34). Regions come from `useMapRegions()`, and "filter
+ * to the last 14 days" anchors on `useGlobalTimeline()`'s own latest bucket
+ * rather than a fixture-era fixed date.
  */
 export function CommandBar() {
   const router = useRouter();
@@ -56,6 +61,11 @@ export function CommandBar() {
   const setRegion = useNextScopeStore((s) => s.setRegion);
   const setTimeWindow = useNextScopeStore((s) => s.setTimeWindow);
   const clearTimeWindow = useNextScopeStore((s) => s.clearTimeWindow);
+
+  const { data: selected } = useEntity(selectedId ?? undefined);
+  const { data: regions } = useMapRegions();
+  const { data: timeline } = useGlobalTimeline();
+  const { data: searchResults } = useSearch(query);
 
   // Resetting query/activeIndex happens at every *close*, not reactively on
   // `open` — the same practical effect (an empty palette next time it opens)
@@ -119,10 +129,9 @@ export function CommandBar() {
     }
   }
 
-  const selected = nextFixtureSubjects.find((s) => s.id === selectedId) ?? null;
-  const latestDay = nextFixtureActivityDays[nextFixtureActivityDays.length - 1]?.day;
+  const latestDay = timeline?.buckets[timeline.buckets.length - 1]?.day;
 
-  const items = useMemo<CommandItem[]>(() => {
+  const staticItems = useMemo<CommandItem[]>(() => {
     const list: CommandItem[] = [];
 
     if (selected) {
@@ -178,7 +187,7 @@ export function CommandBar() {
     }
     list.push({ group: "Actions", icon: "action", label: "Clear the time window", meta: "time", run: () => clearTimeWindow() });
 
-    for (const r of nextFixtureRegions) {
+    for (const r of regions ?? []) {
       list.push({
         group: "Geography",
         icon: "action",
@@ -188,10 +197,22 @@ export function CommandBar() {
       });
     }
 
-    for (const s of nextFixtureSubjects) {
-      list.push({
-        group: "Entities",
-        icon: "entity",
+    for (const m of MODE_DEFS) {
+      list.push({ group: "Modes", icon: "action", label: `Go to ${m.label}`, meta: m.key, run: () => goToMode(m.key) });
+    }
+
+    return list;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, pins, latestDay, regions, setLens, setFocus, select, togglePin, setTimeWindow, clearTimeWindow, setRegion]);
+
+  const q = query.trim().toLowerCase();
+  const filteredStatic = q ? staticItems.filter((it) => it.label.toLowerCase().includes(q) || it.meta.toLowerCase().includes(q)) : staticItems;
+
+  const entityItems = useMemo<CommandItem[]>(
+    () =>
+      (searchResults?.data ?? []).map((s) => ({
+        group: "Entities" as const,
+        icon: "entity" as const,
         entityLabel: s.label,
         label: s.name,
         meta: `${s.label} · ${s.id}`,
@@ -199,20 +220,12 @@ export function CommandBar() {
           select(s.id);
           goToMode("command");
         },
-      });
-    }
-
-    for (const m of MODE_DEFS) {
-      list.push({ group: "Modes", icon: "action", label: `Go to ${m.label}`, meta: m.key, run: () => goToMode(m.key) });
-    }
-
-    return list;
+      })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected, pins, latestDay, setLens, setFocus, select, togglePin, setTimeWindow, clearTimeWindow, setRegion]);
+    [searchResults, select],
+  );
 
-  const q = query.trim().toLowerCase();
-  const filtered = q ? items.filter((it) => it.label.toLowerCase().includes(q) || it.meta.toLowerCase().includes(q)) : items;
-  const results = filtered.slice(0, 24);
+  const results = q ? [...entityItems, ...filteredStatic].slice(0, 24) : filteredStatic.slice(0, 24);
 
   if (!open) return null;
 

@@ -53,6 +53,25 @@ export function useBrowseEntities(types: string[], band: string | null) {
   return { data, isFetching };
 }
 
+/** A fixed, small set of entities by id — one query per id, sharing
+ * `useEntity`'s own cache entry, so an id already fetched elsewhere (the
+ * selected subject in Investigate, say) resolves instantly here rather than
+ * refetching. For a pinned-items rail, not a browse view: no attempt is made
+ * to fan this out efficiently for a large `ids` list. */
+export function usePinnedEntities(ids: string[]) {
+  const queries = useQueries({
+    queries: ids.map((id) => ({
+      queryKey: ["entity", id],
+      queryFn: async () => (await apiFetch<GraphNode>(`/api/entities/${encodeURIComponent(id)}`)).data,
+    })),
+  });
+
+  return {
+    data: queries.map((q) => q.data).filter((n): n is GraphNode => !!n),
+    isFetching: queries.some((q) => q.isFetching),
+  };
+}
+
 export function byAssessmentScore(a: GraphNode, b: GraphNode): number {
   const left = a.assessment?.score;
   const right = b.assessment?.score;

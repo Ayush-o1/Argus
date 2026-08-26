@@ -16,6 +16,22 @@ import styles from "./LeadDossier.module.css";
  * readings on one axis, never merged into a single number. This rule is
  * absolute across the whole product (see `assessmentTier()` in
  * `lib/theme.ts`), not a style choice specific to this screen.
+ *
+ * `subject` itself is real (Phase 12 — the caller passes a live `GraphNode`
+ * now). The analyst-judgement and signal-contribution axis below is the one
+ * piece of Command mode still fixture-based, and deliberately so rather than
+ * left by oversight: the real analyst-assessment endpoint
+ * (`useAnalystAssessments`, `AnalystAssessment` in `lib/investigations.ts`)
+ * carries a `band` and a `dissents: boolean | null` the backend already
+ * computed — no numeric score to plot on this axis at all. Real per-entity
+ * signal data likewise doesn't match `SignalOutcome`'s shape (`magnitude`,
+ * `contribution`, an explicit `evaluable` flag) — the closest real source is
+ * `object_value.signals` on a subject's `argus_risk_assessment` provenance
+ * assertion, shaped differently (`title`/`weight`/`summary`). Swapping this
+ * in means redesigning the axis and signal-bar visualization around what the
+ * real endpoints actually return, not renaming fields — a real design task,
+ * not done here to avoid shipping an unverified rewrite of a visualization
+ * this session has no browser to check.
  */
 export function LeadDossier({ subject }: { subject: GraphNode }) {
   const router = useRouter();

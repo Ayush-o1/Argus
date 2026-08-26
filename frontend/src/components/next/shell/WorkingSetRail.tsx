@@ -1,8 +1,8 @@
 "use client";
 
 import { EntityTypeIcon } from "@/components/entity/EntityTypeIcon";
+import { usePinnedEntities } from "@/hooks/useEntities";
 import { useNextScopeStore } from "@/stores/nextScopeStore";
-import { nextFixtureSubjects } from "@/lib/next/fixtures";
 import styles from "./WorkingSetRail.module.css";
 
 const DAY_FMT = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
@@ -28,7 +28,7 @@ export function WorkingSetRail() {
   const setHypothesis = useNextScopeStore((s) => s.setHypothesis);
   const clearWorkingSet = useNextScopeStore((s) => s.clearWorkingSet);
 
-  const pinned = pins.map((id) => nextFixtureSubjects.find((s) => s.id === id)).filter((s): s is NonNullable<typeof s> => !!s);
+  const { data: pinned } = usePinnedEntities(pins);
 
   return (
     <>
