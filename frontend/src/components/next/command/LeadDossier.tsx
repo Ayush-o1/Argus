@@ -1,11 +1,14 @@
 "use client";
 
+import { useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { EntityTypeIcon } from "@/components/entity/EntityTypeIcon";
-import { BAND_LABEL } from "@/lib/assessment";
+import { Skeleton } from "@/components/ui/Skeleton";
+import { useAnalystAssessments } from "@/hooks/useInvestigations";
+import { useAssessmentModel, useSubjectAssessment } from "@/hooks/useAssessment";
+import { BAND_LABEL, type AssessmentBand } from "@/lib/assessment";
 import type { GraphNode } from "@/lib/types";
-import { nextFixtureAnalystJudgements, nextFixtureSignals } from "@/lib/next/fixtures";
-import { DIVERGENCE_THRESHOLD, bandColorVar } from "@/lib/next/format";
+import { bandColorVar } from "@/lib/next/format";
 import { NEXT_MODE_PATH } from "@/lib/next/modeRouting";
 import { useNextScopeStore } from "@/stores/nextScopeStore";
 import styles from "./LeadDossier.module.css";
@@ -13,25 +16,21 @@ import styles from "./LeadDossier.module.css";
 /**
  * The assessment dossier for whatever subject is selected — the design's
  * centrepiece: ARGUS's score and an analyst's, kept as two independent
- * readings on one axis, never merged into a single number. This rule is
- * absolute across the whole product (see `assessmentTier()` in
- * `lib/theme.ts`), not a style choice specific to this screen.
+ * readings, never merged into a single number. This rule is absolute across
+ * the whole product (see `assessmentTier()` in `lib/theme.ts`), not a style
+ * choice specific to this screen.
  *
- * `subject` itself is real (Phase 12 — the caller passes a live `GraphNode`
- * now). The analyst-judgement and signal-contribution axis below is the one
- * piece of Command mode still fixture-based, and deliberately so rather than
- * left by oversight: the real analyst-assessment endpoint
- * (`useAnalystAssessments`, `AnalystAssessment` in `lib/investigations.ts`)
- * carries a `band` and a `dissents: boolean | null` the backend already
- * computed — no numeric score to plot on this axis at all. Real per-entity
- * signal data likewise doesn't match `SignalOutcome`'s shape (`magnitude`,
- * `contribution`, an explicit `evaluable` flag) — the closest real source is
- * `object_value.signals` on a subject's `argus_risk_assessment` provenance
- * assertion, shaped differently (`title`/`weight`/`summary`). Swapping this
- * in means redesigning the axis and signal-bar visualization around what the
- * real endpoints actually return, not renaming fields — a real design task,
- * not done here to avoid shipping an unverified rewrite of a visualization
- * this session has no browser to check.
+ * Fully live (Phase 12, second pass): the per-signal breakdown comes from
+ * `useSubjectAssessment` (`/api/assessment/subject/{ref}`) — its `signals`
+ * are exactly `SignalOutcome` (`evaluable`, `magnitude`, `contribution`),
+ * the same shape the fixture modelled, confirmed live rather than assumed.
+ * The analyst side comes from `useAnalystAssessments`, whose real
+ * `AnalystAssessment` carries an `analyst_band` and a `dissents: boolean |
+ * null` — no numeric score. Plotting that on the same 0-100 axis as ARGUS's
+ * score would fabricate a position, so the axis keeps only ARGUS's real
+ * marker; the analyst reading is shown as a band-vs-band comparison instead,
+ * driven by the backend's own `dissents` verdict rather than a recomputed
+ * divergence threshold.
  */
 export function LeadDossier({ subject }: { subject: GraphNode }) {
   const router = useRouter();
@@ -41,19 +40,32 @@ export function LeadDossier({ subject }: { subject: GraphNode }) {
   const setFocus = useNextScopeStore((s) => s.setFocus);
 
   const assessment = subject.assessment;
-  const analyst = nextFixtureAnalystJudgements[subject.id];
-  const signals = nextFixtureSignals[subject.id] ?? [];
+  const { data: subjectAssessment, isLoading: signalsLoading } = useSubjectAssessment(subject.id);
+  const { data: analystMap } = useAnalystAssessments([subject.id]);
+  const { data: assessmentModel } = useAssessmentModel();
+
+  const signalTitleMap = useMemo(
+    () => new Map((assessmentModel?.signals ?? []).map((s) => [s.signal_id, s.title])),
+    [assessmentModel],
+  );
+  const signalTitle = (signalId: string): string | undefined => signalTitleMap.get(signalId);
+
+  const assessments = analystMap?.[subject.id] ?? [];
+  const analyst = assessments.length
+    ? [...assessments].sort((a, b) => Date.parse(b.recorded_at) - Date.parse(a.recorded_at))[0]
+    : null;
+
+  const signals = subjectAssessment?.signals ?? [];
   const fired = signals.filter((s) => s.evaluable && (s.magnitude ?? 0) > 0);
   const notEvaluable = signals.filter((s) => !s.evaluable);
 
   const argusScore = assessment?.score ?? null;
   const argusX = argusScore ?? 0;
-  const analystX = analyst?.score ?? 0;
-  const divergence = analyst && argusScore !== null ? Math.abs(argusScore - analyst.score) : 0;
-  const showTension = !!analyst && divergence >= DIVERGENCE_THRESHOLD;
+  const showTension = analyst?.dissents === true;
   const coverage = assessment?.coverage ?? 0;
   const coverPct = Math.round(coverage * 100);
   const bandColor = bandColorVar(assessment?.band);
+  const analystBandColor = analyst ? bandColorVar(analyst.analyst_band as AssessmentBand) : null;
 
   const isPinned = pins.includes(subject.id);
   const place = [subject.properties.city, subject.properties.country].filter(Boolean).join(", ");
@@ -98,7 +110,13 @@ export function LeadDossier({ subject }: { subject: GraphNode }) {
               background: showTension ? "rgba(199,122,181,0.08)" : "transparent",
             }}
           >
-            {showTension ? "MACHINE AND ANALYST DISAGREE" : analyst ? "CORROBORATED BY ANALYST" : "UNREVIEWED BY ANALYST"}
+            {showTension
+              ? "MACHINE AND ANALYST DISAGREE"
+              : analyst?.dissents === false
+                ? "CORROBORATED BY ANALYST"
+                : analyst
+                  ? "REVIEWED BEFORE ARGUS ASSESSED THIS SUBJECT"
+                  : "UNREVIEWED BY ANALYST"}
           </span>
         </div>
 
@@ -121,12 +139,13 @@ export function LeadDossier({ subject }: { subject: GraphNode }) {
             {analyst ? (
               <>
                 <div className={styles.scoreRow}>
-                  <span className={styles.scoreValue}>{analyst.score}</span>
-                  <span className={styles.scoreDenominator}>/100</span>
+                  <span className={styles.analystBandValue} style={{ color: analystBandColor ?? undefined }}>
+                    {BAND_LABEL[analyst.analyst_band as AssessmentBand] ?? analyst.analyst_band}
+                  </span>
                 </div>
-                <div className={styles.bandLabel}>{BAND_LABEL[analyst.band]}</div>
+                <div className={styles.bandLabel}>{analyst.confidence} confidence</div>
                 <div className={styles.subLabel}>
-                  {analyst.by} · {analyst.at}
+                  {analyst.author_username} · {new Date(analyst.recorded_at).toLocaleString()}
                 </div>
               </>
             ) : (
@@ -153,32 +172,39 @@ export function LeadDossier({ subject }: { subject: GraphNode }) {
               style={{ left: `${Math.max(0, argusX - (100 - coverPct) / 2)}%`, width: `${Math.max(5, 100 - coverPct)}%` }}
               title={`Uncertainty band — ${100 - coverPct}% of the model could not be evaluated`}
             />
-            {showTension ? (
-              <span
-                className={styles.tensionBand}
-                style={{ left: `${Math.min(argusX, analystX)}%`, width: `${Math.abs(argusX - analystX)}%` }}
-              />
-            ) : null}
             <span className={styles.marker} style={{ left: `${argusX}%`, background: bandColor }} />
             <span className={styles.markerLabel} style={{ left: `${argusX}%`, color: bandColor }}>
               ARGUS
             </span>
-            {analyst ? (
-              <>
-                <span className={styles.marker} style={{ left: `${analystX}%`, background: "var(--text-primary)" }} />
-                <span className={styles.markerLabelBottom} style={{ left: `${analystX}%` }}>
-                  ANALYST
-                </span>
-              </>
-            ) : null}
           </div>
+          {/* No numeric position exists for the analyst's reading — `AnalystAssessment`
+              carries a band, not a score — so it is never plotted on this axis. A
+              band-vs-band comparison, driven by the backend's own `dissents` verdict,
+              says the same thing honestly instead of inventing a coordinate. */}
+          {analyst ? (
+            <div className={styles.bandCompareRow}>
+              <span className={styles.bandChip} style={{ borderColor: bandColor }}>
+                <span className={styles.bandChipLabel}>ARGUS</span>
+                <span style={{ color: bandColor }}>{assessment ? BAND_LABEL[assessment.band] : "—"}</span>
+              </span>
+              <span className={styles.dissentGlyph}>{showTension ? "≠" : analyst.dissents === false ? "=" : "·"}</span>
+              <span className={styles.bandChip} style={{ borderColor: analystBandColor ?? undefined }}>
+                <span className={styles.bandChipLabel}>ANALYST</span>
+                <span style={{ color: analystBandColor ?? undefined }}>
+                  {BAND_LABEL[analyst.analyst_band as AssessmentBand] ?? analyst.analyst_band}
+                </span>
+              </span>
+            </div>
+          ) : null}
           {showTension ? (
             <p className={styles.axisNote}>
-              <span className={styles.axisNoteTension}>DIVERGENCE {divergence} PTS</span> — {analyst?.note}
+              <span className={styles.axisNoteTension}>ANALYST DISSENTS</span> — {analyst?.rationale}
             </p>
+          ) : analyst?.dissents === false ? (
+            <p className={styles.axisNote}>Analyst confirms ARGUS&apos;s reading. {analyst.rationale}</p>
           ) : analyst ? (
             <p className={styles.axisNote}>
-              Machine and analyst agree within {divergence} points. {analyst.note}
+              Recorded before ARGUS had assessed this subject, so there is nothing to compare it against yet. {analyst.rationale}
             </p>
           ) : null}
         </div>
@@ -190,13 +216,17 @@ export function LeadDossier({ subject }: { subject: GraphNode }) {
             <span className={styles.cardTitle}>WHY IT SURFACED</span>
           </div>
           <div className={styles.signalsBody}>
-            {fired.length === 0 ? (
-              <p className={styles.subLabel}>No signal was evaluable for this subject.</p>
+            {signalsLoading ? (
+              <Skeleton height={80} />
+            ) : fired.length === 0 ? (
+              <p className={styles.subLabel}>
+                {signals.length === 0 ? "No assessment signal detail is available for this subject." : "No signal fired for this subject."}
+              </p>
             ) : (
               fired.map((s) => {
                 const pct = Math.round((s.magnitude ?? 0) * 100);
                 const color = (s.magnitude ?? 0) > 0.7 ? "var(--risk-critical)" : (s.magnitude ?? 0) > 0.4 ? "var(--risk-high)" : "var(--risk-medium)";
-                const title = (s.detail as { title?: string })?.title ?? s.summary;
+                const title = signalTitle(s.signal_id) ?? s.summary;
                 return (
                   <div key={s.signal_id} className={styles.signalRow}>
                     <div className={styles.signalTop}>
