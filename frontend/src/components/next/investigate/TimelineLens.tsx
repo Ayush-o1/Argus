@@ -3,40 +3,58 @@
 import { useMemo, useState } from "react";
 import { ActivityHistogram } from "@/components/timeline/ActivityHistogram";
 import { analyseDays, DEFAULT_FILTERS } from "@/components/timeline/timelineModel";
-import { nextFixtureGlobalTimeline, nextFixtureUnusualDays } from "@/lib/next/fixtures";
+import { Skeleton } from "@/components/ui/Skeleton";
+import { useGlobalTimeline } from "@/hooks/useTimeline";
+import { useTemporalPatterns } from "@/hooks/usePatterns";
 import { useNextScopeStore } from "@/stores/nextScopeStore";
 import styles from "./InvestigateWorkspace.module.css";
 
 /**
- * The Timeline lens — the real `ActivityHistogram` (@visx) driven by fixture
- * day buckets, same reuse pattern as Graph/Map. `analyseDays` is the exact
- * function the real `/timeline` page uses to turn buckets into the shape the
- * chart expects, run here against `nextFixtureGlobalTimeline` instead of a
- * live `useGlobalTimeline()` query.
+ * The Timeline lens — the real `ActivityHistogram` (@visx), same reuse
+ * pattern as Graph/Map. `analyseDays` is the exact function the real
+ * `/timeline` page uses to turn buckets into the shape the chart expects.
+ *
+ * Live-wired (Phase 12): `useGlobalTimeline`/`useTemporalPatterns` and the
+ * `unusualDays` derivation are identical to `GlobalActivity`'s (Command
+ * mode) — same query keys, so switching to this lens after visiting Command
+ * reads from cache rather than refetching.
  *
  * A drag-to-zoom selection writes straight into the shared scope bus's
  * `timeWindow` — `nextScopeStore`'s own docstring calls this out as the
  * reason it mirrors `TimelineFilters.zoomRange`'s shape exactly. Lane
  * filters, source-reported-only, and the record-level "what happened that
- * day" panel (`NotableMoments`, which needs per-record fixture data not yet
- * built) aren't wired in this pass.
+ * day" panel (`NotableMoments`) aren't wired in this pass.
  */
 export function TimelineLens() {
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const timeWindow = useNextScopeStore((s) => s.timeWindow);
   const setTimeWindow = useNextScopeStore((s) => s.setTimeWindow);
 
-  const filters = useMemo(
-    () => ({ ...DEFAULT_FILTERS, zoomRange: timeWindow }),
-    [timeWindow],
-  );
+  const { data: timeline, isLoading: timelineLoading } = useGlobalTimeline();
+  const { data: temporal } = useTemporalPatterns();
+
+  const unusualDays = useMemo(() => {
+    const map = new Map<string, "high" | "low">();
+    for (const series of temporal?.series ?? []) {
+      for (const day of series.daily) {
+        if (day.unusual && day.unusual_direction) map.set(day.day, day.unusual_direction);
+      }
+    }
+    return map;
+  }, [temporal]);
+
+  const filters = useMemo(() => ({ ...DEFAULT_FILTERS, zoomRange: timeWindow }), [timeWindow]);
 
   const analysis = useMemo(
-    () => analyseDays(nextFixtureGlobalTimeline, filters, nextFixtureUnusualDays),
-    [filters],
+    () => (timeline ? analyseDays(timeline, filters, unusualDays) : null),
+    [timeline, filters, unusualDays],
   );
 
-  const selected = selectedDay ? analysis.days.find((d) => d.day === selectedDay) : null;
+  const selected = analysis && selectedDay ? analysis.days.find((d) => d.day === selectedDay) : null;
+
+  if (timelineLoading || !analysis) {
+    return <Skeleton height={220} />;
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", padding: "18px", height: "100%", overflowY: "auto" }}>

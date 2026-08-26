@@ -4,21 +4,21 @@ import { useMemo, useRef } from "react";
 import { ArgusMap, type ArgusMapHandle } from "@/components/map/ArgusMap";
 import { AssessmentBadge } from "@/components/ui/AssessmentBadge";
 import { Button } from "@/components/ui/Button";
-import {
-  nextFixtureCorridors,
-  nextFixtureCountries,
-  nextFixtureRegions,
-  nextFixtureShipments,
-  nextFixtureSubjects,
-} from "@/lib/next/fixtures";
+import { useMapCorridors, useMapCountries, useMapEntities, useMapRegions, useMapShipments } from "@/hooks/useMap";
 import { useNextScopeStore } from "@/stores/nextScopeStore";
 import popupStyles from "@/components/map/SelectedEntityPopup.module.css";
 
 /**
- * The Map lens — the real ArgusMap (MapLibre + deck.gl) canvas, fed fixture
- * entities/shipments/regions, same reuse pattern as GraphLens with
- * GraphCanvas. `region` from the shared scope bus narrows which entities are
- * plotted, matching how Command's region filter narrows the lead list.
+ * The Map lens — the real ArgusMap (MapLibre + deck.gl) canvas, same reuse
+ * pattern as GraphLens with GraphCanvas. `region` from the shared scope bus
+ * narrows which entities are plotted, matching how Command's region filter
+ * narrows the lead list.
+ *
+ * Live-wired (Phase 12): `useMapEntities`/`useMapShipments`/`useMapRegions`/
+ * `useMapCountries`/`useMapCorridors` are the exact hooks the real `/map`
+ * page uses — verified against the live backend at 4,400 real entities,
+ * which `ArgusMap` (WebGL via deck.gl, not Cytoscape's canvas layout)
+ * already renders on that page without a cap.
  *
  * MapControls/MapLegend (entity-type and route filters on the real /map
  * page) aren't wired here yet — both layers are always on, all shipments
@@ -37,9 +37,15 @@ export function MapLens() {
   const pins = useNextScopeStore((s) => s.pins);
   const region = useNextScopeStore((s) => s.region);
 
+  const { data: rawEntities } = useMapEntities();
+  const { data: shipments } = useMapShipments();
+  const { data: regions } = useMapRegions();
+  const { data: countries } = useMapCountries();
+  const { data: corridors } = useMapCorridors();
+
   const entities = useMemo(
-    () => (region ? nextFixtureSubjects.filter((s) => s.properties.region === region) : nextFixtureSubjects),
-    [region],
+    () => (region ? (rawEntities ?? []).filter((s) => s.properties.region === region) : (rawEntities ?? [])),
+    [rawEntities, region],
   );
 
   const selected = selectedId ? (entities.find((e) => e.id === selectedId) ?? null) : null;
@@ -49,10 +55,10 @@ export function MapLens() {
       <ArgusMap
         ref={mapRef}
         entities={entities}
-        shipments={nextFixtureShipments}
-        regions={nextFixtureRegions}
-        countries={nextFixtureCountries}
-        corridors={nextFixtureCorridors}
+        shipments={shipments ?? []}
+        regions={regions ?? []}
+        countries={countries ?? []}
+        corridors={corridors ?? []}
         showEntities
         showShipments
         routeFilter="all"

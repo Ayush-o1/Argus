@@ -4,7 +4,7 @@ import { AssessmentBadge } from "@/components/ui/AssessmentBadge";
 import { GraphLens } from "./GraphLens";
 import { MapLens } from "./MapLens";
 import { TimelineLens } from "./TimelineLens";
-import { nextFixtureSubjects } from "@/lib/next/fixtures";
+import { useEntity } from "@/hooks/useEntities";
 import { useNextScopeStore, type NextLens } from "@/stores/nextScopeStore";
 import styles from "./InvestigateWorkspace.module.css";
 
@@ -20,6 +20,12 @@ const LENSES: { key: NextLens; label: string }[] = [
  * store write (`lens`), not navigation, so the context in the header/strip
  * below never resets when a lens changes; each lens reads the same
  * `useNextScopeStore` selection independently.
+ *
+ * Live-wired (Phase 12): `useEntity(selectedId)` is the single-entity fetch
+ * the old app's entity detail page uses — `selectedId` is now always a real
+ * entity id (Command, Triage and Evidence all set it from live data), so a
+ * single fetch-by-id here is simpler and more correct than trying to find
+ * it inside whichever lens's own dataset happens to be loaded.
  */
 export function InvestigateWorkspace() {
   const lens = useNextScopeStore((s) => s.lens);
@@ -30,7 +36,7 @@ export function InvestigateWorkspace() {
   const pins = useNextScopeStore((s) => s.pins);
   const togglePin = useNextScopeStore((s) => s.togglePin);
 
-  const selected = selectedId ? (nextFixtureSubjects.find((s) => s.id === selectedId) ?? null) : null;
+  const { data: selected } = useEntity(selectedId ?? undefined);
 
   const scopeParts = [
     region ? `REGION ${region.toUpperCase()}` : null,
