@@ -389,3 +389,21 @@
   font-family: var(--font-mono);
   color: var(--text-primary);
 }
+
+/* ---------- phone layout: two-column grids stack ---------- */
+
+@media (max-width: 599.98px) {
+  .gaugesGrid,
+  .detailGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .gaugeCol {
+    border-right: 0;
+    border-bottom: 1px solid var(--surface-border-faint);
+  }
+
+  .gaugeCol:last-child {
+    border-bottom: 0;
+  }
+}

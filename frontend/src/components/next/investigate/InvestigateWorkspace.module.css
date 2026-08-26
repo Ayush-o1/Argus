@@ -29,6 +29,7 @@
 }
 
 .headerTitle {
+  min-width: 0;
   font-size: var(--text-sm);
   color: var(--text-primary);
   white-space: nowrap;
@@ -205,4 +206,40 @@
   letter-spacing: 0.06em;
   color: var(--text-tertiary);
   pointer-events: none;
+}
+
+/* ---------- phone layout: header wraps to two rows, scope text hides ---------- */
+
+@media (max-width: 599.98px) {
+  .header {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+
+  .headerScope {
+    display: none;
+  }
+
+  .headerSpacer {
+    flex-basis: 100%;
+    height: 0;
+  }
+
+  .lensSwitcher {
+    width: 100%;
+  }
+
+  .lensButton {
+    flex: 1;
+  }
+
+  .selectedStrip {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+
+  .strip {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
 }
