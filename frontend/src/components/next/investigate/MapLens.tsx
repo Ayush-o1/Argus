@@ -1,9 +1,11 @@
 "use client";
 
-import { useMemo, useRef } from "react";
-import { ArgusMap, type ArgusMapHandle } from "@/components/map/ArgusMap";
+import { useMemo, useRef, useState } from "react";
+import { ArgusMap, type ArgusMapHandle, type MapScale } from "@/components/map/ArgusMap";
+import { MapControls, MapLegend, type EntityTypeFilter, type RouteFilter } from "@/components/map/MapControls";
 import { AssessmentBadge } from "@/components/ui/AssessmentBadge";
 import { Button } from "@/components/ui/Button";
+import { matchesBand } from "@/lib/assessment";
 import { useMapCorridors, useMapCountries, useMapEntities, useMapRegions, useMapShipments } from "@/hooks/useMap";
 import { useNextScopeStore } from "@/stores/nextScopeStore";
 import popupStyles from "@/components/map/SelectedEntityPopup.module.css";
@@ -20,12 +22,16 @@ import popupStyles from "@/components/map/SelectedEntityPopup.module.css";
  * which `ArgusMap` (WebGL via deck.gl, not Cytoscape's canvas layout)
  * already renders on that page without a cap.
  *
- * MapControls/MapLegend (entity-type and route filters on the real /map
- * page) aren't wired here yet — both layers are always on, all shipments
- * shown rather than anomalies-only. The popup is a new, small component
- * rather than a reuse of `SelectedEntityPopup`: that component links to the
- * old app's `/entities/:id` and `/graph?seed=` routes, which would silently
- * exit the `/next` experience on click. Its CSS module is still reused as-is.
+ * `MapControls`/`MapLegend` are now reused directly (same component, same
+ * props the real `/map` page passes) rather than left unwired — entity-type,
+ * assessment-band and route filters, and the entity/route layer toggles all
+ * behave identically to the old page. `MapContextPanel` (the drill-down
+ * region/country/corridor browser) stays out of scope here: Command's own
+ * region scope already does that narrowing for this lens. The popup is a
+ * new, small component rather than a reuse of `SelectedEntityPopup`: that
+ * component links to the old app's `/entities/:id` and `/graph?seed=`
+ * routes, which would silently exit the `/next` experience on click. Its
+ * CSS module is still reused as-is.
  */
 export function MapLens() {
   const mapRef = useRef<ArgusMapHandle>(null);
@@ -37,21 +43,43 @@ export function MapLens() {
   const pins = useNextScopeStore((s) => s.pins);
   const region = useNextScopeStore((s) => s.region);
 
-  const { data: rawEntities } = useMapEntities();
+  const [entityType, setEntityType] = useState<EntityTypeFilter>("all");
+  const [bandFilter, setBandFilter] = useState("");
+  const [routeFilter, setRouteFilter] = useState<RouteFilter>("anomalies");
+  const [showEntities, setShowEntities] = useState(true);
+  const [showShipments, setShowShipments] = useState(true);
+  const [scale, setScale] = useState<MapScale>("world");
+
+  const { data: rawEntities } = useMapEntities(entityType === "all" ? undefined : entityType);
   const { data: shipments } = useMapShipments();
   const { data: regions } = useMapRegions();
   const { data: countries } = useMapCountries();
   const { data: corridors } = useMapCorridors();
 
-  const entities = useMemo(
-    () => (region ? (rawEntities ?? []).filter((s) => s.properties.region === region) : (rawEntities ?? [])),
-    [rawEntities, region],
-  );
+  const entities = useMemo(() => {
+    const byBand = (rawEntities ?? []).filter((e) => matchesBand(e.assessment?.band, bandFilter));
+    return region ? byBand.filter((s) => s.properties.region === region) : byBand;
+  }, [rawEntities, region, bandFilter]);
 
   const selected = selectedId ? (entities.find((e) => e.id === selectedId) ?? null) : null;
 
   return (
     <>
+      <MapControls
+        entityType={entityType}
+        onEntityTypeChange={setEntityType}
+        bandFilter={bandFilter}
+        onBandFilterChange={setBandFilter}
+        routeFilter={routeFilter}
+        onRouteFilterChange={setRouteFilter}
+        showEntities={showEntities}
+        showShipments={showShipments}
+        onToggleEntities={() => setShowEntities((v) => !v)}
+        onToggleShipments={() => setShowShipments((v) => !v)}
+        onSearchSelect={(node) => select(node.id)}
+        scale={scale}
+        onResetView={() => mapRef.current?.resetView()}
+      />
       <ArgusMap
         ref={mapRef}
         entities={entities}
@@ -59,13 +87,15 @@ export function MapLens() {
         regions={regions ?? []}
         countries={countries ?? []}
         corridors={corridors ?? []}
-        showEntities
-        showShipments
-        routeFilter="all"
+        showEntities={showEntities}
+        showShipments={showShipments}
+        routeFilter={routeFilter}
         selectedEntityId={selectedId}
         onSelectEntity={(node) => select(node.id)}
         onSelectShipment={() => {}}
+        onScaleChange={setScale}
       />
+      <MapLegend scale={scale} />
       {selected ? (
         <div className={popupStyles.popup}>
           <div className={popupStyles.title}>{selected.name}</div>
